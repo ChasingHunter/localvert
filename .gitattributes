@@ -1,0 +1,30 @@
+# Normalize line endings: LF in the repository and in every working tree.
+# The maintainer is on Windows, CI runs on Linux, and Biome formats with
+# `lineEnding: "lf"`. Without this, Windows checkouts get CRLF and every
+# file reads as fully modified to the formatter and to CI.
+* text=auto eol=lf
+
+# Binary assets — never touch, never diff.
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.webp   binary
+*.avif   binary
+*.ico    binary
+*.pdf    binary
+*.wasm   binary
+*.woff   binary
+*.woff2  binary
+*.mp4    binary
+*.webm   binary
+*.mp3    binary
+*.wav    binary
+*.traineddata binary
+
+# Lockfile: generated, collapse it in diffs and reviews.
+pnpm-lock.yaml -diff linguist-generated=true
+
+# Generated registry barrels — authored by `pnpm gen`, reviewed as output.
+src/tools/index.ts linguist-generated=true
+src/lib/engines/manifest.ts linguist-generated=true

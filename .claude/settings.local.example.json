@@ -1,0 +1,16 @@
+{
+  "//": "Copy to .claude/settings.local.json (gitignored) and adjust. This is where personal, machine-specific permission grants live so the shared project settings stay conservative for every contributor. Project deny rules always win over these allows.",
+  "permissions": {
+    "allow": [
+      "Bash(git push:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh run:*)",
+      "Bash(gh release:*)",
+      "Bash(gh issue:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh workflow:*)",
+      "Bash(gh secret set:*)",
+      "Bash(pnpm exec wrangler:*)"
+    ]
+  }
+}

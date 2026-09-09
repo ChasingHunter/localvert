@@ -1,0 +1,80 @@
+---
+name: add-engine
+description: Integrate a new WebAssembly conversion engine into Localvert (license review, adapter, worker wiring, asset placement, size budget). Use when a conversion needs a codec or library the project does not have yet.
+---
+
+# Add an engine
+
+Engines are the risky, rare change: they carry licensing consequences, tens of
+megabytes of assets, and the privacy guarantee. Work through this in order.
+
+## 1. License review — before installing anything
+
+Find the engine's license and its transitive native components (an "MIT" npm
+wrapper around a GPL binary is a GPL dependency).
+
+- **Permissive (MIT/BSD/Apache-2.0)** — fine, proceed.
+- **LGPL / MPL** — fine as an unmodified, separately-fetched artifact. Record it.
+- **GPL / AGPL** — proceed only if it can be a *lazily fetched, unmodified,
+  arm's-length* artifact, and only if there is no viable permissive
+  alternative. Read `docs/adr/0002-mit-license-gpl-isolation.md` first and
+  follow the isolation rules there exactly.
+- **Non-OSI / unclear / source-available** — **stop and ask the user.**
+
+Record the finding in `docs/THIRD_PARTY_LICENSES.md` and `docs/ENGINES.md`
+before writing code. If this decision was non-obvious, add an ADR.
+
+## 2. Install and inspect
+
+Install the package, then check what actually ships: the size of the `.wasm`,
+whether it needs threads (`SharedArrayBuffer`), and whether it fetches anything
+at runtime. **Any engine that fetches from a CDN by default must be
+reconfigured to load from our own origin** — `connect-src 'self'` will block it
+otherwise, and that block is the privacy guarantee working as intended.
+Review the pnpm lockfile diff before committing.
+
+## 3. Adapter
+
+Create `src/lib/engines/<name>/adapter.ts` implementing `EngineAdapter` from
+`src/lib/engines/types.ts`. Rules:
+
+- Reached **only** by dynamic `import()` from the worker entry. A static import
+  anywhere in the main-thread graph pulls the engine into the core bundle and
+  fails the size budget.
+- `load()` initialises wasm once; `dispose()` must actually free it.
+- Report progress through the task's `onProgress`; the throttle lives in the
+  worker, so call it freely.
+- Honour `task.signal`. Wasm cannot be interrupted mid-call, so long operations
+  should check the signal between stages; the pool terminates the worker for
+  hard cancellation.
+
+## 4. Asset placement
+
+Add the engine to `scripts/sync-engines.ts`. The rule:
+
+- **≤ 20 MiB** → copied to `public/engines/<id>@<version>/`, served as a static
+  asset. Version in the path means the URL is immutable and cacheable forever.
+- **> 20 MiB** → uploaded to R2 under `xl/<id>@<version>/` and served through
+  the Worker route. Cloudflare's static-asset limit is 25 MiB per file; we keep
+  20 as headroom.
+
+Both paths stay same-origin, so CSP and COEP are unaffected. Never load an
+engine from a third-party CDN.
+
+## 5. Wire, test, document
+
+- Register the engine id in the worker's dynamic-import switch (`pnpm gen`
+  regenerates it) and add the capability entries the router needs.
+- Smoke test in browser mode: one real fixture through one operation, asserting
+  output magic bytes and a size range.
+- If the engine needs threads, confirm the router's `crossOriginIsolated` probe
+  gates it and that a single-threaded fallback exists or the tool is correctly
+  marked unavailable.
+- `docs/ENGINES.md`: capabilities, wasm size, threading, licence, quirks.
+- Show the download size in the UI before fetching anything large — users on
+  metered connections must consent to a 30 MB download.
+
+## 6. Ship
+
+`pnpm verify`, then `feat(engine): add <name>`. Keep the engine commit separate
+from the commits adding tools that use it.
