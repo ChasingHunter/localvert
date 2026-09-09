@@ -12,13 +12,13 @@ upload path, no telemetry of file content.
 | --- | --- |
 | `pnpm dev` | Dev server with COOP/COEP headers (needed for SharedArrayBuffer) |
 | `pnpm build` | Static export to `out/` |
-| `pnpm typecheck` | `tsgo --noEmit` |
+| `pnpm typecheck` | `tsc --noEmit` (TypeScript 7 — the native compiler, named `tsc`) |
 | `pnpm lint` / `pnpm lint:fix` | Biome check |
 | `pnpm test` | Vitest unit run. Single file: `pnpm test src/lib/registry/registry.test.ts` |
 | `pnpm test:browser` | Vitest browser mode — worker + wasm integration tests |
-| `pnpm e2e` | Playwright against a real built `out/` |
-| `pnpm gen` | Regenerate `src/tools/index.ts` + `src/lib/engines/manifest.ts` |
-| `pnpm sync-engines` | Copy wasm assets from `node_modules` into `public/engines/` |
+| `pnpm e2e` | Playwright against a real built `out/` (server wired up in Phase 0.7) |
+| `pnpm gen` | Regenerate `src/tools/index.ts` + `src/lib/engines/manifest.ts` — *lands in Phase 0.4* |
+| `pnpm sync-engines` | Copy wasm assets from `node_modules` into `public/engines/` — *lands in Phase 0.7* |
 | **`pnpm verify`** | **typecheck + lint + test + build. This is the Definition of Done.** |
 
 ## Architecture map

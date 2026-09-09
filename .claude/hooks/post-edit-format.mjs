@@ -20,7 +20,14 @@ const FORMATTABLE = /\.(m?[jt]sx?|css|jsonc?)$/i;
  * cmd.exe — and a project path containing `&` would break the command line.
  */
 function resolveBiome(projectDir) {
-  const shim = join(projectDir, "node_modules", "@biomejs", "biome", "bin", "biome");
+  const shim = join(
+    projectDir,
+    "node_modules",
+    "@biomejs",
+    "biome",
+    "bin",
+    "biome",
+  );
   return existsSync(shim) ? shim : null;
 }
 
@@ -28,17 +35,22 @@ function main(payload) {
   const filePath = payload?.tool_input?.file_path;
   if (!filePath || !FORMATTABLE.test(filePath)) return;
 
-  const projectDir = process.env.CLAUDE_PROJECT_DIR ?? payload?.cwd ?? process.cwd();
+  const projectDir =
+    process.env.CLAUDE_PROJECT_DIR ?? payload?.cwd ?? process.cwd();
   if (!filePath.startsWith(projectDir)) return; // never touch files outside the repo
 
   const biome = resolveBiome(projectDir);
   if (!biome) return; // dependencies not installed yet
 
-  execFileSync(process.execPath, [biome, "check", "--write", "--no-errors-on-unmatched", filePath], {
-    cwd: projectDir,
-    stdio: "ignore",
-    timeout: 20_000,
-  });
+  execFileSync(
+    process.execPath,
+    [biome, "check", "--write", "--no-errors-on-unmatched", filePath],
+    {
+      cwd: projectDir,
+      stdio: "ignore",
+      timeout: 20_000,
+    },
+  );
 }
 
 let input = "";

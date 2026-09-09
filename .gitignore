@@ -38,3 +38,6 @@ public/engines/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Next.js — regenerated on every build, no project-specific content
+next-env.d.ts

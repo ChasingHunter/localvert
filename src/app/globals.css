@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+/*
+ * Tailwind 4 has no tailwind.config.js — the theme lives here, and these
+ * custom properties are real CSS variables at runtime, not build-time
+ * substitutions. Anything defined in @theme becomes a utility class too, so
+ * `--color-surface` gives you `bg-surface`, `text-surface`, and so on.
+ */
+@theme {
+  --color-canvas: oklch(99% 0.002 250);
+  --color-surface: oklch(100% 0 0);
+  --color-border: oklch(90% 0.005 250);
+  --color-ink: oklch(22% 0.01 250);
+  --color-ink-muted: oklch(52% 0.012 250);
+  --color-accent: oklch(58% 0.16 250);
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-canvas: oklch(17% 0.012 250);
+    --color-surface: oklch(21% 0.014 250);
+    --color-border: oklch(31% 0.016 250);
+    --color-ink: oklch(95% 0.004 250);
+    --color-ink-muted: oklch(70% 0.012 250);
+    --color-accent: oklch(72% 0.14 250);
+  }
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
