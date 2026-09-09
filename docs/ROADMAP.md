@@ -33,15 +33,23 @@ end-to-end with zero network I/O.
 ### 0.3 App scaffold
 - [ ] Next.js 16 `output: "export"` + React 19 + TypeScript (tsgo)
 - [ ] Tailwind 4 + shadcn/ui init
-- [ ] Biome (replaces ESLint + Prettier)
-- [ ] Vitest (unit + browser mode) and Playwright configs
-- [ ] `package.json` scripts: `dev build typecheck lint test verify gen sync-engines`
-- [ ] `pnpm verify` green on an empty app
+- [x] Biome (replaces ESLint + Prettier) (2026-09-09)
+- [x] Vitest (unit + browser mode) and Playwright configs (2026-09-09)
+- [x] `package.json` scripts: `dev build typecheck lint test verify` (2026-09-09)
+      — `gen` and `sync-engines` land with their scripts in 0.4 and 0.7
+- [x] `pnpm verify` green **and idempotent** on an empty app (2026-09-09)
+- [ ] Playwright `webServer` — deferred to 0.7, needs `wrangler dev` to serve
+      `out/` with real `_headers` (a plain static server would not apply them)
+- [ ] shadcn/ui init — deferred to 0.4, where the first components appear
 
 ### 0.4 Core plumbing
 One small commit per bullet — these are the contracts everything else hangs on.
 - [ ] `src/lib/registry/` — `ToolDefinition`, `Category`, format table
       (ext + mime + **magic bytes**, so input is sniffed not trusted)
+- [ ] Worker `lib` setup: the root `tsconfig.json` has `lib: [DOM, ...]` only.
+      `DOM` and `WebWorker` conflict, so worker files need
+      `/// <reference lib="webworker" />` or their own tsconfig — decide and
+      write it down when the first worker lands.
 - [ ] `src/lib/engines/types.ts` — `EngineAdapter` / `EngineInstance` contracts
 - [ ] `scripts/gen-registry.ts` + `pnpm gen` — generated barrels, checked in
 - [ ] `src/lib/workers/` — pool, Comlink RPC, lazy module workers
