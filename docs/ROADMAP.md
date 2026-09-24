@@ -44,8 +44,8 @@ end-to-end with zero network I/O.
 
 ### 0.4 Core plumbing
 One small commit per bullet — these are the contracts everything else hangs on.
-- [ ] `src/lib/registry/` — `ToolDefinition`, `Category`, format table
-      (ext + mime + **magic bytes**, so input is sniffed not trusted)
+- [x] `src/lib/registry/` — `ToolDefinition`, `Category`, format table
+      (ext + mime + **magic bytes**, so input is sniffed not trusted) (2026-09-24)
 - [ ] Worker `lib` setup: the root `tsconfig.json` has `lib: [DOM, ...]` only.
       `DOM` and `WebWorker` conflict, so worker files need
       `/// <reference lib="webworker" />` or their own tsconfig — decide and
