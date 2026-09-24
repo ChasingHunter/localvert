@@ -32,6 +32,7 @@ public/engines/
 .claude/local.md
 CLAUDE.local.md
 .claude/plans/
+.claude/worktrees/
 
 # Editor / OS
 .vscode/*

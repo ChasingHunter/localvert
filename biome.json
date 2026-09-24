@@ -13,7 +13,8 @@
       "!.next",
       "!pnpm-lock.yaml",
       "!next-env.d.ts",
-      "!tsconfig.json"
+      "!tsconfig.json",
+      "!.claude/worktrees"
     ]
   },
   "css": {
@@ -35,7 +36,9 @@
       "suspicious": {
         "noConsole": {
           "level": "warn",
-          "options": { "allow": ["warn", "error"] }
+          "options": {
+            "allow": ["warn", "error"]
+          }
         }
       },
       "style": {
