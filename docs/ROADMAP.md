@@ -40,7 +40,7 @@ end-to-end with zero network I/O.
 - [x] `pnpm verify` green **and idempotent** on an empty app (2026-09-09)
 - [x] Playwright `webServer` — deferred to 0.7, needs `wrangler dev` to serve
       `out/` with real `_headers` (a plain static server would not apply them) (2026-09-24)
-- [ ] shadcn/ui init — deferred to 0.4, where the first components appear
+- [x] shadcn/ui init — hand-written components.json + 8 primitives (2026-09-25)
 
 ### 0.4 Core plumbing
 One small commit per bullet — these are the contracts everything else hangs on.
@@ -52,8 +52,8 @@ One small commit per bullet — these are the contracts everything else hangs on
       write it down when the first worker lands.
 - [x] `src/lib/engines/types.ts` — `EngineAdapter` / `EngineInstance` contracts (2026-09-24)
 - [x] `scripts/gen-registry.ts` + `pnpm gen` — generated barrels, checked in (2026-09-25)
-- [ ] `src/lib/workers/` — pool, Comlink RPC, lazy module workers
-- [ ] `src/lib/jobs/` — job engine, FIFO queue, progress, zustand store
+- [x] `src/lib/workers/` — pool, Comlink RPC, lazy module workers (2026-09-25)
+- [x] `src/lib/jobs/` — job engine, FIFO queue, progress, zustand store (2026-09-25)
 - [x] `src/lib/router/` — capability probes (WebCodecs, SAB, OffscreenCanvas,
       OPFS) and the engine router that reads them (2026-09-24)
 - [x] `src/lib/sinks/` — blob sink, streaming ZIP sink (fflate) (2026-09-24)
