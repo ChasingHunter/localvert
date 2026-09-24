@@ -7,9 +7,7 @@
   },
   "permissions": {
     "defaultMode": "acceptEdits",
-    "ask": [
-      "Bash(git push:*)"
-    ],
+    "ask": ["Bash(git push:*)"],
     "deny": [
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
