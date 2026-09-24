@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["WebWorker", "ES2023"],
+    "types": [],
+    "plugins": []
+  },
+  "include": ["src/lib/engines/**/*.ts", "src/lib/workers/**/*.worker.ts"],
+  "exclude": ["**/*.test.ts", "src/lib/engines/manifest.ts"]
+}

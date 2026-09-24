@@ -130,6 +130,12 @@ LibreOffice ~80 MB) live in R2 under `xl/<id>@<ver>/` and are fetched on demand
 behind an explicit user gate. See [ENGINES.md](ENGINES.md) for the table and
 [ADR-0003](adr/0003-workers-static-assets-over-pages.md) for why.
 
+Adapter and worker code type-checks under a second, narrower `tsc` program
+(`tsconfig.worker.json`, `lib: [WebWorker, ES2023]`) instead of the root
+`DOM`-lib program, so `document`/`window` inside an engine or worker file is a
+compile error rather than a runtime surprise. See
+[ADR-0005](adr/0005-worker-typecheck-program.md).
+
 ### The router picks the engine at runtime
 
 `src/lib/router/` probes what the browser can actually do — WebCodecs,

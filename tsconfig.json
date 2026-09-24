@@ -45,6 +45,8 @@
     "out",
     ".next",
     "infra",
-    ".claude"
+    ".claude",
+    "src/lib/engines/*/**",
+    "src/**/*.worker.ts"
   ]
 }
