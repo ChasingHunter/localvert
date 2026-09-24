@@ -29,14 +29,14 @@ const REALISTIC_HTML = `<!DOCTYPE html><html lang="en"><head>
 describe("firstLoadScripts", () => {
   it("collects script src and preload-as-script href, in document order, deduplicated", () => {
     expect(firstLoadScripts(REALISTIC_HTML)).toEqual([
-      "/_next/static/chunks/webpack-abc123.js",
-      "/_next/static/chunks/main-app-def456.js",
-      "/_next/static/chunks/legacy-ghi789.js",
+      { src: "/_next/static/chunks/webpack-abc123.js", noModule: false },
+      { src: "/_next/static/chunks/main-app-def456.js", noModule: false },
+      { src: "/_next/static/chunks/legacy-ghi789.js", noModule: true },
     ]);
   });
 
   it("ignores stylesheet links", () => {
-    expect(firstLoadScripts(REALISTIC_HTML)).not.toContain(
+    expect(firstLoadScripts(REALISTIC_HTML).map((s) => s.src)).not.toContain(
       "/_next/static/chunks/app-abc123.css",
     );
   });
@@ -49,12 +49,19 @@ describe("firstLoadScripts", () => {
   it("also collects modulepreload links, in case a future build ships ES module chunks", () => {
     const html = `<link rel="modulepreload" href="/_next/static/chunks/esm-only.js">`;
     expect(firstLoadScripts(html)).toEqual([
-      "/_next/static/chunks/esm-only.js",
+      { src: "/_next/static/chunks/esm-only.js", noModule: false },
     ]);
   });
 
   it("returns an empty list for a page with no scripts", () => {
     expect(firstLoadScripts("<html><body>hi</body></html>")).toEqual([]);
+  });
+
+  it("flags a bare `nomodule` attribute with no value", () => {
+    const html = `<script src="/legacy.js" nomodule></script>`;
+    expect(firstLoadScripts(html)).toEqual([
+      { src: "/legacy.js", noModule: true },
+    ]);
   });
 });
 
@@ -71,8 +78,13 @@ describe("gzipSize", () => {
   });
 });
 
-function script(path: string, gz: number, hasEngineMarker = false): ScriptInfo {
-  return { path, bytes: gz * 3, gz, hasEngineMarker };
+function script(
+  path: string,
+  gz: number,
+  hasEngineMarker = false,
+  noModule = false,
+): ScriptInfo {
+  return { path, bytes: gz * 3, gz, hasEngineMarker, noModule };
 }
 
 describe("evaluatePage", () => {
@@ -138,5 +150,28 @@ describe("evaluatePage", () => {
       CORE_BUDGET_GZ_BYTES,
     );
     expect(result.leakedEngines).toEqual(["shared.js"]);
+  });
+
+  it("excludes a nomodule chunk from totalGz", () => {
+    const result = evaluatePage(
+      "/",
+      [
+        script("a.js", 100 * 1024),
+        script("legacy.js", 250 * 1024, false, true),
+      ],
+      CORE_BUDGET_GZ_BYTES,
+    );
+    expect(result.totalGz).toBe(100 * 1024);
+    expect(result.overBudget).toBe(false);
+  });
+
+  it("still reports a nomodule chunk's engine marker as leaked", () => {
+    const result = evaluatePage(
+      "/",
+      [script("legacy-canvas.js", 20 * 1024, true, true)],
+      CORE_BUDGET_GZ_BYTES,
+    );
+    expect(result.totalGz).toBe(0);
+    expect(result.leakedEngines).toEqual(["legacy-canvas.js"]);
   });
 });

@@ -6,6 +6,11 @@
  *
  *   1. any page's first-load JS exceeds `CORE_BUDGET_GZ_BYTES`
  *      (invariant 5, docs/ARCHITECTURE.md) — the core bundle is too big.
+ *      `<script nomodule>` chunks are excluded from this sum (see
+ *      `firstLoadScripts` and `evaluatePage`): they're Next's legacy bundle
+ *      for browsers with no ES module support, and Localvert requires a
+ *      module-capable browser anyway (workers, wasm, ES modules), so no
+ *      browser it supports ever fetches one.
  *   2. any first-load chunk contains the string `localvert-engine:<id>` —
  *      an engine adapter's `marker` literal (invariant 3). Engine adapters
  *      are dynamic-imported only from inside a worker (see "Engines" in
@@ -49,6 +54,21 @@ export interface ScriptInfo {
   bytes: number;
   gz: number;
   hasEngineMarker: boolean;
+  /**
+   * True for a legacy `<script nomodule>` chunk. Excluded from the budget
+   * sum in `evaluatePage` (see the module doc comment above), but still
+   * loaded and scanned like any other script — a leaked engine marker in a
+   * nomodule chunk is still a leak.
+   */
+  noModule: boolean;
+}
+
+/** One script or preload reference found in a page's HTML, before it's resolved to a file. */
+export interface ScriptRef {
+  /** URL from a `src`/`href` attribute, exactly as it appears in the HTML. */
+  src: string;
+  /** True if the reference came from a `<script nomodule src="...">` tag. */
+  noModule: boolean;
 }
 
 export interface PageEvaluation {
@@ -59,7 +79,7 @@ export interface PageEvaluation {
 }
 
 /**
- * Extracts every first-load script URL referenced by one exported page.
+ * Extracts every first-load script reference from one exported page.
  *
  * Next's static export (checked against a real `out/index.html` build,
  * Next 16) lists a page's first-load JS two ways:
@@ -78,9 +98,16 @@ export interface PageEvaluation {
  * Inline `<script>` tags with no `src` (the RSC flight payload Next streams
  * as `self.__next_f.push(...)`) carry no separate bytes to budget and are
  * ignored.
+ *
+ * A `<script src>` tag also carries a `noModule` flag when it has a
+ * `nomodule` attribute — Next's legacy, pre-ES-module bundle for browsers
+ * without `<script type="module">` support. It's still returned (its bytes
+ * still need scanning for a leaked engine marker) but flagged so
+ * `evaluatePage` can leave it out of the budget sum: no browser Localvert
+ * supports is module-incapable, so none of them ever fetch it.
  */
-export function firstLoadScripts(html: string): string[] {
-  const urls = new Set<string>();
+export function firstLoadScripts(html: string): ScriptRef[] {
+  const noModuleByUrl = new Map<string, boolean>();
 
   for (const match of html.matchAll(/<(script|link)\b([^>]*)>/gi)) {
     const tag = match[1]?.toLowerCase();
@@ -88,7 +115,11 @@ export function firstLoadScripts(html: string): string[] {
 
     if (tag === "script") {
       const src = attr(attrs, "src");
-      if (src) urls.add(src);
+      if (src) {
+        const noModule =
+          hasAttr(attrs, "nomodule") || (noModuleByUrl.get(src) ?? false);
+        noModuleByUrl.set(src, noModule);
+      }
       continue;
     }
 
@@ -100,11 +131,11 @@ export function firstLoadScripts(html: string): string[] {
       (rel === "modulepreload" ||
         (rel === "preload" && attr(attrs, "as") === "script"))
     ) {
-      urls.add(href);
+      if (!noModuleByUrl.has(href)) noModuleByUrl.set(href, false);
     }
   }
 
-  return [...urls];
+  return [...noModuleByUrl].map(([src, noModule]) => ({ src, noModule }));
 }
 
 /** Reads one HTML attribute's value out of a tag's raw attribute string. */
@@ -113,6 +144,11 @@ function attr(attrsSrc: string, name: string): string | null {
   const match = re.exec(attrsSrc);
   if (!match) return null;
   return match[1] ?? match[2] ?? null;
+}
+
+/** True if a boolean attribute (e.g. `nomodule`) is present, with or without a value. */
+function hasAttr(attrsSrc: string, name: string): boolean {
+  return new RegExp(`\\b${name}\\b`, "i").test(attrsSrc);
 }
 
 /** `node:zlib` gzip at max compression — matches what a real HTTP server ships. */
@@ -125,6 +161,10 @@ export function gzipSize(buf: Uint8Array): number {
  * may list the same `path` more than once (e.g. a chunk referenced by both a
  * preload link and a script tag) — those are deduplicated so the page's
  * total counts each script's bytes once.
+ *
+ * A `noModule` script is excluded from `totalGz` — no module-capable browser
+ * (every browser Localvert supports) ever fetches one — but it's still
+ * eligible for `leakedEngines`, same as any other script.
  */
 export function evaluatePage(
   // Prefixed `_`: names the page for callers and error messages, but the
@@ -143,7 +183,9 @@ export function evaluatePage(
     }
   }
 
-  const totalGz = [...unique.values()].reduce((sum, s) => sum + s.gz, 0);
+  const totalGz = [...unique.values()]
+    .filter((s) => !s.noModule)
+    .reduce((sum, s) => sum + s.gz, 0);
   const leakedEngines = [...unique.values()]
     .filter((s) => s.hasEngineMarker)
     .map((s) => s.path);
@@ -211,7 +253,7 @@ function main(): void {
   const brokenRefs: { page: string; src: string }[] = [];
   const reportedMarkers = new Map<string, Set<string>>(); // out-path -> marker ids found in it.
 
-  function loadScript(outPath: string): ScriptInfo {
+  function loadScript(outPath: string, noModule: boolean): ScriptInfo {
     const cached = scriptCache.get(outPath);
     if (cached) return cached;
 
@@ -230,6 +272,7 @@ function main(): void {
       bytes: bytes.byteLength,
       gz: gzipSize(bytes),
       hasEngineMarker,
+      noModule,
     };
     scriptCache.set(outPath, info);
     return info;
@@ -242,7 +285,7 @@ function main(): void {
     const html = readFileSync(htmlFile, "utf8");
     const scripts: ScriptInfo[] = [];
 
-    for (const src of firstLoadScripts(html)) {
+    for (const { src, noModule } of firstLoadScripts(html)) {
       const outPath = toOutPath(src);
       if (outPath === null) continue;
 
@@ -250,7 +293,7 @@ function main(): void {
         brokenRefs.push({ page: label, src });
         continue;
       }
-      scripts.push(loadScript(outPath));
+      scripts.push(loadScript(outPath, noModule));
     }
 
     pageResults.push({
