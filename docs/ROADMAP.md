@@ -51,7 +51,7 @@ One small commit per bullet — these are the contracts everything else hangs on
       `/// <reference lib="webworker" />` or their own tsconfig — decide and
       write it down when the first worker lands.
 - [x] `src/lib/engines/types.ts` — `EngineAdapter` / `EngineInstance` contracts (2026-09-24)
-- [ ] `scripts/gen-registry.ts` + `pnpm gen` — generated barrels, checked in
+- [x] `scripts/gen-registry.ts` + `pnpm gen` — generated barrels, checked in (2026-09-25)
 - [ ] `src/lib/workers/` — pool, Comlink RPC, lazy module workers
 - [ ] `src/lib/jobs/` — job engine, FIFO queue, progress, zustand store
 - [x] `src/lib/router/` — capability probes (WebCodecs, SAB, OffscreenCanvas,
@@ -60,7 +60,7 @@ One small commit per bullet — these are the contracts everything else hangs on
 - [ ] UI: dropzone, job card, generated options form
 
 ### 0.5 First tool end-to-end
-- [ ] `canvas` engine adapter
+- [x] `canvas` engine adapter (2026-09-25)
 - [ ] `src/tools/image/jpg-to-png.ts` registry entry
 - [ ] Unit tests (registry, router) + browser-mode test (real worker, real canvas)
 - [ ] E2E: single file, and batch of 3 → streaming ZIP, magic-bytes asserted
