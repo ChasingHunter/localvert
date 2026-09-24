@@ -22,7 +22,7 @@ What each engine can convert. This is the table to check before adding a tool.
 
 | Engine | Ops | Input formats | Output formats | Status |
 |---|---|---|---|---|
-| `canvas` | transcode, resize, crop, rotate | jpg, png, webp | jpg, png, webp | Phase 0.5 |
+| `canvas` | transcode | jpg, png, webp, bmp, gif | jpg, png, webp | adapter ready (0.5a) |
 
 ---
 
@@ -39,7 +39,7 @@ Size, placement, threading. Placement is enforced by `scripts/sync-engines.ts`:
 
 | Engine | Package | Version | License | Size | Placement | Isolation |
 |---|---|---|---|---|---|---|
-| `canvas` | _(native browser API)_ | — | — | 0 | n/a | no |
+| `canvas` | _(native browser API)_ | — | — | 0 | native | no |
 
 ---
 

@@ -1,0 +1,9 @@
+{
+  "id": "canvas",
+  "version": "1.0.0",
+  "license": "MIT",
+  "location": "native",
+  "needsIsolation": false,
+  "heavy": false,
+  "assets": []
+}
