@@ -2,7 +2,7 @@
 
 import { UploadIcon } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { FORMATS, type FormatId } from "@/lib/registry";
+import { FORMATS, type FormatId } from "@/lib/registry/formats";
 import { cn } from "@/lib/utils";
 import {
   type AcceptedFile,

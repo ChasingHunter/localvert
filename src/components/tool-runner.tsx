@@ -1,36 +1,41 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
-import { z } from "zod";
 import { Dropzone } from "@/components/dropzone";
 import type { AcceptedFile, RejectedFile } from "@/components/dropzone-logic";
 import { JobList } from "@/components/job-list";
-import { OptionsForm } from "@/components/options-form";
-import { getAppJobEngine, jobStore, selectOrderedJobs } from "@/lib/jobs";
-import {
-  FORMATS,
-  formatFromFilename,
-  type ToolDefinition,
-} from "@/lib/registry";
-import { collectToBlob } from "@/lib/sinks";
+import { jobStore, selectOrderedJobs } from "@/lib/jobs/store";
+import { FORMATS, formatFromFilename } from "@/lib/registry/formats";
+import type { ToolDefinition } from "@/lib/registry/types";
+import { collectToBlob } from "@/lib/sinks/collect";
 import { TOOL_LOADERS } from "@/tools/loaders";
 
 /**
- * zod normally JIT-compiles fast validators via a `new Function(...)` probe,
- * wrapped in try/catch so it degrades gracefully where that's unavailable.
- * Under this app's CSP (`script-src` carries no `'unsafe-eval'` — invariant
- * 1, never widened) the browser still reports a CSP violation for the probe
- * itself, even though the catch swallows the resulting error. `jitless`
- * skips the probe and runs zod's (still fully correct, just interpreted)
- * validator path instead — zod's own sanctioned escape hatch for exactly
- * this case. Set once here, at this module's top level, since this is the
- * first client code to touch a tool's zod schema (`TOOL_LOADERS[slug]()`
- * below runs the tool file's module-level `defineTool(...)`, which parses
- * its `defaults` against `options`). Belongs on every page once one exists
- * with a client-side bootstrap module to own app-wide setup like this —
- * layout.tsx doesn't have one yet.
+ * The options form pulls in radix primitives (select/slider/switch) that
+ * most tools never render (`jpg-to-png` has no options at all) — code-split
+ * it so those primitives only download for a tool whose schema actually has
+ * fields, instead of shipping with every tool page. `ssr: false` because
+ * this whole component only mounts client-side anyway (see `ToolRunner`'s
+ * doc comment: `tool` is null during the static export's render pass, so
+ * nothing here is ever server-rendered regardless).
  */
-z.config({ jitless: true });
+const OptionsForm = dynamic(
+  () => import("@/components/options-form").then((mod) => mod.OptionsForm),
+  { ssr: false },
+);
+
+/**
+ * The job engine (worker pool, router capability probes, comlink, the engine
+ * manifest) is real weight — see docs/ARCHITECTURE.md's size budget. No tool
+ * page needs any of it until a file actually arrives, so it's imported here
+ * lazily on first use instead of loading with the page. `import()` caches
+ * the module after the first call, so repeated calls resolve immediately.
+ */
+async function jobEngine() {
+  const { getAppJobEngine } = await import("@/lib/jobs/app");
+  return getAppJobEngine();
+}
 
 interface ToolRunnerProps {
   slug: string;
@@ -105,10 +110,11 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   const jobs = tool ? allJobs.filter((j) => j.toolSlug === tool.slug) : [];
 
   const handleFiles = useCallback(
-    (accepted: AcceptedFile[], rejectedFiles: RejectedFile[]) => {
+    async (accepted: AcceptedFile[], rejectedFiles: RejectedFile[]) => {
       setRejected(rejectedFiles);
       if (!tool || accepted.length === 0) return;
-      getAppJobEngine().submit(
+      const engine = await jobEngine();
+      engine.submit(
         tool,
         accepted.map((a) => ({ file: a.file, format: a.format })),
         options,
@@ -117,19 +123,24 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
     [tool, options],
   );
 
-  const handleCancel = useCallback((id: string) => {
-    getAppJobEngine().cancel(id);
+  const handleCancel = useCallback(async (id: string) => {
+    const engine = await jobEngine();
+    engine.cancel(id);
   }, []);
 
   const handleRemove = useCallback((id: string) => {
     jobStore.getState().remove(id);
   }, []);
 
-  const handleClear = useCallback(() => {
+  const handleClear = useCallback(async () => {
+    const cancellable = jobs.filter(
+      (job) => job.status === "queued" || job.status === "running",
+    );
+    if (cancellable.length > 0) {
+      const engine = await jobEngine();
+      for (const job of cancellable) engine.cancel(job.id);
+    }
     for (const job of jobs) {
-      if (job.status === "queued" || job.status === "running") {
-        getAppJobEngine().cancel(job.id);
-      }
       jobStore.getState().remove(job.id);
     }
   }, [jobs]);
@@ -142,7 +153,8 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
     setZipping(true);
     setZipError(null);
     try {
-      const stream = await getAppJobEngine().zipOutputs(doneIds);
+      const engine = await jobEngine();
+      const stream = await engine.zipOutputs(doneIds);
       const blob = await collectToBlob(stream, "application/zip");
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

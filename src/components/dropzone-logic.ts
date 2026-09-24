@@ -1,4 +1,8 @@
-import { type FormatId, formatFromFilename, sniffFile } from "@/lib/registry";
+import {
+  type FormatId,
+  formatFromFilename,
+  sniffFile,
+} from "@/lib/registry/formats";
 
 export interface AcceptedFile {
   file: File;

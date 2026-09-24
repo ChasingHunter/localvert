@@ -1,6 +1,26 @@
-import type { z } from "zod";
+import { z } from "zod";
 import { FORMATS } from "./formats";
 import type { ToolDefinition } from "./types";
+
+/**
+ * zod normally JIT-compiles fast validators via a `new Function(...)` probe,
+ * wrapped in try/catch so it degrades gracefully where that's unavailable.
+ * Under this app's CSP (`script-src` carries no `'unsafe-eval'` — invariant
+ * 1, never widened) the browser still reports a CSP violation for the probe
+ * itself, even though the catch swallows the resulting error. `jitless`
+ * skips the probe and runs zod's (still fully correct, just interpreted)
+ * validator path instead — zod's own sanctioned escape hatch for exactly
+ * this case. Set once here, at this module's top level: every tool file
+ * calls `defineTool(...)` at module scope (`TOOL_LOADERS[slug]()` runs it),
+ * and `defineTool` below is what actually touches a tool's zod schema first
+ * (`options.safeParse(defaults)`) — so this runs before any zod validator in
+ * the app is ever compiled, regardless of which tool loads first. Was
+ * previously set from `tool-runner.tsx`, which worked but shipped zod in
+ * every tool page's first-load bundle just to make this one call; living
+ * here instead keeps zod out of the core bundle entirely (it now only loads
+ * as part of a tool's own lazily-loaded chunk).
+ */
+z.config({ jitless: true });
 
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
