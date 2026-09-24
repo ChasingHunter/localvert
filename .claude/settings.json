@@ -8,12 +8,7 @@
   "permissions": {
     "defaultMode": "acceptEdits",
     "ask": [
-      "Bash(git push:*)",
-      "Bash(pnpm dlx:*)",
-      "Bash(npx:*)",
-      "Bash(curl:*)",
-      "Bash(wget:*)",
-      "Bash(gh:*)"
+      "Bash(git push:*)"
     ],
     "deny": [
       "Bash(git push --force:*)",

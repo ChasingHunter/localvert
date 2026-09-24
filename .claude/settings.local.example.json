@@ -1,16 +1,25 @@
 {
-  "//": "Copy to .claude/settings.local.json (gitignored) and adjust. This is where personal, machine-specific permission grants live so the shared project settings stay conservative for every contributor. Project deny rules always win over these allows.",
+  "//": "Copy to .claude/settings.local.json (gitignored) and adjust. Personal, machine-specific grants live there so the shared project settings stay conservative for every contributor. Precedence across all settings files is deny > ask > allow, so shared deny rules always win, and an ask here beats an allow here. This example is a high-autonomy profile for long unattended runs: everything allowed except outward-facing or production actions.",
   "permissions": {
     "allow": [
+      "Bash",
+      "Edit",
+      "Write",
+      "Read",
+      "WebFetch",
+      "WebSearch"
+    ],
+    "ask": [
       "Bash(git push:*)",
-      "Bash(gh pr:*)",
-      "Bash(gh run:*)",
+      "Bash(gh api:*)",
+      "Bash(gh secret:*)",
       "Bash(gh release:*)",
-      "Bash(gh issue:*)",
-      "Bash(gh repo view:*)",
-      "Bash(gh workflow:*)",
-      "Bash(gh secret set:*)",
-      "Bash(pnpm exec wrangler:*)"
+      "Bash(gh pr merge:*)",
+      "Bash(gh repo edit:*)",
+      "Bash(pnpm exec wrangler deploy:*)",
+      "Bash(pnpm exec wrangler delete:*)",
+      "Bash(pnpm exec wrangler secret:*)",
+      "Bash(pnpm exec wrangler r2 bucket delete:*)"
     ]
   }
 }
