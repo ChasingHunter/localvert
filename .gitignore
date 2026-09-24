@@ -30,6 +30,7 @@ public/engines/
 # Claude Code — private, machine-local context (never public)
 .claude/settings.local.json
 .claude/local.md
+CLAUDE.local.md
 .claude/plans/
 
 # Editor / OS

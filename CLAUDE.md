@@ -59,6 +59,9 @@ Details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The short version:
 - **New wasm engine** → use the `add-engine` skill (license check comes first).
 - **Ending a work session** → use the `preflight` skill.
 - **Cutting a release** → use the `release` skill.
+- **Delegating a scoped slice** → the `implementer` subagent
+  ([.claude/agents/implementer.md](.claude/agents/implementer.md)). Give it a
+  brief naming files, contracts and acceptance criteria.
 
 ## Definition of Done
 
@@ -102,4 +105,5 @@ enough to continue — keep them true:
 1. [docs/ROADMAP.md](docs/ROADMAP.md) — what is done, what is next.
 2. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the pieces fit.
 3. `docs/adr/` — why things are the way they are.
-4. If `.claude/local.md` exists, read it. Private owner notes, untracked.
+4. Private owner notes, if any, live in `CLAUDE.local.md` (untracked, loaded
+   automatically by Claude Code).
