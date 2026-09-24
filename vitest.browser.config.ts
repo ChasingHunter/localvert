@@ -29,6 +29,11 @@ export default defineConfig({
   },
   test: {
     include: ["src/**/*.browser.test.ts"],
+    // No src/**/*.browser.test.ts exists yet (first one lands with the
+    // canvas engine, Phase 0.5) — without this, an empty suite exits
+    // non-zero and fails CI's `browser` job. Remove this once that test
+    // lands; a real suite going empty by accident should fail loudly again.
+    passWithNoTests: true,
     browser: {
       enabled: true,
       headless: true,

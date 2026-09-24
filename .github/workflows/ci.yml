@@ -4,17 +4,53 @@ on:
   push:
     branches:
       - main
+    # Doc-only changes can't break a build or a test — skip the run so a
+    # docs commit doesn't tie up runners or block on an unrelated flake.
+    # pull_request below intentionally has no such filter: PR required
+    # checks must report on every PR, doc-only or not.
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".github/ISSUE_TEMPLATE/**"
+      - "LICENSE"
   pull_request:
+  workflow_dispatch:
 
 concurrency:
+  # A newer push to main supersedes an older run, including a deploy already
+  # in flight — the newer push is what should end up live, so cancelling the
+  # older run (and its deploy) here is correct: latest main always wins.
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 permissions: {}
 
 jobs:
-  verify:
-    name: Verify
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check
+        run: pnpm check
+
+  build:
+    name: Build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -36,21 +72,28 @@ jobs:
       # `pnpm gen` lands in Phase 0.4. The registry barrels it writes
       # (src/tools/index.ts, src/lib/engines/manifest.ts) are committed and
       # reviewed as output, so a generator that would change them is a bug.
+      # Guarded on the script existing so this step is a no-op until then.
       - name: Generated files are up to date
-        run: pnpm gen && git diff --exit-code
+        run: |
+          if [ -n "$(node -p "require('./package.json').scripts.gen || ''")" ]; then
+            pnpm gen && git diff --exit-code
+          fi
 
-      - name: Verify
-        run: pnpm verify
+      - name: Build
+        run: pnpm build
 
-      - name: Install Playwright browser
-        run: pnpm exec playwright install --with-deps chromium
+      - name: Check sizes
+        run: pnpm check-sizes
 
-      - name: Browser and wasm integration tests
-        run: pnpm test:browser
+      - name: Upload site artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: site
+          path: out/
+          retention-days: 1
 
-  e2e:
-    name: End-to-end
-    needs: verify
+  browser:
+    name: Browser and wasm integration
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -69,19 +112,107 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
+      - name: Read installed Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
 
       - name: Install Playwright browser
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium
+
+      # Browser binaries came from the cache; only the OS-level shared libs
+      # still need installing (they aren't part of the cached directory).
+      - name: Install Playwright OS dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
+      # No src/**/*.browser.test.ts file exists yet (first one lands with the
+      # canvas engine in Phase 0.5) — vitest exits non-zero on an empty suite
+      # by default, so passWithNoTests keeps this job green until then. Drop
+      # it from vitest.browser.config.ts once the first browser test lands.
+      - name: Browser and wasm integration tests
+        run: pnpm test:browser
+
+  e2e:
+    name: End-to-end
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # e2e/ has no specs yet (Playwright's webServer wiring lands in Phase
+      # 0.7, ROADMAP 0.3). Everything past this point is gated on finding one,
+      # so the job reports success without spending runner time on Playwright
+      # setup, rather than failing on an empty test run.
+      - name: Check for e2e specs
+        id: e2e-specs
+        run: |
+          if compgen -G "e2e/*.spec.ts" > /dev/null; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        if: steps.e2e-specs.outputs.found == 'true'
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.e2e-specs.outputs.found == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.e2e-specs.outputs.found == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Download site artifact
+        if: steps.e2e-specs.outputs.found == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: site
+          path: out/
+
+      - name: Read installed Playwright version
+        if: steps.e2e-specs.outputs.found == 'true'
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        if: steps.e2e-specs.outputs.found == 'true'
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
+
+      - name: Install Playwright browser
+        if: steps.e2e-specs.outputs.found == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install Playwright OS dependencies
+        if: steps.e2e-specs.outputs.found == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
 
       # Playwright's webServer runs `wrangler dev` against the built `out/`
       # directory locally — no Cloudflare credentials needed for this job.
       - name: E2E tests
+        if: steps.e2e-specs.outputs.found == 'true'
         run: pnpm e2e
 
       - name: Upload Playwright report
-        if: failure()
+        if: failure() && steps.e2e-specs.outputs.found == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report
@@ -112,3 +243,55 @@ jobs:
             chore
             ci
             build
+
+  deploy:
+    name: Deploy
+    needs: [check, build, browser]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    # url: intentionally left out — the workers.dev URL isn't known until the
+    # first deploy. Set it here once the Worker exists.
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The exact `out/` that the build job already ran through the size
+      # budget gate — no second build here, so what deploys is what was
+      # measured, byte for byte.
+      - name: Download site artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: site
+          path: out/
+
+      # scripts/upload-r2.ts lands in a later slice, alongside the oversized
+      # engines it uploads (ADR-0003). Skip cleanly until it exists.
+      - name: Upload oversized engines to R2
+        if: hashFiles('scripts/upload-r2.ts') != ''
+        run: node scripts/upload-r2.ts
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # No wrangler-action: wrangler is already a pinned devDependency via the
+      # lockfile, so invoking it directly is one fewer third-party action and
+      # one less supply-chain surface for the same result.
+      - name: Deploy
+        run: pnpm exec wrangler deploy --config infra/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

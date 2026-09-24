@@ -29,8 +29,11 @@ Commit types in use: `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `chore`,
 `release-please.yml` watches `main` and maintains a release pull request:
 `feat` bumps the minor, `fix` and `perf` bump the patch, `!` or a
 `BREAKING CHANGE:` footer bumps the major. The PR accumulates a generated
-CHANGELOG and the version bump. **Merging that PR is the release** — it creates
-tag `vX.Y.Z`, publishes a GitHub Release, and triggers `deploy.yml`.
+CHANGELOG and the version bump. **Merging that PR is the release** — it
+creates tag `vX.Y.Z`, publishes a GitHub Release, and its merge commit is
+itself a push to `main`, which is what `ci.yml`'s `deploy` job runs on (there
+is no separate `deploy.yml`; deploy is a job there, gated behind `check`,
+`build` and `browser` passing first).
 
 Two rules follow, both recorded in CLAUDE.md:
 

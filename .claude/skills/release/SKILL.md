@@ -31,12 +31,13 @@ Version semantics come from commit types: `fix:` → patch, `feat:` → minor,
 3. **Confirm CI is green** on the PR before merging.
 
 4. **Merge it.** `gh pr merge <n> --squash`. release-please then creates the
-   tag `vX.Y.Z` and the GitHub Release; the push to `main` triggers the deploy
-   workflow.
+   tag `vX.Y.Z` and the GitHub Release; the push to `main` runs `ci.yml`,
+   whose `deploy` job ships it once `check`, `build` and `browser` pass
+   (deploy is a job in `ci.yml`, not a separate workflow).
 
 5. **Verify the release actually shipped** — do not report success from the
    merge alone:
-   - `gh run watch` the deploy workflow to completion.
+   - `gh run watch` that CI run to completion.
    - `gh release view vX.Y.Z` shows the release with its notes.
    - Load the live site and run one real conversion.
 

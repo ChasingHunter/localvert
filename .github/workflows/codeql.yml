@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+    # Same rationale as ci.yml: a doc-only change has no code for CodeQL to
+    # analyze.
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".github/ISSUE_TEMPLATE/**"
+      - "LICENSE"
   pull_request:
   schedule:
     # Mondays at 03:17 UTC — off the hour, low-traffic time.
