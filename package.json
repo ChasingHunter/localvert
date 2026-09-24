@@ -12,13 +12,14 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build && node scripts/csp-inline-hashes.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p infra --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "e2e": "playwright test",
+    "preview": "pnpm build && wrangler dev --config infra/wrangler.jsonc --port 8788",
     "check-sizes": "node scripts/check-sizes.ts",
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm check-sizes"
   },

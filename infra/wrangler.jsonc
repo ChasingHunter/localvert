@@ -1,0 +1,39 @@
+{
+  // Worker name — becomes the default <name>.<subdomain>.workers.dev host
+  // and the name shown in the Cloudflare dashboard.
+  "name": "localvert",
+  "main": "worker/index.ts",
+  // Pins the Workers runtime version so behaviour doesn't drift under us.
+  // No "account_id" here on purpose: CI supplies it via the
+  // CLOUDFLARE_ACCOUNT_ID environment variable (ADR-0003), so this file has
+  // nothing account-specific in it and is safe to read before Cloudflare is
+  // even provisioned (0.9).
+  "compatibility_date": "2026-09-01",
+  // Publish to <name>.<subdomain>.workers.dev in addition to any custom
+  // domain — lets this deploy unit be previewed before DNS exists.
+  "workers_dev": true,
+  "assets": {
+    // Next.js static export output (one directory up from this file).
+    "directory": "../out",
+    // env.ASSETS in worker/index.ts — the Asset Worker, reachable from our
+    // own Worker code for the run_worker_first fallback path below.
+    "binding": "ASSETS",
+    // ADR-0003: everything is served directly and for free by the Asset
+    // Worker except oversized ("xl") engines, which need Worker code in
+    // front of them to range/cache/fall back to R2.
+    "run_worker_first": ["/engines/xl/*"],
+    // Static export has a real page per route, not a client-side router —
+    // no SPA fallback.
+    "not_found_handling": "404-page",
+    // Serves /foo/ for a request to /foo, matching how `next build
+    // --output export` lays out directory-style routes.
+    "html_handling": "auto-trailing-slash"
+  },
+  "r2_buckets": [
+    {
+      // env.ENGINES in worker/index.ts.
+      "binding": "ENGINES",
+      "bucket_name": "localvert-engines"
+    }
+  ]
+}

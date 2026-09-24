@@ -14,7 +14,8 @@
       "!pnpm-lock.yaml",
       "!next-env.d.ts",
       "!tsconfig.json",
-      "!.claude/worktrees"
+      "!.claude/worktrees",
+      "!infra/worker-configuration.d.ts"
     ]
   },
   "css": {

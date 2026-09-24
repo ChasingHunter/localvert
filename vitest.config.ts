@@ -17,7 +17,9 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
+    // infra/**: the Cloudflare Worker — plain-fake unit tests, same node
+    // environment as everything else here.
+    include: ["src/**/*.test.ts", "scripts/**/*.test.ts", "infra/**/*.test.ts"],
     exclude: ["src/**/*.browser.test.ts"],
     restoreMocks: true,
   },
