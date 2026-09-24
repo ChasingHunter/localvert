@@ -1,11 +1,11 @@
-import type { EngineAsset, EngineLocation } from "./types";
+import type { EngineAsset, EngineLocation, EngineSourceFile } from "./types";
 
 /**
  * Static metadata for one engine, as declared in its `engine.json` — the
  * source of truth `pnpm gen` reads to build `ids.ts` and `manifest.ts` (see
  * the `add-engine` skill and docs/ARCHITECTURE.md, "Engines"). `assets` is
- * filled in by the future `sync-engines` script (Phase 0.7); empty for a
- * "native" engine, which ships no assets of its own.
+ * filled in by `scripts/sync-engines.ts`; empty for a "native" engine, which
+ * ships no assets of its own.
  */
 export interface EngineMeta {
   id: string;
@@ -15,6 +15,19 @@ export interface EngineMeta {
   needsIsolation: boolean;
   heavy: boolean;
   assets: readonly EngineAsset[];
+  /**
+   * The npm package `sync-engines` copies assets from. Required iff
+   * `location` is "static" or "r2"; absent for "native", which ships no
+   * assets of its own. `pnpm gen` does not need this for main-thread
+   * consumption, so it is not carried into `EngineManifestEntry`.
+   */
+  package?: string;
+  /**
+   * Files to copy from `package`'s directory into this engine's asset
+   * directory. Required iff `location` is "static" or "r2"; absent for
+   * "native". Not carried into `EngineManifestEntry` — see `package`.
+   */
+  files?: readonly EngineSourceFile[];
 }
 
 /**

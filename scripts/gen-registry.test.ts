@@ -41,12 +41,21 @@ function writeFile(rootDir: string, relPath: string, content: string): void {
   writeFileSync(fullPath, content);
 }
 
+/**
+ * Default `location` is "static", so `package`/`files` are included by
+ * default too — otherwise every existing call site unrelated to those two
+ * new fields would fail validation for the wrong reason. A caller that wants
+ * a "native" engine.json (no `package`/`files` allowed) overrides both to
+ * `undefined`, which `JSON.stringify` drops from the merged object entirely.
+ */
 function engineJson(overrides: Partial<Record<string, unknown>> = {}): string {
   return JSON.stringify({
     id: "foo",
     version: "1.0.0",
     license: "MIT",
     location: "static",
+    package: "@acme/foo",
+    files: [{ from: "foo.wasm", to: "foo.wasm" }],
     needsIsolation: false,
     heavy: false,
     assets: [],
@@ -69,7 +78,12 @@ function makeFullFixture(): string {
   writeFile(
     dir,
     "src/lib/engines/bar/engine.json",
-    engineJson({ id: "bar", location: "native" }),
+    engineJson({
+      id: "bar",
+      location: "native",
+      package: undefined,
+      files: undefined,
+    }),
   );
   writeFile(dir, "src/lib/engines/bar/adapter.ts", "export default {};\n");
 
@@ -81,6 +95,11 @@ function makeFullFixture(): string {
       version: "2.1.0",
       license: "Apache-2.0",
       location: "r2",
+      package: "@acme/baz",
+      files: [
+        { from: "codec/baz.wasm", to: "baz.wasm" },
+        { from: "codec/baz.data", to: "baz.data" },
+      ],
       needsIsolation: true,
       heavy: true,
       assets: [
@@ -176,6 +195,24 @@ describe("parseEngineMeta", () => {
       needsIsolation: false,
       heavy: false,
       assets: [],
+      package: "@acme/foo",
+      files: [{ from: "foo.wasm", to: "foo.wasm" }],
+    });
+  });
+
+  it("parses a native engine.json with no package/files", () => {
+    const meta = parseEngineMeta(
+      "foo",
+      engineJson({ location: "native", package: undefined, files: undefined }),
+    );
+    expect(meta).toEqual({
+      id: "foo",
+      version: "1.0.0",
+      license: "MIT",
+      location: "native",
+      needsIsolation: false,
+      heavy: false,
+      assets: [],
     });
   });
 
@@ -201,6 +238,54 @@ describe("parseEngineMeta", () => {
     expect(() =>
       parseEngineMeta("foo", engineJson({ needsIsolation: "yes" })),
     ).toThrow(/"needsIsolation" must be a boolean/);
+  });
+
+  it.each(["static", "r2"] as const)(
+    'requires "package" when location is "%s"',
+    (location) => {
+      expect(() =>
+        parseEngineMeta("foo", engineJson({ location, package: undefined })),
+      ).toThrow(/"package" is required when location is/);
+    },
+  );
+
+  it.each(["static", "r2"] as const)(
+    'requires "files" when location is "%s"',
+    (location) => {
+      expect(() =>
+        parseEngineMeta("foo", engineJson({ location, files: undefined })),
+      ).toThrow(/"files" is required when location is/);
+    },
+  );
+
+  it('rejects an empty "files" array', () => {
+    expect(() => parseEngineMeta("foo", engineJson({ files: [] }))).toThrow(
+      /"files" is required.*non-empty array/,
+    );
+  });
+
+  it('rejects a "files" entry missing "to"', () => {
+    expect(() =>
+      parseEngineMeta("foo", engineJson({ files: [{ from: "x.wasm" }] })),
+    ).toThrow(/"files\[0\]\.to" must be a non-empty string/);
+  });
+
+  it('forbids "package" when location is "native"', () => {
+    expect(() =>
+      parseEngineMeta(
+        "foo",
+        engineJson({ location: "native", files: undefined }),
+      ),
+    ).toThrow(/"package" is not allowed when location is "native"/);
+  });
+
+  it('forbids "files" when location is "native"', () => {
+    expect(() =>
+      parseEngineMeta(
+        "foo",
+        engineJson({ location: "native", package: undefined }),
+      ),
+    ).toThrow(/"files" is not allowed when location is "native"/);
   });
 });
 
@@ -291,6 +376,13 @@ describe("genEngineManifest", () => {
     const dir = makeFullFixture();
     const out = genEngineManifest(scanEngines(dir));
     expect(out).not.toContain("adapter");
+  });
+
+  it("omits package/files — the main thread doesn't need them", () => {
+    const dir = makeFullFixture();
+    const out = genEngineManifest(scanEngines(dir));
+    expect(out).not.toContain("package");
+    expect(out).not.toContain("files");
   });
 
   it("computes baseUrl per location", () => {

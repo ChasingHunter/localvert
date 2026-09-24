@@ -24,6 +24,17 @@ export interface EngineAsset {
 }
 
 /**
+ * One file `scripts/sync-engines.ts` copies from the source npm package into
+ * this engine's asset directory. `from` is relative to the package's own
+ * directory; `to` is the filename it lands as under `public/engines/<id>@<
+ * version>/` (static) or `.engines-r2/xl/<id>@<version>/` (r2).
+ */
+export interface EngineSourceFile {
+  from: string;
+  to: string;
+}
+
+/**
  * Where an engine's assets live. "native" means the engine wraps a browser
  * API and ships no assets of its own — see `EngineLoadContext.baseUrl`.
  */

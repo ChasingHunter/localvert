@@ -143,6 +143,12 @@ export interface EngineAssetLike {
   bytes: number;
 }
 
+/** Mirrors `src/lib/engines/types.ts`'s `EngineSourceFile`. */
+export interface EngineSourceFileLike {
+  from: string;
+  to: string;
+}
+
 /** Mirrors `src/lib/engines/meta.ts`'s `EngineMeta` — see that file for the shape this script must produce. */
 export interface EngineMetaLike {
   id: string;
@@ -152,6 +158,9 @@ export interface EngineMetaLike {
   needsIsolation: boolean;
   heavy: boolean;
   assets: readonly EngineAssetLike[];
+  /** Required iff `location` is "static" or "r2"; forbidden for "native" — see `parseEngineMeta`. */
+  package?: string;
+  files?: readonly EngineSourceFileLike[];
 }
 
 const SEMVER_RE = /^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/;
@@ -223,6 +232,46 @@ export function parseEngineMeta(
     return { path: asset.path as string, bytes: asset.bytes as number };
   });
 
+  // "package"/"files" name the npm package and files `sync-engines` copies
+  // the engine's assets from — meaningless for "native", which wraps a
+  // browser API and ships nothing of its own.
+  const needsSource = j.location === "static" || j.location === "r2";
+  let pkg: string | undefined;
+  let files: EngineSourceFileLike[] | undefined;
+
+  if (needsSource) {
+    if (typeof j.package !== "string" || j.package.trim() === "") {
+      fail(`"package" is required when location is "${j.location}"`);
+    }
+    pkg = j.package as string;
+
+    if (!Array.isArray(j.files) || j.files.length === 0) {
+      fail(
+        `"files" is required when location is "${j.location}" and must be a non-empty array`,
+      );
+    }
+    files = (j.files as unknown[]).map((f, i) => {
+      if (typeof f !== "object" || f === null) {
+        fail(`"files[${i}]" must be an object`);
+      }
+      const file = f as Record<string, unknown>;
+      if (typeof file.from !== "string" || file.from === "") {
+        fail(`"files[${i}].from" must be a non-empty string`);
+      }
+      if (typeof file.to !== "string" || file.to === "") {
+        fail(`"files[${i}].to" must be a non-empty string`);
+      }
+      return { from: file.from as string, to: file.to as string };
+    });
+  } else {
+    if (j.package !== undefined) {
+      fail(`"package" is not allowed when location is "native"`);
+    }
+    if (j.files !== undefined) {
+      fail(`"files" is not allowed when location is "native"`);
+    }
+  }
+
   return {
     id: j.id as string,
     version: j.version as string,
@@ -231,6 +280,9 @@ export function parseEngineMeta(
     needsIsolation: j.needsIsolation as boolean,
     heavy: j.heavy as boolean,
     assets,
+    ...(pkg !== undefined && files !== undefined
+      ? { package: pkg, files }
+      : {}),
   };
 }
 

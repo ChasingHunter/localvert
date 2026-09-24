@@ -1,0 +1,24 @@
+{
+  // A third tsc program alongside the root and tsconfig.worker.json (see
+  // ADR-0005): `*.browser.test.ts` lives inside an engine's own directory
+  // (e.g. src/lib/engines/canvas/adapter.browser.test.ts), which the root
+  // program excludes wholesale (see "src/lib/engines/*/**" below), and
+  // tsconfig.worker.json excludes every "**/*.test.ts". Neither program ever
+  // typechecked a browser test file. This one exists only to close that gap
+  // — it does not run these tests (`pnpm test:browser` does, in a real
+  // browser via `vitest.browser.config.ts`), only type-checks them.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // DOM, not WebWorker: browser tests call canvas/ImageBitmap/OffscreenCanvas
+    // APIs directly on vitest's real-browser instance, not inside a worker.
+    "lib": ["DOM", "DOM.Iterable", "ES2023"]
+  },
+  "include": ["src/**/*.browser.test.ts"],
+  // Overrides (not merges with) the root program's "exclude" — see the
+  // comment there. Everything a browser test imports must stay reachable:
+  // an engine's own directory (root excludes "src/lib/engines/*/**" so its
+  // adapter.ts and engine.json stay out of the DOM/WebWorker-mixing root
+  // program) has to be un-excluded here. "*.worker.ts" stays excluded
+  // regardless — see ADR-0005 — since no current browser test imports one.
+  "exclude": ["node_modules", "out", ".next", ".claude", "src/**/*.worker.ts"]
+}

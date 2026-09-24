@@ -17,6 +17,8 @@ blob-report/
 
 # Engine assets (synced from node_modules by `pnpm sync-engines`, never committed)
 public/engines/
+# r2 engine staging area (uploaded by `pnpm upload-r2`, never committed)
+.engines-r2/
 
 # Environment & secrets
 .env

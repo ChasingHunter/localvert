@@ -50,13 +50,28 @@ Create `src/lib/engines/<name>/adapter.ts` implementing `EngineAdapter` from
 
 ## 4. Asset placement
 
-Add the engine to `scripts/sync-engines.ts`. The rule:
+Set `location` to `"static"` or `"r2"` in the engine's `engine.json`, and add
+the two fields that go with it: `package` (the npm package the assets come
+from) and `files` (each one's `{from, to}` — `from` relative to that
+package's directory, `to` the filename it ships as). `version` must equal the
+installed package's version. Both fields are forbidden for `"native"`.
+
+Then run `pnpm sync-engines` — no per-engine code to write, it reads
+`engine.json` and does the rest:
 
 - **≤ 20 MiB** → copied to `public/engines/<id>@<version>/`, served as a static
   asset. Version in the path means the URL is immutable and cacheable forever.
-- **> 20 MiB** → uploaded to R2 under `xl/<id>@<version>/` and served through
-  the Worker route. Cloudflare's static-asset limit is 25 MiB per file; we keep
-  20 as headroom.
+- **> 20 MiB** → copied to `.engines-r2/xl/<id>@<version>/` (staged for
+  `pnpm upload-r2`) and served through the Worker route. Cloudflare's
+  static-asset limit is 25 MiB per file; we keep 20 as headroom. A "static"
+  file over the limit fails the command outright; an "r2" engine whose files
+  are all comfortably under it gets a warning to reconsider "static".
+
+`sync-engines` also rewrites `engine.json`'s `assets` field to the real
+`{path, bytes}` list and runs `pnpm gen` — commit the result. `pnpm build`
+runs `sync-engines` automatically; a fresh "r2" engine still needs
+`pnpm upload-r2` (CI's deploy job does this) before its assets exist in the
+bucket.
 
 Both paths stay same-origin, so CSP and COEP are unaffected. Never load an
 engine from a third-party CDN.

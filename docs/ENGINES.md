@@ -41,6 +41,32 @@ Size, placement, threading. Placement is enforced by `scripts/sync-engines.ts`:
 |---|---|---|---|---|---|---|
 | `canvas` | _(native browser API)_ | — | — | 0 | native | no |
 
+### How engine assets ship
+
+A "static" or "r2" engine's `engine.json` names its own source: `package`
+(the npm package the assets come from) and `files` (each one's `{from, to}` —
+`from` relative to the package's own directory, `to` the filename under the
+engine's asset directory). Both are required for "static"/"r2" and forbidden
+for "native", which ships nothing of its own. `version` must equal the
+installed package's version — engine URLs are versioned by it.
+
+`pnpm sync-engines` reads those fields, copies each file into place
+(`public/engines/<id>@<version>/` for "static", `.engines-r2/xl/<id>@<
+version>/` — a gitignored staging area — for "r2"), and rewrites
+`engine.json`'s `assets` to the real `{path, bytes}` list before running
+`pnpm gen` to rebuild `manifest.ts`. It enforces the placement rule above
+mechanically: a "static" file over 20 MiB fails the command outright
+("set location to r2"); an "r2" engine whose files are all comfortably under
+20 MiB gets a warning to reconsider "static" instead. `pnpm build` runs it
+automatically.
+
+`pnpm upload-r2` uploads whatever `sync-engines` staged in `.engines-r2/xl/`
+to the `localvert-engines` R2 bucket, keyed `xl/<id>@<version>/<file>` —
+exactly what `infra/worker/index.ts` serves. Every key is versioned, so an
+object that already exists is already correct; the CI deploy job re-runs
+`sync-engines` to restage `.engines-r2/` (gitignored, not part of the build
+artifact) before calling it.
+
 ---
 
 ## Planned

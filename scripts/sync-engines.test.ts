@@ -1,0 +1,347 @@
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  resolvePackageDir,
+  STATIC_LIMIT_BYTES,
+  scanEngineSources,
+  syncEngines,
+} from "./sync-engines";
+
+// ---------------------------------------------------------------------------
+// Fixture helpers
+// ---------------------------------------------------------------------------
+
+const tempDirs: string[] = [];
+
+function makeTempDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "sync-engines-test-"));
+  tempDirs.push(dir);
+  return dir;
+}
+
+afterEach(() => {
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop();
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function writeFile(rootDir: string, relPath: string, content: string): void {
+  const fullPath = join(rootDir, ...relPath.split("/"));
+  mkdirSync(join(fullPath, ".."), { recursive: true });
+  writeFileSync(fullPath, content);
+}
+
+function readFile(rootDir: string, relPath: string): string {
+  return readFileSync(join(rootDir, ...relPath.split("/")), "utf8");
+}
+
+/** Writes a minimal npm package under `<rootDir>/node_modules/<pkg>/` with the given files' contents. */
+function writePackage(
+  rootDir: string,
+  pkg: string,
+  version: string,
+  files: Record<string, string>,
+  extraPackageJson: Record<string, unknown> = {},
+): void {
+  writeFile(
+    rootDir,
+    `node_modules/${pkg}/package.json`,
+    JSON.stringify({ name: pkg, version, ...extraPackageJson }),
+  );
+  for (const [path, content] of Object.entries(files)) {
+    writeFile(rootDir, `node_modules/${pkg}/${path}`, content);
+  }
+}
+
+/** Writes a minimal `src/lib/engines/<id>/engine.json` (+ a stub `adapter.ts`, though this script never reads it). */
+function writeEngine(
+  rootDir: string,
+  id: string,
+  overrides: Partial<Record<string, unknown>> = {},
+): void {
+  writeFile(
+    rootDir,
+    `src/lib/engines/${id}/engine.json`,
+    `${JSON.stringify(
+      {
+        id,
+        version: "1.0.0",
+        license: "MIT",
+        location: "static",
+        needsIsolation: false,
+        heavy: false,
+        assets: [],
+        ...overrides,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  writeFile(
+    rootDir,
+    `src/lib/engines/${id}/adapter.ts`,
+    "export default {};\n",
+  );
+}
+
+// ---------------------------------------------------------------------------
+// syncEngines
+// ---------------------------------------------------------------------------
+
+describe("syncEngines", () => {
+  it("is a no-op when there are no static/r2 engines", () => {
+    const dir = makeTempDir();
+    writeEngine(dir, "canvas", { location: "native" });
+
+    const result = syncEngines(dir);
+
+    expect(result).toEqual({
+      engines: [],
+      rewrittenEngineJson: [],
+      removedStaleDirs: [],
+      warnings: [],
+    });
+    expect(existsSync(join(dir, "public", "engines"))).toBe(false);
+  });
+
+  it("is a no-op on a repo with zero engines at all", () => {
+    const dir = makeTempDir();
+    expect(syncEngines(dir).engines).toEqual([]);
+  });
+
+  it("copies a static engine's files to public/engines/<id>@<version>/ and rewrites assets", () => {
+    const dir = makeTempDir();
+    writePackage(dir, "@acme/foo", "1.2.3", {
+      "codec/foo.wasm": "0123456789", // 10 bytes
+    });
+    writeEngine(dir, "foo", {
+      version: "1.2.3",
+      package: "@acme/foo",
+      files: [{ from: "codec/foo.wasm", to: "foo.wasm" }],
+    });
+
+    const result = syncEngines(dir);
+
+    expect(result.engines).toEqual([
+      {
+        id: "foo",
+        version: "1.2.3",
+        location: "static",
+        files: [{ path: "foo.wasm", bytes: 10 }],
+      },
+    ]);
+    expect(readFile(dir, "public/engines/foo@1.2.3/foo.wasm")).toBe(
+      "0123456789",
+    );
+
+    const rewritten = JSON.parse(
+      readFile(dir, "src/lib/engines/foo/engine.json"),
+    );
+    expect(rewritten.assets).toEqual([{ path: "foo.wasm", bytes: 10 }]);
+    expect(result.rewrittenEngineJson).toEqual([
+      join("src", "lib", "engines", "foo", "engine.json"),
+    ]);
+  });
+
+  it("copies an r2 engine's files to .engines-r2/xl/<id>@<version>/", () => {
+    const dir = makeTempDir();
+    writePackage(dir, "@acme/bar", "0.9.0", {
+      "core/bar.wasm": "x".repeat(50),
+    });
+    writeEngine(dir, "bar", {
+      version: "0.9.0",
+      location: "r2",
+      package: "@acme/bar",
+      files: [{ from: "core/bar.wasm", to: "bar.wasm" }],
+    });
+
+    // A tiny limit forces the r2 file to register as "over the static
+    // threshold" so the "all files under the limit" warning doesn't fire —
+    // isolates this test to the copy behavior alone.
+    const result = syncEngines(dir, 10);
+
+    expect(existsSync(join(dir, "public", "engines"))).toBe(false);
+    expect(readFile(dir, ".engines-r2/xl/bar@0.9.0/bar.wasm")).toBe(
+      "x".repeat(50),
+    );
+    expect(result.engines).toEqual([
+      {
+        id: "bar",
+        version: "0.9.0",
+        location: "r2",
+        files: [{ path: "bar.wasm", bytes: 50 }],
+      },
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("fails when the installed package version doesn't match engine.json's version", () => {
+    const dir = makeTempDir();
+    writePackage(dir, "@acme/foo", "2.0.0", { "foo.wasm": "abc" });
+    writeEngine(dir, "foo", {
+      version: "1.0.0",
+      package: "@acme/foo",
+      files: [{ from: "foo.wasm", to: "foo.wasm" }],
+    });
+
+    expect(() => syncEngines(dir)).toThrow(
+      /engine.json version "1.0.0" does not match installed "@acme\/foo" version "2.0.0"/,
+    );
+  });
+
+  it("fails a static file over the (injectable) size limit, naming the file and the fix", () => {
+    const dir = makeTempDir();
+    writePackage(dir, "@acme/foo", "1.0.0", { "foo.wasm": "0123456789" }); // 10 bytes
+    writeEngine(dir, "foo", {
+      package: "@acme/foo",
+      files: [{ from: "foo.wasm", to: "foo.wasm" }],
+    });
+
+    expect(() => syncEngines(dir, 5)).toThrow(
+      /foo\/foo\.wasm is .* MiB; static assets are capped at 25 MiB by Cloudflare — set location to r2/,
+    );
+  });
+
+  it("does not fail a static file at or under the size limit", () => {
+    const dir = makeTempDir();
+    writePackage(dir, "@acme/foo", "1.0.0", { "foo.wasm": "0123456789" }); // 10 bytes
+    writeEngine(dir, "foo", {
+      package: "@acme/foo",
+      files: [{ from: "foo.wasm", to: "foo.wasm" }],
+    });
+
+    expect(() => syncEngines(dir, 10)).not.toThrow();
+  });
+
+  it("warns (does not fail) when every file of an r2 engine is under the limit", () => {
+    const dir = makeTempDir();
+    writePackage(dir, "@acme/bar", "1.0.0", { "bar.wasm": "small" });
+    writeEngine(dir, "bar", {
+      location: "r2",
+      package: "@acme/bar",
+      files: [{ from: "bar.wasm", to: "bar.wasm" }],
+    });
+
+    const result = syncEngines(dir, STATIC_LIMIT_BYTES);
+
+    expect(result.warnings).toEqual([
+      'engine "bar" is r2 but every file is under 20.0 MiB — consider setting location to "static".',
+    ]);
+  });
+
+  it("removes a stale public/engines/<id>@<oldVersion> dir for an engine we own", () => {
+    const dir = makeTempDir();
+    writeFile(dir, "public/engines/foo@0.9.0/foo.wasm", "old");
+    writePackage(dir, "@acme/foo", "1.0.0", { "foo.wasm": "new-bytes" });
+    writeEngine(dir, "foo", {
+      version: "1.0.0",
+      package: "@acme/foo",
+      files: [{ from: "foo.wasm", to: "foo.wasm" }],
+    });
+
+    const result = syncEngines(dir);
+
+    expect(result.removedStaleDirs).toEqual(["foo@0.9.0"]);
+    expect(existsSync(join(dir, "public", "engines", "foo@0.9.0"))).toBe(false);
+    expect(existsSync(join(dir, "public", "engines", "foo@1.0.0"))).toBe(true);
+  });
+
+  it("leaves an unrelated public/engines directory alone", () => {
+    const dir = makeTempDir();
+    writeFile(dir, "public/engines/other@1.0.0/other.wasm", "untouched");
+    writeEngine(dir, "canvas", { location: "native" });
+
+    const result = syncEngines(dir);
+
+    expect(result.removedStaleDirs).toEqual([]);
+    expect(existsSync(join(dir, "public", "engines", "other@1.0.0"))).toBe(
+      true,
+    );
+  });
+
+  it("only rewrites engine.json when its assets actually changed — a second run is a no-op write", () => {
+    const dir = makeTempDir();
+    writePackage(dir, "@acme/foo", "1.0.0", { "foo.wasm": "0123456789" });
+    writeEngine(dir, "foo", {
+      package: "@acme/foo",
+      files: [{ from: "foo.wasm", to: "foo.wasm" }],
+    });
+
+    const first = syncEngines(dir);
+    expect(first.rewrittenEngineJson).toHaveLength(1);
+
+    const second = syncEngines(dir);
+    expect(second.rewrittenEngineJson).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// scanEngineSources
+// ---------------------------------------------------------------------------
+
+describe("scanEngineSources", () => {
+  it("returns an empty list when src/lib/engines doesn't exist", () => {
+    expect(scanEngineSources(makeTempDir())).toEqual([]);
+  });
+
+  it("reads id/version/location/package/files, sorted by id", () => {
+    const dir = makeTempDir();
+    writeEngine(dir, "zeta", { location: "native" });
+    writeEngine(dir, "alpha", {
+      package: "@acme/alpha",
+      files: [{ from: "a.wasm", to: "a.wasm" }],
+    });
+
+    expect(scanEngineSources(dir).map((s) => s.id)).toEqual(["alpha", "zeta"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolvePackageDir
+// ---------------------------------------------------------------------------
+
+describe("resolvePackageDir", () => {
+  it("resolves an installed package's directory", () => {
+    const dir = makeTempDir();
+    writePackage(dir, "@acme/foo", "1.0.0", { "foo.wasm": "x" });
+
+    expect(resolvePackageDir("@acme/foo", dir)).toBe(
+      join(dir, "node_modules", "@acme", "foo"),
+    );
+  });
+
+  it('falls back to the conventional node_modules layout when "exports" blocks package.json', () => {
+    const dir = makeTempDir();
+    // An "exports" map with no "./package.json" subpath makes
+    // require.resolve("pkg/package.json") throw even though the package is
+    // installed — this is the case the fallback exists for.
+    writePackage(
+      dir,
+      "@acme/blocked",
+      "1.0.0",
+      { "index.js": "module.exports = {};\n" },
+      { exports: { ".": "./index.js" } },
+    );
+
+    expect(resolvePackageDir("@acme/blocked", dir)).toBe(
+      join(dir, "node_modules", "@acme", "blocked"),
+    );
+  });
+
+  it("throws when the package isn't installed at all", () => {
+    const dir = makeTempDir();
+    expect(() => resolvePackageDir("@acme/missing", dir)).toThrow(
+      /cannot resolve package "@acme\/missing"/,
+    );
+  });
+});

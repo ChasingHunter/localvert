@@ -278,6 +278,16 @@ jobs:
           name: site
           path: out/
 
+      # `pnpm sync-engines` re-stages `.engines-r2/` (gitignored, so it isn't
+      # part of the "site" artifact above) from the same npm packages the
+      # build job already synced from — cheap and deterministic, so
+      # re-running it here is simpler than threading a second artifact
+      # through just to carry xl-engine sources. Today (canvas only, "native")
+      # this is a no-op.
+      - name: Stage r2 engine assets
+        if: hashFiles('scripts/upload-r2.ts') != ''
+        run: pnpm sync-engines
+
       # scripts/upload-r2.ts lands in a later slice, alongside the oversized
       # engines it uploads (ADR-0003). Skip cleanly until it exists.
       - name: Upload oversized engines to R2
