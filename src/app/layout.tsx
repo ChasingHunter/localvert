@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import { ServiceWorker } from "./service-worker";
 
 export const metadata: Metadata = {
   title: {
@@ -23,7 +24,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-h-dvh">{children}</body>
+      <body className="min-h-dvh">
+        <ServiceWorker />
+        {children}
+      </body>
     </html>
   );
 }

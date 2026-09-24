@@ -48,6 +48,7 @@
     ".claude",
     "src/lib/engines/*/**",
     "src/lib/engines/loaders.ts",
-    "src/**/*.worker.ts"
+    "src/**/*.worker.ts",
+    "src/sw.ts"
   ]
 }

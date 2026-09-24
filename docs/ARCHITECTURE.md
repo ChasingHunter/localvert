@@ -178,9 +178,29 @@ oversized engines on the **same origin**. Same origin matters:
 the table.
 
 `public/_headers` carries COOP/COEP — required for `SharedArrayBuffer`, so
-multithreaded wasm works — and the CSP. Serwist provides the service worker:
-precache the app shell, `CacheFirst` on `/engines/*` with no expiry, since
-those URLs are immutable by construction.
+multithreaded wasm works — and the CSP. Serwist provides the service
+worker (`src/sw.ts`, registered from a small client component in
+`src/app/layout.tsx`, production builds only): precache the app shell
+(every page, `_next/static` JS/CSS), `CacheFirst` on `/engines/*` with no
+expiry since those URLs are immutable by construction, and a
+network-then-`/offline`-fallback for navigations that aren't precached —
+so an online visitor to a genuinely missing route still gets a real 404,
+and only an offline one sees the fallback page.
+
+`pnpm build` runs three steps in order — `next build`, then
+`scripts/csp-inline-hashes.ts`, then `scripts/build-sw.ts` — and the order
+is load-bearing. `@serwist/turbopack`'s usual integration bakes its
+precache manifest during `next build`'s own static-generation phase, before
+`out/` exists and before the CSP step has touched a byte; a manifest built
+that early would carry HTML revisions hashed from pre-injection bytes,
+which stop matching the moment csp-inline-hashes.ts rewrites every page's
+`<head>`. So `scripts/build-sw.ts` doesn't use that Route-Handler
+integration at all — it calls `@serwist/turbopack`'s `createSerwistRoute`
+directly, as a plain post-build script, pointed at the real `out/`
+directory instead of `.next/`, after both earlier steps have already run.
+It also refuses to run (exit 1) if any `out/**/*.html` is missing its
+injected CSP `<meta>` tag, as a mechanical guard against the two steps
+ever being reordered.
 
 The CSP itself is two layers. The header CSP in `public/_headers` is tolerant
 of inline scripts (`'unsafe-inline'`) because Next's static export inlines a

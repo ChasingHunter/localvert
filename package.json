@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "pnpm sync-engines && next build && node scripts/csp-inline-hashes.ts",
+    "build": "pnpm sync-engines && next build && node scripts/csp-inline-hashes.ts && node scripts/build-sw.ts",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.worker.json --noEmit && tsc -p infra --noEmit && tsc -p tsconfig.browser-tests.json --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",

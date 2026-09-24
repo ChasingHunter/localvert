@@ -5,6 +5,10 @@
     "types": [],
     "plugins": []
   },
-  "include": ["src/lib/engines/**/*.ts", "src/lib/workers/**/*.worker.ts"],
+  "include": [
+    "src/lib/engines/**/*.ts",
+    "src/lib/workers/**/*.worker.ts",
+    "src/sw.ts"
+  ],
   "exclude": ["**/*.test.ts", "src/lib/engines/manifest.ts"]
 }

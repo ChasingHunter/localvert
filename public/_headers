@@ -21,3 +21,11 @@
 
 /engines/*
   Cache-Control: public, max-age=31536000, immutable
+
+# The service worker script itself must never be treated as immutable — a
+# stale cached copy would keep re-installing an old precache manifest
+# forever. Every other header (COOP/COEP/CORP, CSP, ...) still comes from
+# the `/*` block above; Cloudflare's `_headers` blocks are additive, only
+# `Cache-Control` is overridden here.
+/sw.js
+  Cache-Control: no-cache
