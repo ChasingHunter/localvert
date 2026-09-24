@@ -75,9 +75,9 @@ One small commit per bullet — these are the contracts everything else hangs on
 - [x] `infra/wrangler.jsonc` — static assets from `out/`, R2 binding,
       `run_worker_first: ["/engines/xl/*"]` (2026-09-24)
 - [x] `infra/worker/index.ts` — xl-engine range/cache/R2 handler (~40 lines) (2026-09-24)
-- [ ] `scripts/sync-engines.ts` — npm → `public/engines/<id>@<ver>/`;
-      >20 MiB flagged for R2
-- [ ] `scripts/upload-r2.ts` — content-hash-aware upload
+- [x] `scripts/sync-engines.ts` — npm → `public/engines/<id>@<ver>/`;
+      >20 MiB flagged for R2 (2026-09-25)
+- [x] `scripts/upload-r2.ts` — content-hash-aware upload (2026-09-25)
 - [x] `scripts/check-sizes.ts` — core <300 KB gz; fail if an engine lands in a
       core chunk (2026-09-24)
 
