@@ -46,11 +46,11 @@ end-to-end with zero network I/O.
 One small commit per bullet — these are the contracts everything else hangs on.
 - [x] `src/lib/registry/` — `ToolDefinition`, `Category`, format table
       (ext + mime + **magic bytes**, so input is sniffed not trusted) (2026-09-24)
-- [ ] Worker `lib` setup: the root `tsconfig.json` has `lib: [DOM, ...]` only.
+- [x] Worker `lib` setup (ADR-0005: second tsc program, `tsconfig.worker.json`) (2026-09-24): the root `tsconfig.json` has `lib: [DOM, ...]` only.
       `DOM` and `WebWorker` conflict, so worker files need
       `/// <reference lib="webworker" />` or their own tsconfig — decide and
       write it down when the first worker lands.
-- [ ] `src/lib/engines/types.ts` — `EngineAdapter` / `EngineInstance` contracts
+- [x] `src/lib/engines/types.ts` — `EngineAdapter` / `EngineInstance` contracts (2026-09-24)
 - [ ] `scripts/gen-registry.ts` + `pnpm gen` — generated barrels, checked in
 - [ ] `src/lib/workers/` — pool, Comlink RPC, lazy module workers
 - [ ] `src/lib/jobs/` — job engine, FIFO queue, progress, zustand store
