@@ -19,7 +19,8 @@ upload path, no telemetry of file content.
 | `pnpm e2e` | Playwright against a real built `out/` (server wired up in Phase 0.7) |
 | `pnpm gen` | Regenerate `src/tools/index.ts` + `src/lib/engines/manifest.ts` — *lands in Phase 0.4* |
 | `pnpm sync-engines` | Copy wasm assets from `node_modules` into `public/engines/` — *lands in Phase 0.7* |
-| **`pnpm verify`** | **typecheck + lint + test + build. This is the Definition of Done.** |
+| `pnpm check-sizes` | Core bundle budget + engine-leak gate against a built `out/` |
+| **`pnpm verify`** | **typecheck + lint + test + build + size budget. This is the Definition of Done.** |
 
 ## Architecture map
 

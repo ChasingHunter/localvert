@@ -19,7 +19,8 @@
     "test:watch": "vitest",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "e2e": "playwright test",
-    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build"
+    "check-sizes": "node scripts/check-sizes.ts",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm check-sizes"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
