@@ -8,6 +8,8 @@ export {
   isEngineError,
   toEngineError,
 } from "./errors";
+export type { EngineManifestEntry, EngineMeta } from "./meta";
+export { engineBaseUrl } from "./meta";
 export type {
   EngineAdapter,
   EngineAsset,

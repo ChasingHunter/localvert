@@ -20,6 +20,7 @@
     "test:changed": "vitest run --changed",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "e2e": "playwright test",
+    "gen": "node scripts/gen-registry.ts",
     "preview": "pnpm build && wrangler dev --config infra/wrangler.jsonc --port 8788",
     "check-sizes": "node scripts/check-sizes.ts",
     "check": "pnpm typecheck && pnpm lint && pnpm test",
