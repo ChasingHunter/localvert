@@ -31,15 +31,15 @@ end-to-end with zero network I/O.
 - [x] CONVERTERS.md, ENGINES.md, THIRD_PARTY_LICENSES.md (headers + empty tables) (2026-09-09)
 
 ### 0.3 App scaffold
-- [ ] Next.js 16 `output: "export"` + React 19 + TypeScript (tsgo)
-- [ ] Tailwind 4 + shadcn/ui init
+- [x] Next.js 16 `output: "export"` + React 19 + TypeScript 7 (`tsc`) (2026-09-24)
+- [x] Tailwind 4 (shadcn/ui deferred, below) (2026-09-24)
 - [x] Biome (replaces ESLint + Prettier) (2026-09-09)
 - [x] Vitest (unit + browser mode) and Playwright configs (2026-09-09)
 - [x] `package.json` scripts: `dev build typecheck lint test verify` (2026-09-09)
       — `gen` and `sync-engines` land with their scripts in 0.4 and 0.7
 - [x] `pnpm verify` green **and idempotent** on an empty app (2026-09-09)
-- [ ] Playwright `webServer` — deferred to 0.7, needs `wrangler dev` to serve
-      `out/` with real `_headers` (a plain static server would not apply them)
+- [x] Playwright `webServer` — deferred to 0.7, needs `wrangler dev` to serve
+      `out/` with real `_headers` (a plain static server would not apply them) (2026-09-24)
 - [ ] shadcn/ui init — deferred to 0.4, where the first components appear
 
 ### 0.4 Core plumbing
@@ -54,9 +54,9 @@ One small commit per bullet — these are the contracts everything else hangs on
 - [ ] `scripts/gen-registry.ts` + `pnpm gen` — generated barrels, checked in
 - [ ] `src/lib/workers/` — pool, Comlink RPC, lazy module workers
 - [ ] `src/lib/jobs/` — job engine, FIFO queue, progress, zustand store
-- [ ] `src/lib/router/` — capability probes (WebCodecs, SAB, OffscreenCanvas,
-      OPFS) and the engine router that reads them
-- [ ] `src/lib/sinks/` — blob sink, streaming ZIP sink (fflate)
+- [x] `src/lib/router/` — capability probes (WebCodecs, SAB, OffscreenCanvas,
+      OPFS) and the engine router that reads them (2026-09-24)
+- [x] `src/lib/sinks/` — blob sink, streaming ZIP sink (fflate) (2026-09-24)
 - [ ] UI: dropzone, job card, generated options form
 
 ### 0.5 First tool end-to-end
@@ -67,34 +67,35 @@ One small commit per bullet — these are the contracts everything else hangs on
 - [ ] `feat(tool): jpg to png via canvas engine`
 
 ### 0.6 PWA and headers
-- [ ] `public/_headers` — COOP/COEP + the CSP that makes upload impossible
+- [x] `public/_headers` — COOP/COEP + the CSP that makes upload impossible (2026-09-24)
 - [ ] Serwist SW via `@serwist/turbopack` (precache shell, CacheFirst `/engines/*`)
 - [ ] Offline page; verify a used tool still converts with the network cut
 
 ### 0.7 Infrastructure
-- [ ] `infra/wrangler.jsonc` — static assets from `out/`, R2 binding,
-      `run_worker_first: ["/engines/xl/*"]`
-- [ ] `infra/worker/index.ts` — xl-engine range/cache/R2 handler (~40 lines)
+- [x] `infra/wrangler.jsonc` — static assets from `out/`, R2 binding,
+      `run_worker_first: ["/engines/xl/*"]` (2026-09-24)
+- [x] `infra/worker/index.ts` — xl-engine range/cache/R2 handler (~40 lines) (2026-09-24)
 - [ ] `scripts/sync-engines.ts` — npm → `public/engines/<id>@<ver>/`;
       >20 MiB flagged for R2
 - [ ] `scripts/upload-r2.ts` — content-hash-aware upload
-- [ ] `scripts/check-sizes.ts` — core <300 KB gz; fail if an engine lands in a
-      core chunk
+- [x] `scripts/check-sizes.ts` — core <300 KB gz; fail if an engine lands in a
+      core chunk (2026-09-24)
 
 ### 0.8 CI/CD
 All `uses:` pinned to full commit SHAs. Top-level `permissions: {}`.
-- [ ] `ci.yml` — verify + gen-drift + size budget
-- [ ] `deploy.yml` — production environment, scoped Cloudflare token
-- [ ] `release-please.yml`
-- [ ] `codeql.yml`, `dependency-review.yml`, `dependabot.yml`
-- [ ] Issue/PR templates, README, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT
+- [x] `ci.yml` — verify + gen-drift + size budget (2026-09-24)
+- [x] Deploy — moving from `deploy.yml` into a `ci.yml` job that ships the verified build artifact (2026-09-24)
+- [x] `release-please.yml` (2026-09-24)
+- [x] `codeql.yml`, `dependency-review.yml`, `dependabot.yml` (2026-09-24)
+- [x] Issue/PR templates, README, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT (2026-09-24)
 
 ### 0.9 Ship
 - [ ] `gh repo create ChasingHunter/localvert --public`, first push **(owner)**
 - [ ] Branch ruleset on `main`: require `verify`, block force-push and deletion,
       do not require PRs **(owner)**
-- [ ] Cloudflare: account, R2 bucket `localvert-engines`,
-      `CLOUDFLARE_API_TOKEN` in the `production` environment **(owner)**
+- [x] Cloudflare: R2 bucket `localvert-engines`, `production` environment with
+      `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` secrets **(owner)** (2026-09-24)
+- [ ] workers.dev subdomain registered (needed before the first CI deploy) **(owner)**
 - [ ] First deploy green; E2E against the live URL
 - [ ] Privacy assertion in CI: Playwright fails the run if **any** request
       leaves the origin during a conversion
