@@ -18,8 +18,13 @@ declare module "zod/v4/core" {
   }
 }
 
-/** Grows as engines are added — see the `add-engine` skill. */
-export type EngineId = "canvas";
+/**
+ * Generated from `src/lib/engines/<id>/engine.json` by `pnpm gen` — adding an
+ * engine directory is what grows this union (see the `add-engine` skill).
+ */
+import type { EngineId } from "@/lib/engines/ids";
+
+export type { EngineId };
 
 export type Operation =
   | "transcode"

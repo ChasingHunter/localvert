@@ -8,7 +8,6 @@
 import type { EngineId } from "./ids";
 import type { EngineAdapter } from "./types";
 
-export const ENGINE_LOADERS = {} satisfies Record<
-  EngineId,
-  () => Promise<{ default: EngineAdapter }>
->;
+export const ENGINE_LOADERS = {
+  canvas: () => import("./canvas/adapter"),
+} satisfies Record<EngineId, () => Promise<{ default: EngineAdapter }>>;
