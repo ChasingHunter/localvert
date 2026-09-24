@@ -91,7 +91,7 @@ All `uses:` pinned to full commit SHAs. Top-level `permissions: {}`.
 
 ### 0.9 Ship
 - [ ] `gh repo create ChasingHunter/localvert --public`, first push **(owner)**
-- [ ] Branch ruleset on `main`: require `verify`, block force-push and deletion,
+- [ ] Branch ruleset on `main`: require CI jobs `check`, `build`, `browser`; block force-push and deletion,
       do not require PRs **(owner)**
 - [x] Cloudflare: R2 bucket `localvert-engines`, `production` environment with
       `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` secrets **(owner)** (2026-09-24)
