@@ -32,7 +32,10 @@ verified execution — not redesign.
    the slice touches build/config, `_headers`, routes, or a script in the
    build pipeline. Fix failures in your own slice; if a failure is outside
    it, stop and report.
-2. Tick the matching item in `docs/ROADMAP.md` with today's date.
+2. Tick the matching item in `docs/ROADMAP.md` with today's date — unless
+   the brief says the planner ticks it (parallel waves: several agents
+   editing ROADMAP.md at once would conflict). The brief wins; no need to
+   flag it.
 3. One Conventional Commit for the slice (`feat(...)`, `chore:`, …), with a
    body explaining any non-obvious choice. No `Co-Authored-By` or any AI
    attribution. Do not push.
