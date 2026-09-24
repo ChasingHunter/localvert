@@ -68,8 +68,9 @@ One small commit per bullet — these are the contracts everything else hangs on
 
 ### 0.6 PWA and headers
 - [x] `public/_headers` — COOP/COEP + the CSP that makes upload impossible (2026-09-24)
-- [ ] Serwist SW via `@serwist/turbopack` (precache shell, CacheFirst `/engines/*`)
-- [ ] Offline page; verify a used tool still converts with the network cut
+- [x] Serwist SW (post-build injectManifest after CSP injection; precache shell, CacheFirst `/engines/*`) (2026-09-25)
+- [x] Offline page (/offline, shown only on real network failure) (2026-09-25)
+- [ ] Offline E2E: a used tool still converts with the network cut (with 0.5b e2e)
 
 ### 0.7 Infrastructure
 - [x] `infra/wrangler.jsonc` — static assets from `out/`, R2 binding,
