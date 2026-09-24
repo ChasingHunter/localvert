@@ -1,0 +1,74 @@
+name: Bug report
+description: Something in a conversion, or the app itself, isn't working right.
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this.
+
+        **Please do not attach the file that triggered the bug if it contains
+        anything sensitive or private.** Localvert converts files entirely in
+        your browser and this issue tracker is public — anything you attach
+        here is visible to everyone. A small, reduced sample that still
+        reproduces the problem (a cropped image, a one-page PDF, a few seconds
+        of audio) is almost always enough, and is what we'd ask for anyway.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, and what you expected instead.
+    validations:
+      required: true
+
+  - type: input
+    id: tool-slug
+    attributes:
+      label: Tool
+      description: >-
+        The conversion you were using, e.g. `jpg-to-png`. Visible in the URL
+        as /tools/<slug>.
+      placeholder: jpg-to-png
+    validations:
+      required: true
+
+  - type: input
+    id: input-format
+    attributes:
+      label: Input file format and size
+      description: >-
+        Format/extension and approximate file size. Do not attach the
+        original file if it's sensitive — see the note above.
+      placeholder: "HEIC, ~8 MB"
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      description: Help > About, or chrome://version / about:support / edge://version.
+      placeholder: "Chrome 130.0.6723.91"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "macOS 15.1, Windows 11 24H2, Ubuntu 24.04..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console errors
+      description: >-
+        Anything in the browser DevTools console (F12 > Console). Optional,
+        but often the fastest way to a fix.
+      render: text
+    validations:
+      required: false

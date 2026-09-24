@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/ChasingHunter/localvert/security/advisories/new
+    about: >-
+      Please don't open a public issue for anything that could let file data
+      leave the device, bypass the CSP, or otherwise compromise the
+      local-first guarantee. Report it privately instead — see SECURITY.md.

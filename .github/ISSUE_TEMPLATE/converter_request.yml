@@ -1,0 +1,46 @@
+name: Converter request
+description: Ask for a new conversion, or a new output format for an existing one.
+labels:
+  - enhancement
+  - converter
+body:
+  - type: input
+    id: from-format
+    attributes:
+      label: From format
+      placeholder: "HEIC"
+    validations:
+      required: true
+
+  - type: input
+    id: to-format
+    attributes:
+      label: To format
+      placeholder: "JPG"
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: What are you trying to do that this conversion would unblock?
+    validations:
+      required: true
+
+  - type: textarea
+    id: wasm-library
+    attributes:
+      label: Known WebAssembly library and license
+      description: >-
+        Localvert runs every conversion client-side via WebAssembly or native
+        browser APIs — see docs/ARCHITECTURE.md. If you know of a wasm-capable
+        library or codec that could implement this, name it here along with
+        its license. This is the single biggest thing that speeds a request
+        up: license review comes before any code (see the `add-engine`
+        skill), and GPL/LGPL engines are handled differently from
+        permissively-licensed ones (ADR-0002).
+      placeholder: |
+        e.g. libheif compiled to wasm, LGPL-3.0
+    validations:
+      required: false

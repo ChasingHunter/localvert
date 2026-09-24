@@ -1,0 +1,26 @@
+name: release-please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions: {}
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+# A release is a push to `main`: merging the release PR is what ships it,
+# because deploy.yml already triggers on push to main. This workflow's own
+# GITHUB_TOKEN-created tag and GitHub Release don't trigger other workflows —
+# that's fine here, since nothing needs to react to the tag itself.
