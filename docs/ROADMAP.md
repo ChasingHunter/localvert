@@ -95,7 +95,7 @@ All `uses:` pinned to full commit SHAs. Top-level `permissions: {}`.
       do not require PRs **(owner)**
 - [x] Cloudflare: R2 bucket `localvert-engines`, `production` environment with
       `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` secrets **(owner)** (2026-09-24)
-- [ ] workers.dev subdomain registered (needed before the first CI deploy) **(owner)**
+- [x] workers.dev subdomain registered (needed before the first CI deploy) **(owner)** (2026-09-25)
 - [ ] First deploy green; E2E against the live URL
 - [ ] Privacy assertion in CI: Playwright fails the run if **any** request
       leaves the origin during a conversion
