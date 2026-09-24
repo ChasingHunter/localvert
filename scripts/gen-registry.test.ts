@@ -10,6 +10,7 @@ import {
   genEngineManifest,
   generate,
   genToolsIndex,
+  genToolsLoaders,
   parseEngineMeta,
   scanEngines,
   scanTools,
@@ -177,6 +178,20 @@ describe("genToolsIndex", () => {
     expect(out).toContain(
       "export const TOOLS_BY_SLUG: ReadonlyMap<string, ToolDefinition> = new Map(",
     );
+  });
+});
+
+describe("genToolsLoaders", () => {
+  it("is an empty, still-valid loader map for zero tools", () => {
+    const out = genToolsLoaders([]);
+    expect(out).toContain("export const TOOL_LOADERS = {} satisfies Record<");
+  });
+
+  it("imports each tool by its own category/slug relative path", () => {
+    const dir = makeFullFixture();
+    const out = genToolsLoaders(scanTools(dir));
+    expect(out).toContain('"a-to-b": () => import("./image/a-to-b"),');
+    expect(out).toContain('"merge-pdf": () => import("./pdf/merge-pdf"),');
   });
 });
 
@@ -422,13 +437,14 @@ describe("genEngineLoaders", () => {
 // ---------------------------------------------------------------------------
 
 describe("generate", () => {
-  it("produces the four expected files for an empty repo", () => {
+  it("produces the five expected files for an empty repo", () => {
     const files = generate(makeTempDir());
     expect([...files.keys()].sort()).toEqual([
       "src/lib/engines/ids.ts",
       "src/lib/engines/loaders.ts",
       "src/lib/engines/manifest.ts",
       "src/tools/index.ts",
+      "src/tools/loaders.ts",
     ]);
     expect(get(files, "src/tools/index.ts")).toContain(
       "export const TOOLS: readonly ToolDefinition[] = [];",

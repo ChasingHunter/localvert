@@ -1,7 +1,8 @@
 /**
- * `pnpm gen` — regenerates the tool barrel (`src/tools/index.ts`) and the
- * engine ids/manifest/loaders (`src/lib/engines/{ids,manifest,loaders}.ts`)
- * by statically scanning `src/tools/<category>/*.ts` and
+ * `pnpm gen` — regenerates the tool barrel (`src/tools/index.ts`), the
+ * per-tool code-splitting map (`src/tools/loaders.ts`), and the engine
+ * ids/manifest/loaders (`src/lib/engines/{ids,manifest,loaders}.ts`) by
+ * statically scanning `src/tools/<category>/*.ts` and
  * `src/lib/engines/<id>/{engine.json,adapter.ts}`.
  *
  * Static source scanning only — this script never imports or executes a
@@ -128,6 +129,33 @@ export function genToolsIndex(tools: readonly ToolFileInfo[]): string {
     "export const TOOLS_BY_SLUG: ReadonlyMap<string, ToolDefinition> = new Map(",
     "  TOOLS.map((t) => [t.slug, t]),",
     ");",
+  ].join("\n")}\n`;
+}
+
+/**
+ * Per-tool code splitting: a client page loads exactly one tool's module via
+ * this map instead of importing the `TOOLS` barrel (which pulls in every
+ * tool's pipeline and, transitively, its option schema — see
+ * docs/ADDING_A_TOOL.md). Keyed by slug, which by convention **is** the
+ * tool's file basename (`scanTools`'s `t.slug`) — `src/tools/registry.test.ts`
+ * enforces that every tool's declared `slug` actually matches its filename,
+ * which is what makes this map's keys trustworthy without importing the tool
+ * modules here to check.
+ */
+export function genToolsLoaders(tools: readonly ToolFileInfo[]): string {
+  const entries = tools.map(
+    (t) => `  "${t.slug}": () => import("./${t.category}/${t.slug}"),`,
+  );
+  const body = entries.length === 0 ? "{}" : `{\n${entries.join("\n")}\n}`;
+
+  return `${[
+    GENERATED_HEADER,
+    `import type { ToolDefinition } from "@/lib/registry";`,
+    "",
+    `export const TOOL_LOADERS = ${body} satisfies Record<`,
+    "  string,",
+    "  () => Promise<{ default: ToolDefinition }>",
+    ">;",
   ].join("\n")}\n`;
 }
 
@@ -454,6 +482,7 @@ export function generate(rootDir: string): Map<string, string> {
 
   return new Map([
     ["src/tools/index.ts", genToolsIndex(tools)],
+    ["src/tools/loaders.ts", genToolsLoaders(tools)],
     ["src/lib/engines/ids.ts", genEngineIds(engines)],
     ["src/lib/engines/manifest.ts", genEngineManifest(engines)],
     ["src/lib/engines/loaders.ts", genEngineLoaders(engines)],
