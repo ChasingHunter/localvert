@@ -176,6 +176,14 @@ multithreaded wasm works — and the CSP. Serwist provides the service worker:
 precache the app shell, `CacheFirst` on `/engines/*` with no expiry, since
 those URLs are immutable by construction.
 
+The CSP itself is two layers. The header CSP in `public/_headers` is tolerant
+of inline scripts (`'unsafe-inline'`) because Next's static export inlines a
+small hydration script on every page; `pnpm build` then runs
+`scripts/csp-inline-hashes.ts`, which injects a per-page `<meta>` CSP
+allow-listing only that page's own inline scripts by sha256 hash, closing the
+gap the header leaves open. See
+[ADR-0006](adr/0006-two-layer-csp.md).
+
 ---
 
 ## Invariants
