@@ -16,14 +16,14 @@ engines will misbehave without them, so don't swap in a plain static server.
 
 ## Definition of Done
 
-```sh
-pnpm verify
-```
-
-typecheck + lint + test + build, all green. This is the bar for every commit
-and every PR, no exceptions. Never `--no-verify`, never skip or `.skip` a
-test, never widen a size budget or the CSP to get a build through — fix the
-cause instead.
+Match the check to what changed. Docs, comments, or formatting only? `pnpm
+lint` is enough. A normal code change needs `pnpm check` (typecheck + lint +
+test) before you commit. Touching build config, `_headers`, routes, or a
+build-pipeline script — or wrapping up a batch of commits, or before any push
+— needs the full `pnpm verify` (adds build + the size budget). CI runs
+everything on every push regardless. Never `--no-verify`, never skip or
+`.skip` a test, never widen a size budget or the CSP to get a build through —
+fix the cause instead.
 
 ## Commits
 

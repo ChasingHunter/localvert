@@ -27,8 +27,11 @@ verified execution — not redesign.
 
 ## Finish
 
-1. `pnpm verify` — all four gates green. Fix failures in your own slice; if a
-   failure is outside it, stop and report.
+1. `pnpm check` (typecheck + lint + test). Run `pnpm verify` instead — the
+   full gate, adding build + size budget — when the brief says so, or when
+   the slice touches build/config, `_headers`, routes, or a script in the
+   build pipeline. Fix failures in your own slice; if a failure is outside
+   it, stop and report.
 2. Tick the matching item in `docs/ROADMAP.md` with today's date.
 3. One Conventional Commit for the slice (`feat(...)`, `chore:`, …), with a
    body explaining any non-obvious choice. No `Co-Authored-By` or any AI

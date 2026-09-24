@@ -17,11 +17,13 @@
     "lint:fix": "biome check --write .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:changed": "vitest run --changed",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "e2e": "playwright test",
     "preview": "pnpm build && wrangler dev --config infra/wrangler.jsonc --port 8788",
     "check-sizes": "node scripts/check-sizes.ts",
-    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm check-sizes"
+    "check": "pnpm typecheck && pnpm lint && pnpm test",
+    "verify": "pnpm check && pnpm build && pnpm check-sizes"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

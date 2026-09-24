@@ -10,7 +10,10 @@ ending a session with uncommitted work.
 
 ## 1. Verify
 
-`pnpm verify` — typecheck, lint, test, build. All four green.
+Preflight is a single `pnpm verify` for the whole batch — not the lighter
+`pnpm check` that's enough for an individual commit mid-session (see the
+Definition of Done tiers in CLAUDE.md). `pnpm verify` runs typecheck, lint,
+test, build, size budget. All green.
 
 If something fails, **fix the cause**. Do not skip a test, loosen a budget,
 weaken a type, or reach for `--no-verify`. If a failure is genuinely

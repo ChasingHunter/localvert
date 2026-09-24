@@ -15,12 +15,14 @@ upload path, no telemetry of file content.
 | `pnpm typecheck` | `tsc --noEmit` (TypeScript 7 — the native compiler, named `tsc`) |
 | `pnpm lint` / `pnpm lint:fix` | Biome check |
 | `pnpm test` | Vitest unit run. Single file: `pnpm test src/lib/registry/registry.test.ts` |
+| `pnpm test:changed` | Vitest unit run, changed files only — fast local loop |
 | `pnpm test:browser` | Vitest browser mode — worker + wasm integration tests |
 | `pnpm e2e` | Playwright against a real built `out/` (server wired up in Phase 0.7) |
 | `pnpm gen` | Regenerate `src/tools/index.ts` + `src/lib/engines/manifest.ts` — *lands in Phase 0.4* |
 | `pnpm sync-engines` | Copy wasm assets from `node_modules` into `public/engines/` — *lands in Phase 0.7* |
 | `pnpm check-sizes` | Core bundle budget + engine-leak gate against a built `out/` |
-| **`pnpm verify`** | **typecheck + lint + test + build + size budget. This is the Definition of Done.** |
+| `pnpm check` | typecheck + lint + test — the bar for a normal commit |
+| **`pnpm verify`** | **`pnpm check` + build + size budget — the full gate: build/config changes, end of a batch, before any push** |
 
 ## Architecture map
 
@@ -66,9 +68,17 @@ Details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The short version:
 
 ## Definition of Done
 
-Run `pnpm verify` before every commit. All four gates green.
-Never `--no-verify`. Never skip or `.skip` a test to make it pass. Never widen
-a budget or a CSP directive to get a build through — fix the cause.
+Match the gate to what changed — heavy checks only where they buy signal:
+
+- **Docs, comments, or formatting only** → `pnpm lint` (Biome) is enough.
+- **Normal code change** → `pnpm check` (typecheck + lint + test) before commit.
+- **Build/config changes** — `next.config.ts`, `public/_headers`, a script in
+  the build pipeline, or routes — **or the end of a batch of commits, or
+  before any push** → `pnpm verify` (adds build + size budget).
+
+CI runs everything on every push regardless. Never `--no-verify`. Never skip
+or `.skip` a test to make it pass. Never widen a budget or a CSP directive to
+get a build through — fix the cause.
 
 ## Commit rules
 
