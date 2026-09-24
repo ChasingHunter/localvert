@@ -13,6 +13,7 @@
   --color-ink: oklch(22% 0.01 250);
   --color-ink-muted: oklch(52% 0.012 250);
   --color-accent: oklch(58% 0.16 250);
+  --color-danger: oklch(55% 0.19 25);
 
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -28,6 +29,7 @@
     --color-ink: oklch(95% 0.004 250);
     --color-ink-muted: oklch(70% 0.012 250);
     --color-accent: oklch(72% 0.14 250);
+    --color-danger: oklch(68% 0.18 25);
   }
 }
 

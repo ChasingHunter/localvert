@@ -110,7 +110,7 @@ Field by field:
 
 | Field | Notes |
 |---|---|
-| `slug` | Unique; **is** the URL. `<source>-to-<target>` for conversions, a verb for operations (`compress-image`, `merge-pdf`). Changing it later breaks links and SEO. |
+| `slug` | Unique; **is** the URL, and **must equal the tool file's own basename** — `src/tools/image/jpg-to-png.ts` must declare `slug: "jpg-to-png"`. `src/tools/registry.test.ts` enforces this; `pnpm gen`'s per-tool `TOOL_LOADERS` map (see step 6) is keyed by filename and would silently point at the wrong module otherwise. `<source>-to-<target>` for conversions, a verb for operations (`compress-image`, `merge-pdf`). Changing it later breaks links and SEO. |
 | `category` | One of image, video, audio, pdf, document, archive. Drives grouping and per-category concurrency. |
 | `title`, `description` | Public page copy and search results. Write for a person who typed "jpg to png" into a search engine, not for a developer reading the repo. |
 | `accepts` / `produces` | `FormatId`s from the format table. |
@@ -155,9 +155,14 @@ nothing on some browser.
 pnpm gen
 ```
 
-Rewrites `src/tools/index.ts` and `src/lib/engines/manifest.ts`. Both are
-**checked in**, and CI fails if running `pnpm gen` produces a diff. Never
-hand-edit them.
+Rewrites `src/tools/index.ts` (the full `TOOLS` barrel — server components
+only, e.g. `generateStaticParams`), `src/tools/loaders.ts` (`TOOL_LOADERS`, a
+`slug -> () => import(...)` map keyed by filename), and
+`src/lib/engines/manifest.ts`. A client component loads exactly one tool
+through `TOOL_LOADERS[slug]()` — never the `TOOLS` barrel, which would pull
+every tool's module graph (and every other tool's option schema) into that
+page's bundle. All three files are **checked in**, and CI fails if running
+`pnpm gen` produces a diff. Never hand-edit them.
 
 ### 7. Tests
 

@@ -16,7 +16,7 @@ candidate — the router may pick a fallback at runtime, see
 
 | Slug | From | To | Engine | Batch | Notes |
 |---|---|---|---|---|---|
-| _none yet_ | | | | | Phase 0.5 lands `jpg-to-png` |
+| `jpg-to-png` | JPEG | PNG | canvas | Yes | Lossless re-encode; strips EXIF (incl. GPS) |
 
 ## PDF
 

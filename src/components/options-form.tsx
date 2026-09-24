@@ -121,7 +121,7 @@ function OptionField({
         </p>
       )}
       {error && (
-        <p id={errorId} className="text-xs text-accent">
+        <p id={errorId} className="text-xs text-danger">
           {error}
         </p>
       )}
