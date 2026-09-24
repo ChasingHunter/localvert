@@ -82,6 +82,11 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # `pnpm build` runs sync-engines (rewrites engine.json asset sizes) and
+      # gen. Any diff means someone forgot to commit their output.
+      - name: Engine assets and generated files are committed
+        run: git diff --exit-code
+
       - name: Check sizes
         run: pnpm check-sizes
 
