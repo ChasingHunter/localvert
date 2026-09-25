@@ -16,17 +16,13 @@ import type { EngineCandidate, EngineId, PipelineStep } from "./types";
  * capability. Naming an engine id ahead of its own adapter landing is fine —
  * `imagePipeline` filters against `ENGINE_MANIFEST` at call time (below) and
  * simply won't offer it as a candidate until then.
- *
- * jxl is on the Phase 1 roadmap (ADR-0007, docs/ROADMAP.md) alongside these
- * codecs, but isn't a registered `FormatId` yet (see ./formats.ts) — its row
- * is deferred until that format is added, presumably alongside the
- * jsquash-jxl engine itself.
  */
 const DECODE_PREFERENCE: Partial<Record<FormatId, readonly string[]>> = {
   jpg: ["jsquash-jpeg", "canvas"],
   png: ["jsquash-png", "canvas"],
   webp: ["jsquash-webp", "canvas"],
   avif: ["jsquash-avif"],
+  jxl: ["jsquash-jxl"],
   bmp: ["canvas"],
   gif: ["canvas"],
   heic: ["heic"],
@@ -40,6 +36,7 @@ const ENCODE_PREFERENCE: Partial<Record<FormatId, readonly string[]>> = {
   png: ["jsquash-png", "canvas"],
   webp: ["jsquash-webp", "canvas"],
   avif: ["jsquash-avif"],
+  jxl: ["jsquash-jxl"],
 };
 
 export type ImageTransform = "resize" | "rotate" | "crop";

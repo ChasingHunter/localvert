@@ -112,6 +112,26 @@ export const FORMATS = {
       ],
     ],
   },
+  jxl: {
+    label: "JPEG XL",
+    ext: ["jxl"],
+    mime: "image/jxl",
+    category: "image",
+    // Two on-disk shapes: a bare codestream (the 0xFF 0x0A marker) or the
+    // ISO BMFF "JXL " container signature, both defined by the JPEG XL spec.
+    magic: [
+      [{ offset: 0, bytes: [0xff, 0x0a] }],
+      [
+        {
+          offset: 0,
+          bytes: [
+            0x00, 0x00, 0x00, 0x0c, 0x4a, 0x58, 0x4c, 0x20, 0x0d, 0x0a, 0x87,
+            0x0a,
+          ],
+        },
+      ],
+    ],
+  },
   heic: {
     label: "HEIC",
     ext: ["heic", "heif"],
