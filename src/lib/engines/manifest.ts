@@ -150,6 +150,17 @@ export const ENGINE_MANIFEST = {
     baseUrl: "/engines/resvg@2.6.2/",
     totalBytes: 2478606,
   },
+  tracer: {
+    id: "tracer",
+    version: "1.0.2",
+    license: "MIT",
+    location: "bundled",
+    needsIsolation: false,
+    heavy: false,
+    assets: [],
+    baseUrl: "",
+    totalBytes: 0,
+  },
   utif: {
     id: "utif",
     version: "4.1.0",

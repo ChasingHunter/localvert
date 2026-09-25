@@ -38,6 +38,7 @@ as its codec preference table.
 | `psd` | psd | — | — | adapter ready |
 | `heic` | heic, heif | — | — | adapter ready |
 | `utif` | tiff | — | — | adapter ready |
+| `tracer` | — | svg | — | adapter ready |
 | `exif` | — | — | `strip`: jpg, png, webp | adapter ready |
 | `libraw` | raw | — | — | adapter ready |
 
@@ -86,6 +87,18 @@ instead imports the lower-level Emscripten glue directly, pointing its
 before the expensive demosaic runs (`RasterImage` is 4 bytes/pixel), and
 anything other than 8-bit RGB output (LibRaw's default) is rejected too.
 
+`tracer` is encode-only, and the odd one out among the encoders: every other
+`encode` step re-encodes pixels into a raster format's bytes (jSquash,
+`canvas`); `tracer` (`@image-tracer-ts/core`) instead traces color-region
+outlines from the decoded `RasterImage` into SVG `<path>`s — a genuinely
+different output shape (vector, not raster), which is why it's the sole
+candidate for `svg` in `ENCODE_PREFERENCE` (`src/lib/registry/
+image-pipeline.ts`) with no jSquash/`canvas` fallback. A raster wider or
+taller than `options.maxSize` (default 1600 px, same knob every `*-to-svg`
+tool exposes) is downscaled first via `OffscreenCanvas` — tracing cost grows
+fast with pixel count, and a full-resolution trace of a large photo would be
+both slow and produce an unusably large SVG.
+
 `exif` doesn't fit the decode/encode/transform shape at all — its one op,
 `strip`, is byte-to-byte (format in, the same format out, no raster
 intermediate): it walks a JPEG/PNG/WebP's marker/chunk structure and drops
@@ -119,6 +132,7 @@ Size, placement, threading. Placement is enforced by `scripts/sync-engines.ts`:
 | `psd` | `@webtoon/psd` | 0.4.0 | MIT | 0 (bundled in JS) | bundled | no |
 | `heic` | `heic-to` | 1.5.2 | **LGPL-3.0** | 0 (bundled in JS) | bundled | no |
 | `utif` | `utif2` | 4.1.0 | MIT | 0 (bundled in JS) | bundled | no |
+| `tracer` | `@image-tracer-ts/core` | 1.0.2 | MIT | 0 (bundled in JS) | bundled | no |
 | `exif` | _(our own code)_ | 1.0.0 | MIT | 0 | bundled | no |
 | `libraw` | `libraw-wasm` | 1.6.0 | **LGPL-2.1/CDDL-1.0 dual** | ~1.4 MiB | static | no |
 

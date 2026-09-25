@@ -12,4 +12,5 @@ export type EngineId =
   | "libraw"
   | "psd"
   | "resvg"
+  | "tracer"
   | "utif";

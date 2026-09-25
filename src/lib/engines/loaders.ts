@@ -21,5 +21,6 @@ export const ENGINE_LOADERS = {
   libraw: () => import("./libraw/adapter"),
   psd: () => import("./psd/adapter"),
   resvg: () => import("./resvg/adapter"),
+  tracer: () => import("./tracer/adapter"),
   utif: () => import("./utif/adapter"),
 } satisfies Record<EngineId, () => Promise<{ default: EngineAdapter }>>;

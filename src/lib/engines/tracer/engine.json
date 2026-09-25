@@ -1,0 +1,9 @@
+{
+  "id": "tracer",
+  "version": "1.0.2",
+  "license": "MIT",
+  "location": "bundled",
+  "needsIsolation": false,
+  "heavy": false,
+  "assets": []
+}

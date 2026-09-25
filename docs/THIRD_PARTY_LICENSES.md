@@ -38,6 +38,7 @@ requires its own ADR and we must publish the modified source.
 | `resvg` (`@resvg/resvg-wasm`) | 2.6.2 | MPL-2.0 (file-level copyleft — see below) | yisibl and resvg-js contributors | https://github.com/yisibl/resvg-js |
 | `psd` (`@webtoon/psd`) | 0.4.0 | MIT | NAVER WEBTOON | https://github.com/webtoon/psd |
 | `utif` (`utif2`) | 4.1.0 | MIT | photopea and UTIF.js contributors | https://github.com/photopea/UTIF.js |
+| `tracer` (`@image-tracer-ts/core`) | 1.0.2 | MIT | Moritz Ringler | https://github.com/mringler/image-tracer-ts |
 
 `jsquash-webp`'s underlying codec is libwebp, Copyright 2010 Google Inc.,
 BSD-3-Clause (`node_modules/@jsquash/webp/codec/LICENSE.codec.md` after
@@ -54,6 +55,14 @@ not the combining application. We ship the unmodified upstream wasm/JS
 build, so this carries no obligation beyond attribution — recorded here
 rather than in the copyleft table below, which is for GPL/LGPL's
 whole-work-level obligations.
+
+`tracer` (`@image-tracer-ts/core`) is a TypeScript reimplementation of
+[imagetracerjs](https://github.com/jankovicsandras/imagetracerjs), which is
+released under the [Unlicense](https://unlicense.org) (public domain
+dedication) — even more permissive than this package's own MIT license. No
+additional obligation beyond what MIT already requires; noted here for
+completeness since the algorithm's origin carries a different license than
+the npm package we actually depend on.
 
 ## Copyleft engines
 

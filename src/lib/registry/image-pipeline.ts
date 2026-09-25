@@ -38,6 +38,9 @@ const ENCODE_PREFERENCE: Partial<Record<FormatId, readonly string[]>> = {
   webp: ["jsquash-webp", "canvas"],
   avif: ["jsquash-avif"],
   jxl: ["jsquash-jxl"],
+  // Tracing (outlines, not pixels) is the only encoder to svg — see
+  // `../engines/tracer/adapter.ts`.
+  svg: ["tracer"],
 };
 
 export type ImageTransform = "resize" | "rotate" | "crop";
