@@ -464,6 +464,22 @@ describe("genEngineManifest", () => {
     ]);
     expect(out).toContain('baseUrl: "",');
   });
+
+  it("quotes a hyphenated engine id as an object key — a bare `jsquash-jpeg:` would parse as subtraction, not a property name", () => {
+    const out = genEngineManifest([
+      {
+        id: "jsquash-jpeg",
+        version: "1.0.0",
+        license: "MIT",
+        location: "native",
+        needsIsolation: false,
+        heavy: false,
+        assets: [],
+      },
+    ]);
+    expect(out).toContain('"jsquash-jpeg": {');
+    expect(out).not.toMatch(/[^"]jsquash-jpeg:\s*\{/);
+  });
 });
 
 describe("genEngineLoaders", () => {
@@ -478,6 +494,23 @@ describe("genEngineLoaders", () => {
     expect(out).toContain('bar: () => import("./bar/adapter"),');
     expect(out).toContain('baz: () => import("./baz/adapter"),');
     expect(out).toContain('foo: () => import("./foo/adapter"),');
+  });
+
+  it("quotes a hyphenated engine id as an object key", () => {
+    const out = genEngineLoaders([
+      {
+        id: "jsquash-jpeg",
+        version: "1.0.0",
+        license: "MIT",
+        location: "native",
+        needsIsolation: false,
+        heavy: false,
+        assets: [],
+      },
+    ]);
+    expect(out).toContain(
+      '"jsquash-jpeg": () => import("./jsquash-jpeg/adapter"),',
+    );
   });
 });
 

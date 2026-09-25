@@ -402,6 +402,21 @@ function sortedById<T extends { id: string }>(metas: readonly T[]): T[] {
   return [...metas].sort((a, b) => a.id.localeCompare(b.id));
 }
 
+const VALID_IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
+/**
+ * An engine id as an object property key: bare when it's a valid JS
+ * identifier (matches what `pnpm gen`'s own `biome check --write` pass would
+ * settle on anyway, under its default `quoteProperties: "asNeeded"`),
+ * quoted otherwise. Most engine ids are hyphenated (`jsquash-jpeg`), which
+ * is not a valid identifier — `${m.id}: {` would parse as a subtraction
+ * expression, not a property name, so this can't just interpolate `m.id`
+ * unquoted the way `genToolsIndex`'s import identifiers can.
+ */
+function propKey(id: string): string {
+  return VALID_IDENTIFIER_RE.test(id) ? id : JSON.stringify(id);
+}
+
 export function genEngineIds(metas: readonly EngineMetaLike[]): string {
   const ids = metas.map((m) => m.id).sort();
   const union =
@@ -417,7 +432,7 @@ export function genEngineManifest(metas: readonly EngineMetaLike[]): string {
       .map((a) => `{ path: "${a.path}", bytes: ${a.bytes} }`)
       .join(", ");
     return [
-      `  ${m.id}: {`,
+      `  ${propKey(m.id)}: {`,
       `    id: "${m.id}",`,
       `    version: "${m.version}",`,
       `    license: "${m.license}",`,
@@ -446,7 +461,7 @@ export function genEngineManifest(metas: readonly EngineMetaLike[]): string {
 
 export function genEngineLoaders(metas: readonly EngineMetaLike[]): string {
   const entries = sortedById(metas).map(
-    (m) => `  ${m.id}: () => import("./${m.id}/adapter"),`,
+    (m) => `  ${propKey(m.id)}: () => import("./${m.id}/adapter"),`,
   );
   const body = entries.length === 0 ? "{}" : `{\n${entries.join("\n")}\n}`;
 
