@@ -26,12 +26,16 @@ export const jpgOptions = z.object({
     .number()
     .min(0.1)
     .max(1)
-    .meta({ label: "Quality", control: "slider", step: 0.01 }),
-  background: z.string().meta({
-    label: "Background for transparent areas",
-    control: "text",
-    help: "JPG has no transparency — this color fills any transparent pixels before encoding.",
-  }),
+    .meta({ label: "Quality", control: "slider", step: 0.01 })
+    .default(0.85),
+  background: z
+    .string()
+    .meta({
+      label: "Background for transparent areas",
+      control: "text",
+      help: "JPG has no transparency — this color fills any transparent pixels before encoding.",
+    })
+    .default("#ffffff"),
 });
 export const jpgDefaults: z.infer<typeof jpgOptions> = {
   quality: 0.85,
