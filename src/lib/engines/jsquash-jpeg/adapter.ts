@@ -79,6 +79,60 @@ function clamp01(n: number): number {
 }
 
 /**
+ * Parses a CSS hex color (`#rgb` or `#rrggbb`) to 0..255 RGB channels,
+ * defaulting to white for anything else — same default as the canvas
+ * adapter's background fill (`../canvas/adapter.ts`).
+ */
+function parseHexColor(color: unknown): readonly [number, number, number] {
+  const match =
+    typeof color === "string"
+      ? color.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
+      : null;
+  if (!match) return [255, 255, 255];
+
+  const digits = match[1];
+  if (digits.length === 3) {
+    const [r, g, b] = digits;
+    return [
+      Number.parseInt(r + r, 16),
+      Number.parseInt(g + g, 16),
+      Number.parseInt(b + b, 16),
+    ];
+  }
+  return [
+    Number.parseInt(digits.slice(0, 2), 16),
+    Number.parseInt(digits.slice(2, 4), 16),
+    Number.parseInt(digits.slice(4, 6), 16),
+  ];
+}
+
+/**
+ * jpg has no alpha channel — mozjpeg's encoder ignores `data[3]` entirely, so
+ * an un-composited transparent pixel encodes with whatever garbage/black is
+ * sitting in its RGB channels instead of blending to a background the way
+ * the canvas adapter's jpg encode does (`../canvas/adapter.ts`'s `runEncode`,
+ * which fills the canvas with `options.background` before compositing).
+ * Returns a new `RasterImage` — the source raster may still be read by other
+ * steps, so this doesn't mutate it in place.
+ */
+function compositeOverBackground(
+  image: RasterImage,
+  background: unknown,
+): RasterImage {
+  const [bgR, bgG, bgB] = parseHexColor(background);
+  const src = image.data;
+  const out = new Uint8ClampedArray(src.length);
+  for (let i = 0; i < src.length; i += 4) {
+    const alpha = src[i + 3] / 255;
+    out[i] = src[i] * alpha + bgR * (1 - alpha);
+    out[i + 1] = src[i + 1] * alpha + bgG * (1 - alpha);
+    out[i + 2] = src[i + 2] * alpha + bgB * (1 - alpha);
+    out[i + 3] = 255;
+  }
+  return { width: image.width, height: image.height, data: out };
+}
+
+/**
  * decode: jpg bytes -> `RasterImage`. `ensureDecodeReady` compiles and
  * initialises the mozjpeg decoder wasm exactly once per `load()`-ed
  * instance — see `load` below.
@@ -145,7 +199,10 @@ async function runEncode(
     );
   }
 
-  const image = inputToRaster(input);
+  const image = compositeOverBackground(
+    inputToRaster(input),
+    options.background,
+  );
   await ensureEncodeReady();
   signal.throwIfAborted();
   onProgress?.(0.3);

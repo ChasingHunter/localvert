@@ -188,6 +188,41 @@ describe("jsquash-jpeg adapter", () => {
       expect(low.bytes.byteLength).toBeLessThan(high.bytes.byteLength);
     });
 
+    it("composites a transparent pixel over the background color instead of encoding it black", async () => {
+      const instance = await adapter.load({
+        baseUrl: baseUrl(),
+        capabilities: {} as never,
+      });
+      // A single, fully transparent RGBA pixel whose RGB channels are
+      // black — if the encoder ignored options.background it would stay
+      // black instead of blending to white.
+      const data = new Uint8ClampedArray([0, 0, 0, 0]);
+
+      const encoded = await instance.run(
+        baseTask({
+          op: "encode",
+          input: { kind: "raster", image: { width: 1, height: 1, data } },
+          inputFormat: "raster",
+          outputFormat: "jpg",
+          options: { background: "#ffffff" },
+        }),
+      );
+      if (encoded.kind !== "bytes") throw new Error("expected a bytes result");
+
+      const outBitmap = await createImageBitmap(
+        new Blob([encoded.bytes], { type: encoded.mime }),
+      );
+      const canvas = new OffscreenCanvas(1, 1);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("no 2d context in test setup");
+      ctx.drawImage(outBitmap, 0, 0);
+      outBitmap.close();
+      const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+      expect(r).toBeGreaterThan(240);
+      expect(g).toBeGreaterThan(240);
+      expect(b).toBeGreaterThan(240);
+    });
+
     it("throws EngineError('decode-failed') on garbage bytes", async () => {
       const instance = await adapter.load({
         baseUrl: baseUrl(),
