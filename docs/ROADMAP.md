@@ -108,6 +108,8 @@ All `uses:` pinned to full commit SHAs. Top-level `permissions: {}`.
 Goal: the image matrix people actually search for, fast and batched.
 
 - [x] Raster pipeline foundation: decode → transform → encode in one worker (ADR-0007) (2026-09-25)
+- [x] Image engines: jsquash jpeg/png/webp/avif/jxl (single-threaded — MT
+      variants still open), heic, resvg, utif, psd (2026-09-25)
 - [ ] Format matrix: jpg · png · webp · avif · jxl (jSquash, MT when isolated)
 - [ ] heic/heif → jpg/png (heic-to; LGPL — record in THIRD_PARTY_LICENSES)
 - [ ] svg → png/jpg (resvg-wasm) and raster → svg trace (later)
