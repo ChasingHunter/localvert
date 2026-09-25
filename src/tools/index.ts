@@ -18,6 +18,8 @@ import pngToJxl from "@/tools/image/png-to-jxl";
 import pngToWebp from "@/tools/image/png-to-webp";
 import psdToJpg from "@/tools/image/psd-to-jpg";
 import psdToPng from "@/tools/image/psd-to-png";
+import rawToJpg from "@/tools/image/raw-to-jpg";
+import rawToPng from "@/tools/image/raw-to-png";
 import resizeImageJpg from "@/tools/image/resize-image-jpg";
 import resizeImagePng from "@/tools/image/resize-image-png";
 import resizeImageWebp from "@/tools/image/resize-image-webp";
@@ -51,6 +53,8 @@ export const TOOLS: readonly ToolDefinition[] = [
   pngToWebp,
   psdToJpg,
   psdToPng,
+  rawToJpg,
+  rawToPng,
   resizeImageJpg,
   resizeImagePng,
   resizeImageWebp,
