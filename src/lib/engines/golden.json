@@ -1,0 +1,10 @@
+{
+  "canvas:png:lossless": null,
+  "canvas:jpg:0.9": null,
+  "canvas:webp:0.85": null,
+  "jsquash-jpeg:jpg:0.9": null,
+  "jsquash-png:png:lossless": null,
+  "jsquash-webp:webp:0.85": null,
+  "jsquash-avif:avif:0.6": null,
+  "jsquash-jxl:jxl:0.85": null
+}
