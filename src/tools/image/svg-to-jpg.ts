@@ -1,14 +1,16 @@
 import { z } from "zod";
 import { defineTool, imagePipeline } from "@/lib/registry";
+import { jpgDefaults, jpgOptions } from "../_shared-options";
 
 /**
  * Pipeline is `imagePipeline("svg", "jpg")` — decode (rasterize) via resvg,
  * encode via jsquash-jpeg/canvas (ADR-0007).
  *
- * `width` matches the resvg adapter's own option key (`options.width`,
- * `../lib/engines/resvg/adapter.ts`'s `buildResvg`) — see `svg-to-png.ts`
- * for the same option's full explanation. `quality`/`background` mirror the
- * canvas and jsquash-jpeg adapters' own option keys; jpg has no
+ * `jpgOptions` (`quality`/`background`) is shared with every other
+ * `*-to-jpg` tool (see `src/tools/_shared-options.ts`), extended here with
+ * `width`, which matches the resvg adapter's own option key
+ * (`options.width`, `../lib/engines/resvg/adapter.ts`'s `buildResvg`) — see
+ * `svg-to-png.ts` for that option's full explanation. jpg has no
  * transparency, so `background` is what the rasterized SVG's alpha
  * composites onto before encoding. resvg has no system fonts to fall back
  * on, so any text in the SVG needs its font embedded in the file to render.
@@ -26,17 +28,7 @@ export default defineTool({
   accepts: ["svg"],
   produces: "jpg",
 
-  options: z.object({
-    quality: z
-      .number()
-      .min(0.1)
-      .max(1)
-      .meta({ label: "Quality", control: "slider" }),
-    background: z.string().meta({
-      label: "Background color",
-      control: "text",
-      help: "Fills transparent areas — JPG has no transparency of its own.",
-    }),
+  options: jpgOptions.extend({
     width: z
       .number()
       .min(1)
@@ -49,7 +41,7 @@ export default defineTool({
       })
       .optional(),
   }),
-  defaults: { quality: 0.85, background: "#ffffff" },
+  defaults: jpgDefaults,
 
   pipeline: imagePipeline("svg", "jpg"),
 

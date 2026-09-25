@@ -1,5 +1,5 @@
-import { z } from "zod";
 import { defineTool, imagePipeline } from "@/lib/registry";
+import { jpgDefaults, jpgOptions } from "../_shared-options";
 
 /**
  * Pipeline is `imagePipeline("tiff", "jpg")` — decode via utif2, encode via
@@ -7,10 +7,10 @@ import { defineTool, imagePipeline } from "@/lib/registry";
  * *first* page only (`../lib/engines/utif/adapter.ts`'s `runDecode`);
  * later pages are never read.
  *
- * `quality`/`background` mirror the canvas and jsquash-jpeg adapters' own
- * option keys (`options.quality`, `options.background`) — jpg has no
- * transparency, so `background` is what a decoded page's alpha (if any)
- * composites onto before encoding.
+ * `jpgOptions`/`jpgDefaults` are shared with every other `*-to-jpg` tool
+ * (see `src/tools/_shared-options.ts`) — jpg has no transparency, so
+ * `background` is what a decoded page's alpha (if any) composites onto
+ * before encoding.
  */
 export default defineTool({
   slug: "tiff-to-jpg",
@@ -25,19 +25,8 @@ export default defineTool({
   accepts: ["tiff"],
   produces: "jpg",
 
-  options: z.object({
-    quality: z
-      .number()
-      .min(0.1)
-      .max(1)
-      .meta({ label: "Quality", control: "slider" }),
-    background: z.string().meta({
-      label: "Background color",
-      control: "text",
-      help: "Fills transparent areas — JPG has no transparency of its own.",
-    }),
-  }),
-  defaults: { quality: 0.85, background: "#ffffff" },
+  options: jpgOptions,
+  defaults: jpgDefaults,
 
   pipeline: imagePipeline("tiff", "jpg"),
 

@@ -1,11 +1,9 @@
-import { z } from "zod";
 import { defineTool, imagePipeline } from "@/lib/registry";
+import { jpgDefaults, jpgOptions } from "../_shared-options";
 
 /**
- * Same `quality`/`background` option shape as `webp-to-jpg` — see that
- * file's doc comment for why `background` is declared here even though the
- * pipeline's preferred jpg-encode candidate (`jsquash-jpeg`) doesn't
- * actually read it; only the `canvas` fallback candidate does.
+ * Same `jpgOptions`/`jpgDefaults` as `webp-to-jpg` — shared with every other
+ * `*-to-jpg` tool (see `src/tools/_shared-options.ts`).
  */
 export default defineTool({
   slug: "avif-to-jpg",
@@ -18,18 +16,8 @@ export default defineTool({
   accepts: ["avif"],
   produces: "jpg",
 
-  options: z.object({
-    quality: z
-      .number()
-      .min(0.1)
-      .max(1)
-      .meta({ label: "Quality", control: "slider" }),
-    background: z.string().meta({
-      label: "Background for transparent areas",
-      control: "text",
-    }),
-  }),
-  defaults: { quality: 0.85, background: "#ffffff" },
+  options: jpgOptions,
+  defaults: jpgDefaults,
 
   pipeline: imagePipeline("avif", "jpg"),
 
