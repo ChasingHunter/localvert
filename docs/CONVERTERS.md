@@ -44,6 +44,8 @@ options, defaults) only, not an actual decode through `heic-to`.
 | `tiff-to-jpg` | TIFF | JPEG | utif → jsquash-jpeg | Yes | First page only; strips EXIF (incl. GPS) |
 | `tiff-to-png` | TIFF | PNG | utif → jsquash-png | Yes | First page only; strips EXIF (incl. GPS) |
 | `strip-exif` | JPEG/PNG/WebP | same format | exif | Yes | Byte-level metadata strip, no re-encode; drops GPS/EXIF/XMP/IPTC, keeps ICC colour profile; optionally rebuilds a minimal orientation-only EXIF |
+| `raw-to-jpg` | Camera RAW (CR2, NEF, ARW, DNG, RAF, ORF, RW2, …) | JPEG | libraw → jsquash-jpeg | Yes | Camera white balance, sRGB, 8-bit; optional half-size decode; strips EXIF (incl. GPS) |
+| `raw-to-png` | Camera RAW (CR2, NEF, ARW, DNG, RAF, ORF, RW2, …) | PNG | libraw → jsquash-png | Yes | Camera white balance, sRGB, 8-bit; optional half-size decode; strips EXIF (incl. GPS) |
 
 ## Image operations
 
