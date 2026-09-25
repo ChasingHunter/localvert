@@ -15,6 +15,13 @@ import { defineConfig, devices } from "@playwright/test";
  * There are still no specs (Phase 0.5 adds the first) and `pnpm e2e` is not
  * part of `pnpm verify`.
  */
+/**
+ * `E2E_PORT` lets parallel agents/worktrees each run their own `wrangler dev`
+ * (default 8788). A shared port plus `reuseExistingServer` would silently
+ * test another checkout's build.
+ */
+const port = Number(process.env.E2E_PORT ?? 8788);
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -24,16 +31,15 @@ export default defineConfig({
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
 
   use: {
-    baseURL: "http://localhost:8788",
+    baseURL: `http://localhost:${port}`,
     trace: "on-first-retry",
   },
 
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 
   webServer: {
-    command:
-      "pnpm exec wrangler dev --config infra/wrangler.jsonc --port 8788 --local",
-    url: "http://localhost:8788",
+    command: `pnpm exec wrangler dev --config infra/wrangler.jsonc --port ${port} --local`,
+    url: `http://localhost:${port}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
