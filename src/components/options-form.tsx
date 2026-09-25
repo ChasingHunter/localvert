@@ -45,8 +45,12 @@ export function OptionsForm<S extends z.ZodObject>({
   // A "crop" field never gets a generic row here — `ToolRunner` renders a
   // dedicated `CropEditor` for it instead (see crop-editor.tsx), and no
   // sensible x/y/width/height control exists without the dropped image's
-  // own dimensions, which this form never has.
-  const fields = describeFields(schema).filter((f) => f.control !== "crop");
+  // own dimensions, which this form never has. A "hidden" field is an
+  // engine-only parameter with no UI at all (see its doc comment in
+  // `src/lib/options/fields.ts`).
+  const fields = describeFields(schema).filter(
+    (f) => f.control !== "crop" && f.control !== "hidden",
+  );
   const result = validateOptions(schema, value);
   const errors = result.ok ? {} : result.errors;
 
@@ -256,10 +260,23 @@ function FieldControl({
           aria-describedby={describedBy}
         />
       );
+    case "password":
+      return (
+        <Input
+          id={id}
+          type="password"
+          value={typeof value === "string" ? value : ""}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          aria-describedby={describedBy}
+        />
+      );
     case "crop":
-      // Unreachable in practice — `OptionsForm` filters "crop" fields out
-      // above — kept only so this switch stays exhaustive over every
-      // `FieldSpec` control, matching every other case here.
+    case "hidden":
+      // Unreachable in practice — `OptionsForm` filters both "crop" and
+      // "hidden" fields out above — kept only so this switch stays
+      // exhaustive over every `FieldSpec` control, matching every other
+      // case here.
       return null;
   }
 }

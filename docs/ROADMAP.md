@@ -124,11 +124,14 @@ Goal: the image matrix people actually search for, fast and batched.
 
 ## Phase 2 — PDF
 
-- [x] merge, split (@cantoo/pdf-lib; ADR-0008 many-to-one/one-to-many tools) —
-      rotate, reorder, delete pages still pending (2026-09-25)
-- [ ] images ↔ PDF both directions
+- [x] merge, split, rotate, delete/extract pages (@cantoo/pdf-lib; ADR-0008
+      many-to-one/one-to-many tools) — reorder still pending (2026-09-26)
+- [x] images → PDF (`images-to-pdf`, @cantoo/pdf-lib, many-to-one) — PDF →
+      images is the "Render to image" item below (2026-09-26)
 - [ ] Compress: ≥40% reduction on an image-heavy fixture
-- [ ] Protect / unlock (password), flatten forms
+- [x] Protect / unlock (password, AES-256 via @cantoo/pdf-lib — both
+      directions genuinely supported, not just protect) — flatten forms
+      still pending (2026-09-26)
 - [ ] Render to image (pdfjs-dist, self-hosted worker + cmaps)
 - [ ] OCR (tesseract.js; self-host traineddata — the default CDN fetch
       violates our CSP, which is the point)

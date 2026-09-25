@@ -12,7 +12,15 @@ import type { FormatId } from "./formats";
 declare module "zod/v4/core" {
   interface GlobalMeta {
     label?: string;
-    control?: "switch" | "select" | "slider" | "number" | "text" | "crop";
+    control?:
+      | "switch"
+      | "select"
+      | "slider"
+      | "number"
+      | "text"
+      | "password"
+      | "crop"
+      | "hidden";
     unit?: string;
     help?: string;
     /**
@@ -126,7 +134,15 @@ export interface PipelineStep {
 /** Drives the generated options form — no `label`/`control`, no form field. */
 export interface OptionMeta {
   label: string;
-  control: "switch" | "select" | "slider" | "number" | "text" | "crop";
+  control:
+    | "switch"
+    | "select"
+    | "slider"
+    | "number"
+    | "text"
+    | "password"
+    | "crop"
+    | "hidden";
   unit?: string;
   help?: string;
   /** See the `showWhen` doc comment on the `GlobalMeta` augmentation above. */

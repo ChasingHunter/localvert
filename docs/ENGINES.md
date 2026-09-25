@@ -41,7 +41,7 @@ as its codec preference table.
 | `tracer` | — | svg | — | adapter ready |
 | `exif` | — | — | `strip`: jpg, png, webp | adapter ready |
 | `libraw` | raw | — | — | adapter ready |
-| `pdf-lib` | — | — | `merge`, `split`: pdf | adapter ready |
+| `pdf-lib` | jpg, png (`merge` only) | — | `merge`, `split`, `rotate`, `extract`, `protect`, `unlock`: pdf | adapter ready |
 
 `canvas` also still runs the legacy single-step `transcode` op directly
 (bytes of one format straight to bytes of another) for a tool that predates
@@ -109,15 +109,26 @@ unre-encoded. See `src/lib/engines/exif/strip.ts`.
 
 `pdf-lib` (ADR-0008) is another byte-to-byte engine, not a raster pipeline:
 `merge` copies every page of every input, in the user's own order, into one
-new document (`EngineTask.inputs`, a many-to-one step); `split` copies pages
-out of one input into N new documents (`EngineResult`'s `"files"` kind, a
-one-to-many step) — either every page as its own file (`mode: "each"`), or
-one file per `;`-separated segment of `options.ranges`, each segment itself
-parsed by the shared `parsePageRange` (`src/lib/registry/page-range.ts`). It
-is pure JS (no wasm), so — like `psd`/`tracer`/`utif`/`exif` — it ships
-`location: "bundled"`, no separate fetched assets. A password-protected
-input fails with `EngineError("unsupported", ...)` rather than being
-silently skipped; unlocking one is a separate tool, not part of merge/split.
+new document (`EngineTask.inputs`, a many-to-one step) — or, given jpg/png
+inputs instead of pdf, embeds each image as its own new page
+(`images-to-pdf`), sniffing every input's own bytes rather than trusting the
+job's single aggregate `inputFormat`. `split` copies pages out of one input
+into N new documents (`EngineResult`'s `"files"` kind, a one-to-many step) —
+either every page as its own file (`mode: "each"`), or one file per
+`;`-separated segment of `options.ranges`, each segment itself parsed by the
+shared `parsePageRange` (`src/lib/registry/page-range.ts`). `rotate` adds
+`options.angle` to a page's existing rotation rather than replacing it.
+`extract` is one implementation behind two tools, `options.mode: "keep"`
+(extract-pdf-pages) or `"remove"` (delete-pdf-pages). `protect`/`unlock` add
+and remove AES-256 password encryption; a wrong `unlock` password is
+`EngineError("decode-failed", "Wrong password")`, and `unlock` has to clean
+up an orphaned encryption-dictionary object `@cantoo/pdf-lib` 2.11.1 itself
+leaves behind after a password-based load (see `stripOrphanedEncryptDict`'s
+doc comment in the adapter). It is pure JS (no wasm), so — like
+`psd`/`tracer`/`utif`/`exif` — it ships `location: "bundled"`, no separate
+fetched assets. A password-protected input to merge/split/rotate/extract
+fails with `EngineError("unsupported", ...)` rather than being silently
+skipped; unlock it first.
 
 ---
 

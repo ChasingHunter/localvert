@@ -4,9 +4,11 @@ import { test as base, expect } from "@playwright/test";
 
 /**
  * End to end against a real built `out/` — see `e2e/jpg-to-png.spec.ts`'s
- * doc comment for why. Covers ADR-0008's first two multi-file tools:
- * `merge-pdf` (arity many-to-one, `src/tools/pdf/merge-pdf.ts`) and
- * `split-pdf` (arity one-to-many, `src/tools/pdf/split-pdf.ts`).
+ * doc comment for why. Covers every `src/tools/pdf/*.ts` tool on the
+ * `pdf-lib` engine: ADR-0008's multi-file tools `merge-pdf` (many-to-one),
+ * `split-pdf` (one-to-many) and `images-to-pdf` (many-to-one), plus the
+ * one-to-one tools `rotate-pdf`, `delete-pdf-pages`, `extract-pdf-pages` (via
+ * `delete-pdf-pages`'s shared `extract` op), `protect-pdf` and `unlock-pdf`.
  *
  * `e2e/fixtures/a.pdf` (2 pages, 150x150) and `b.pdf` (1 page, 250x250) —
  * generated once by a throwaway `@cantoo/pdf-lib` script, committed as
@@ -14,6 +16,8 @@ import { test as base, expect } from "@playwright/test";
  * split output are easy to assert on exactly: pdf-lib itself has no
  * text-extraction API to check page *content* by, but `page.getSize()`
  * distinguishes an "a" page from a "b" page just as reliably.
+ * `photo-small.jpg`/`photo-medium.jpg` (also in `e2e/fixtures/`, shared with
+ * the image-matrix specs) stand in for real jpgs in the `images-to-pdf` test.
  */
 
 function fixturePath(name: string): string {
@@ -168,5 +172,134 @@ test.describe("split-pdf", () => {
       const bytes = readFileSync(path);
       expect(await pageSizes(bytes)).toEqual([[150, 150]]);
     }
+  });
+});
+
+test.describe("rotate-pdf", () => {
+  test("rotates page 1 by 90 degrees, leaving page 2 unrotated", async ({
+    page,
+  }) => {
+    await page.goto("/tools/rotate-pdf");
+
+    // "angle" defaults to 90, so only "pages" needs setting — options are
+    // read at drop time, so this has to happen before the file is dropped.
+    await page.getByLabel("Pages").fill("1");
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles(fixturePath("a.pdf"));
+
+    const downloadLink = page.getByRole("link", { name: "Download" });
+    await expect(downloadLink).toBeVisible({ timeout: 15_000 });
+
+    const downloadPromise = page.waitForEvent("download");
+    await downloadLink.click();
+    const download = await downloadPromise;
+    const path = await download.path();
+    if (!path) throw new Error("download produced no local path");
+    const bytes = readFileSync(path);
+
+    const doc = await PDFDocument.load(bytes);
+    expect(doc.getPages().map((p) => p.getRotation().angle)).toEqual([90, 0]);
+  });
+});
+
+test.describe("delete-pdf-pages", () => {
+  test("deletes page 2 of a 2-page PDF, leaving 1 page", async ({ page }) => {
+    await page.goto("/tools/delete-pdf-pages");
+
+    await page.getByLabel("Pages to delete").fill("2");
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles(fixturePath("a.pdf"));
+
+    const downloadLink = page.getByRole("link", { name: "Download" });
+    await expect(downloadLink).toBeVisible({ timeout: 15_000 });
+
+    const downloadPromise = page.waitForEvent("download");
+    await downloadLink.click();
+    const download = await downloadPromise;
+    const path = await download.path();
+    if (!path) throw new Error("download produced no local path");
+    const bytes = readFileSync(path);
+
+    expect(await pageSizes(bytes)).toEqual([[150, 150]]);
+  });
+});
+
+test.describe("images-to-pdf", () => {
+  test("combines two jpg fixtures into a two-page PDF", async ({ page }) => {
+    await page.goto("/tools/images-to-pdf");
+
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles([
+        fixturePath("photo-small.jpg"),
+        fixturePath("photo-medium.jpg"),
+      ]);
+
+    const createButton = page.getByRole("button", { name: "Create PDF" });
+    await expect(createButton).toBeEnabled();
+    await createButton.click();
+
+    const downloadLink = page.getByRole("link", { name: "Download" });
+    await expect(downloadLink).toBeVisible({ timeout: 15_000 });
+
+    const downloadPromise = page.waitForEvent("download");
+    await downloadLink.click();
+    const download = await downloadPromise;
+    const path = await download.path();
+    if (!path) throw new Error("download produced no local path");
+    const bytes = readFileSync(path);
+
+    const doc = await PDFDocument.load(bytes);
+    expect(doc.getPageCount()).toBe(2);
+  });
+});
+
+test.describe("protect-pdf / unlock-pdf", () => {
+  test("protects a PDF, then unlocks it back to a plain, readable PDF", async ({
+    page,
+  }) => {
+    await page.goto("/tools/protect-pdf");
+
+    await page.getByLabel("Password").fill("e2e-secret");
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles(fixturePath("a.pdf"));
+
+    const protectedLink = page.getByRole("link", { name: "Download" });
+    await expect(protectedLink).toBeVisible({ timeout: 15_000 });
+    const protectedDownloadPromise = page.waitForEvent("download");
+    await protectedLink.click();
+    const protectedDownload = await protectedDownloadPromise;
+    const protectedPath = await protectedDownload.path();
+    if (!protectedPath) throw new Error("download produced no local path");
+    const protectedBytes = readFileSync(protectedPath);
+
+    // Confirm it's genuinely encrypted before trying to unlock it.
+    await expect(PDFDocument.load(protectedBytes)).rejects.toThrow();
+
+    await page.goto("/tools/unlock-pdf");
+    await page.getByLabel("Password").fill("e2e-secret");
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "protected.pdf",
+      mimeType: "application/pdf",
+      buffer: protectedBytes,
+    });
+
+    const unlockedLink = page.getByRole("link", { name: "Download" });
+    await expect(unlockedLink).toBeVisible({ timeout: 15_000 });
+    const unlockedDownloadPromise = page.waitForEvent("download");
+    await unlockedLink.click();
+    const unlockedDownload = await unlockedDownloadPromise;
+    const unlockedPath = await unlockedDownload.path();
+    if (!unlockedPath) throw new Error("download produced no local path");
+    const unlockedBytes = readFileSync(unlockedPath);
+
+    // No password needed this time, and the pages survived the round trip.
+    expect(await pageSizes(unlockedBytes)).toEqual([
+      [150, 150],
+      [150, 150],
+    ]);
   });
 });

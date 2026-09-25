@@ -39,8 +39,14 @@ import tiffToPng from "@/tools/image/tiff-to-png";
 import webpToJpg from "@/tools/image/webp-to-jpg";
 import webpToPng from "@/tools/image/webp-to-png";
 import webpToSvg from "@/tools/image/webp-to-svg";
+import deletePdfPages from "@/tools/pdf/delete-pdf-pages";
+import extractPdfPages from "@/tools/pdf/extract-pdf-pages";
+import imagesToPdf from "@/tools/pdf/images-to-pdf";
 import mergePdf from "@/tools/pdf/merge-pdf";
+import protectPdf from "@/tools/pdf/protect-pdf";
+import rotatePdf from "@/tools/pdf/rotate-pdf";
 import splitPdf from "@/tools/pdf/split-pdf";
+import unlockPdf from "@/tools/pdf/unlock-pdf";
 
 export const TOOLS: readonly ToolDefinition[] = [
   avifToJpg,
@@ -82,8 +88,14 @@ export const TOOLS: readonly ToolDefinition[] = [
   webpToJpg,
   webpToPng,
   webpToSvg,
+  deletePdfPages,
+  extractPdfPages,
+  imagesToPdf,
   mergePdf,
+  protectPdf,
+  rotatePdf,
   splitPdf,
+  unlockPdf,
 ];
 
 export const TOOLS_BY_SLUG: ReadonlyMap<string, ToolDefinition> = new Map(

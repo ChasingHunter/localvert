@@ -20,7 +20,9 @@ export type FieldSpec = {
   | { control: "select"; options: readonly { value: string; label: string }[] }
   | { control: "slider" | "number"; min: number; max: number; step: number }
   | { control: "text" }
+  | { control: "password" }
   | { control: "crop" }
+  | { control: "hidden" }
 );
 
 type CoreField = z.core.$ZodType;
@@ -130,6 +132,18 @@ function describeField(key: string, rawField: CoreField): FieldSpec {
       }
       return { ...base, control };
     }
+    case "password": {
+      // Same underlying field shape as "text" — a password is a string —
+      // rendered as `<input type="password">` instead so it isn't echoed to
+      // the screen (see `OptionsForm`'s `FieldControl`).
+      if (type !== "string") {
+        fieldError(
+          key,
+          `control "password" needs a string field, got "${type}"`,
+        );
+      }
+      return { ...base, control };
+    }
     case "crop": {
       // The crop rectangle itself — {x,y,width,height} in source pixels
       // (`src/tools/_shared-options.ts`'s `cropField`). No min/max/options to
@@ -140,6 +154,18 @@ function describeField(key: string, rawField: CoreField): FieldSpec {
       if (type !== "object") {
         fieldError(key, `control "crop" needs an object field, got "${type}"`);
       }
+      return { ...base, control };
+    }
+    case "hidden": {
+      // An engine-only parameter with a single fixed value per tool — e.g.
+      // `delete-pdf-pages`/`extract-pdf-pages` both drive the pdf-lib
+      // engine's one `extract` op, distinguished only by a `mode` value
+      // that's baked into each tool's own `defaults`, never user-chosen. No
+      // widget shape to validate the field against (unlike every other
+      // control here, this one isn't UI-driven) — carried through the
+      // options schema so it still reaches `EngineTask.options` like any
+      // other field, but `OptionsForm` filters it out of the rendered form,
+      // the same way it already filters "crop".
       return { ...base, control };
     }
   }

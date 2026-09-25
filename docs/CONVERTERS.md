@@ -77,14 +77,20 @@ Crop is out of scope for this slice — it needs an interactive crop UI.
 
 ## PDF
 
-`merge-pdf` and `split-pdf` are ADR-0008 multi-file tools, not one-to-one
-conversions — **Batch** (repeat per dropped file) doesn't apply to either, so
-that column reads their own **Arity** instead.
+`merge-pdf`, `split-pdf` and `images-to-pdf` are ADR-0008 multi-file tools,
+not one-to-one conversions — **Batch** (repeat per dropped file) doesn't
+apply to any of them, so that column reads their own **Arity** instead.
 
 | Slug | From | To | Engine | Arity | Notes |
 |---|---|---|---|---|---|
 | `merge-pdf` | PDF | PDF | pdf-lib | many-to-one | Combines every dropped PDF into one, in the order arranged via drag/keyboard reorder |
 | `split-pdf` | PDF | PDF | pdf-lib | one-to-many | One file per page, or one per `;`-separated page range |
+| `rotate-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Rotates selected pages 90/180/270°, added to any existing rotation |
+| `delete-pdf-pages` | PDF | PDF | pdf-lib | one-to-one (batch) | Removes the given pages, keeps the rest in order |
+| `extract-pdf-pages` | PDF | PDF | pdf-lib | one-to-one (batch) | Keeps only the given pages, in the order given |
+| `images-to-pdf` | JPEG/PNG | PDF | pdf-lib | many-to-one | One image per page, in the order arranged via drag/keyboard reorder; page size fit/A4/letter, orientation, margin |
+| `protect-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Adds a password, AES-256; printing/copying permissions |
+| `unlock-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Removes a password you already have |
 
 ## Video
 

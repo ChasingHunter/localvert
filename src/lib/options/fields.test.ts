@@ -133,6 +133,33 @@ describe("describeFields", () => {
     ]);
   });
 
+  it("describes a password control from a string field", () => {
+    const schema = z.object({
+      password: z.string().meta({ label: "Password", control: "password" }),
+    });
+    expect(describeFields(schema)).toEqual([
+      { key: "password", label: "Password", control: "password" },
+    ]);
+  });
+
+  it("throws when control is password but the field is not a string", () => {
+    const schema = z.object({
+      password: z.number().meta({ label: "Password", control: "password" }),
+    });
+    expect(() => describeFields(schema)).toThrow(
+      /^\[options\] field password:/,
+    );
+  });
+
+  it("describes a hidden control from any field shape, no type check", () => {
+    const schema = z.object({
+      mode: z.enum(["remove"]).meta({ label: "Mode", control: "hidden" }),
+    });
+    expect(describeFields(schema)).toEqual([
+      { key: "mode", label: "Mode", control: "hidden" },
+    ]);
+  });
+
   it("describes a crop control from an object field, optional and all", () => {
     const schema = z.object({
       crop: z
