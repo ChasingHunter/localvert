@@ -125,4 +125,15 @@ export const ENGINE_MANIFEST = {
     baseUrl: "/engines/resvg@2.6.2/",
     totalBytes: 2478606,
   },
+  utif: {
+    id: "utif",
+    version: "4.1.0",
+    license: "MIT",
+    location: "bundled",
+    needsIsolation: false,
+    heavy: false,
+    assets: [],
+    baseUrl: "",
+    totalBytes: 0,
+  },
 } as const satisfies Record<string, EngineManifestEntry>;

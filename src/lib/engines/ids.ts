@@ -9,4 +9,5 @@ export type EngineId =
   | "jsquash-resize"
   | "jsquash-webp"
   | "psd"
-  | "resvg";
+  | "resvg"
+  | "utif";

@@ -19,4 +19,5 @@ export const ENGINE_LOADERS = {
   "jsquash-webp": () => import("./jsquash-webp/adapter"),
   psd: () => import("./psd/adapter"),
   resvg: () => import("./resvg/adapter"),
+  utif: () => import("./utif/adapter"),
 } satisfies Record<EngineId, () => Promise<{ default: EngineAdapter }>>;

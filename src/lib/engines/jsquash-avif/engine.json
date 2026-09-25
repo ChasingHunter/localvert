@@ -1,0 +1,29 @@
+{
+  "id": "jsquash-avif",
+  "version": "2.1.1",
+  "license": "Apache-2.0",
+  "location": "static",
+  "needsIsolation": false,
+  "heavy": true,
+  "package": "@jsquash/avif",
+  "files": [
+    {
+      "from": "codec/dec/avif_dec.wasm",
+      "to": "avif_dec.wasm"
+    },
+    {
+      "from": "codec/enc/avif_enc.wasm",
+      "to": "avif_enc.wasm"
+    }
+  ],
+  "assets": [
+    {
+      "path": "avif_dec.wasm",
+      "bytes": 1170930
+    },
+    {
+      "path": "avif_enc.wasm",
+      "bytes": 3485872
+    }
+  ]
+}
