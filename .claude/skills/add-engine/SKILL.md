@@ -93,3 +93,11 @@ engine from a third-party CDN.
 
 `pnpm verify`, then `feat(engine): add <name>`. Keep the engine commit separate
 from the commits adding tools that use it.
+
+## Emscripten / wasm-bindgen glue — do not bundle self-referencing loaders
+If the engine's JS glue contains `new Worker(new URL(<its own file>, import.meta.url))`
+(Emscripten pthreads builds do — libraw-wasm did, ffmpeg core-mt will), **never import it
+statically**: Turbopack follows the self-reference and `next build` hangs forever. Ship the glue
+as a static asset in `engine.json` `files` and load it at runtime:
+`await import(/* webpackIgnore: true */ /* turbopackIgnore: true */ /* @vite-ignore */ `${ctx.baseUrl}glue.js`)`.
+Grep the glue for `import.meta.url` / `new Worker` before choosing. See the libraw adapter.
