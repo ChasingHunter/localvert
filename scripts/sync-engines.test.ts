@@ -186,6 +186,53 @@ describe("syncEngines", () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it('copies a directory entry ("from"/"to" both ending in "/") recursively, one asset per file', () => {
+    const dir = makeTempDir();
+    writePackage(dir, "@acme/cmaps-pkg", "1.0.0", {
+      "cmaps/Foo.bcmap": "cmap-a", // 6 bytes
+      "cmaps/nested/Bar.bcmap": "cmap-b", // 6 bytes
+    });
+    writeEngine(dir, "withcmaps", {
+      package: "@acme/cmaps-pkg",
+      files: [{ from: "cmaps/", to: "cmaps/" }],
+    });
+
+    const result = syncEngines(dir);
+
+    expect(result.engines).toEqual([
+      {
+        id: "withcmaps",
+        version: "1.0.0",
+        location: "static",
+        files: [
+          { path: "cmaps/Foo.bcmap", bytes: 6 },
+          { path: "cmaps/nested/Bar.bcmap", bytes: 6 },
+        ],
+      },
+    ]);
+    expect(
+      readFile(dir, "public/engines/withcmaps@1.0.0/cmaps/Foo.bcmap"),
+    ).toBe("cmap-a");
+    expect(
+      readFile(dir, "public/engines/withcmaps@1.0.0/cmaps/nested/Bar.bcmap"),
+    ).toBe("cmap-b");
+  });
+
+  it('fails when a directory entry\'s "from"/"to" don\'t both end with "/"', () => {
+    const dir = makeTempDir();
+    writePackage(dir, "@acme/cmaps-pkg", "1.0.0", {
+      "cmaps/Foo.bcmap": "x",
+    });
+    writeEngine(dir, "badcmaps", {
+      package: "@acme/cmaps-pkg",
+      files: [{ from: "cmaps/", to: "cmaps" }],
+    });
+
+    expect(() => syncEngines(dir)).toThrow(
+      /directory entry's "from" and "to" must both end with "\/"/,
+    );
+  });
+
   it("fails when the installed package version doesn't match engine.json's version", () => {
     const dir = makeTempDir();
     writePackage(dir, "@acme/foo", "2.0.0", { "foo.wasm": "abc" });

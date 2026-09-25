@@ -40,6 +40,7 @@ requires its own ADR and we must publish the modified source.
 | `utif` (`utif2`) | 4.1.0 | MIT | photopea and UTIF.js contributors | https://github.com/photopea/UTIF.js |
 | `tracer` (`@image-tracer-ts/core`) | 1.0.2 | MIT | Moritz Ringler | https://github.com/mringler/image-tracer-ts |
 | `pdf-lib` (`@cantoo/pdf-lib`) | 2.11.1 | MIT | Andrew Dillon (original `pdf-lib`); Cantoo Scribe (this fork) | https://github.com/cantoo-scribe/pdf-lib |
+| `pdfjs` (`pdfjs-dist`) | 6.3.289 | Apache-2.0 | Mozilla and pdf.js contributors | https://github.com/mozilla/pdf.js |
 
 `jsquash-webp`'s underlying codec is libwebp, Copyright 2010 Google Inc.,
 BSD-3-Clause (`node_modules/@jsquash/webp/codec/LICENSE.codec.md` after

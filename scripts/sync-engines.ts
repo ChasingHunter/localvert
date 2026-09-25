@@ -46,6 +46,27 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 /**
+ * Every regular file under `dir`, recursively, as POSIX-style paths relative
+ * to `dir` (e.g. `"nested/Foo.bcmap"`) — used by `copyEngineFiles`'s
+ * directory-entry support below. Directory entries sort no differently from
+ * single-file ones (the caller sorts the flattened result), so this doesn't
+ * bother sorting its own output.
+ */
+function listFilesRecursive(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      for (const rel of listFilesRecursive(join(dir, entry.name))) {
+        out.push(`${entry.name}/${rel}`);
+      }
+    } else if (entry.isFile()) {
+      out.push(entry.name);
+    }
+  }
+  return out;
+}
+
+/**
  * ADR-0003: engines ≤20 MiB ship as static assets; anything larger goes to
  * R2. 20 MiB (not the 25 MiB hard limit) leaves headroom. Overridable so
  * tests can exercise the rule with small fixture files instead of a real
@@ -217,10 +238,43 @@ function destRoot(rootDir: string, source: EngineSource): string {
     : join(rootDir, ".engines-r2", "xl", dirName);
 }
 
+/** Copies one file, enforcing the ADR-0003 placement rule for a "static"
+ * engine. `to` is the path (relative to the engine's asset directory) it
+ * lands under — a plain filename for a single-file entry, or a directory
+ * entry's own `to` prefix plus a file's path within it. */
+function copyOneFile(
+  srcPath: string,
+  dest: string,
+  to: string,
+  engineId: string,
+  location: "static" | "r2",
+  staticLimitBytes: number,
+): SyncedFile {
+  const destPath = join(dest, ...to.split("/"));
+  mkdirSync(dirname(destPath), { recursive: true });
+  copyFileSync(srcPath, destPath);
+  const bytes = statSync(destPath).size;
+
+  if (location === "static" && bytes > staticLimitBytes) {
+    fail(
+      `${engineId}/${to} is ${mib(bytes)} MiB; static assets are capped at 25 MiB by Cloudflare — set location to r2`,
+    );
+  }
+  return { path: to, bytes };
+}
+
 /**
  * Copies one engine's files from its package directory to `destRoot`,
  * enforcing the ADR-0003 placement rule for a "static" engine. Returns the
  * copied files, sorted by `path`.
+ *
+ * A `from`/`to` pair where **both** end in `"/"` is a directory entry (e.g.
+ * `{from: "cmaps/", to: "cmaps/"}`, for an engine like `pdfjs` whose cmaps/
+ * standard-fonts assets are a whole directory tree, not a fixed file list) —
+ * every file under `from`, recursively, is copied to the matching path under
+ * `to`, and each one becomes its own `SyncedFile` entry (so `engine.json`'s
+ * `assets` ends up listing every individual file, same as a hand-written
+ * `files` entry would, never a directory as one opaque blob).
  */
 function copyEngineFiles(
   packageDir: string,
@@ -230,18 +284,40 @@ function copyEngineFiles(
 ): SyncedFile[] {
   const files: SyncedFile[] = [];
   for (const { from, to } of source.files ?? []) {
-    const srcPath = join(packageDir, ...from.split("/"));
-    const destPath = join(dest, ...to.split("/"));
-    mkdirSync(dirname(destPath), { recursive: true });
-    copyFileSync(srcPath, destPath);
-    const bytes = statSync(destPath).size;
-
-    if (source.location === "static" && bytes > staticLimitBytes) {
+    if (from.endsWith("/") !== to.endsWith("/")) {
       fail(
-        `${source.id}/${to} is ${mib(bytes)} MiB; static assets are capped at 25 MiB by Cloudflare — set location to r2`,
+        `${source.id}: a directory entry's "from" and "to" must both end with "/" (got from="${from}", to="${to}")`,
       );
     }
-    files.push({ path: to, bytes });
+
+    if (from.endsWith("/")) {
+      const srcDir = join(packageDir, ...from.split("/"));
+      for (const rel of listFilesRecursive(srcDir)) {
+        files.push(
+          copyOneFile(
+            join(srcDir, ...rel.split("/")),
+            dest,
+            `${to}${rel}`,
+            source.id,
+            source.location,
+            staticLimitBytes,
+          ),
+        );
+      }
+      continue;
+    }
+
+    const srcPath = join(packageDir, ...from.split("/"));
+    files.push(
+      copyOneFile(
+        srcPath,
+        dest,
+        to,
+        source.id,
+        source.location,
+        staticLimitBytes,
+      ),
+    );
   }
   return files.sort((a, b) => a.path.localeCompare(b.path));
 }

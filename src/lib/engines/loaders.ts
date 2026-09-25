@@ -20,6 +20,7 @@ export const ENGINE_LOADERS = {
   "jsquash-webp": () => import("./jsquash-webp/adapter"),
   libraw: () => import("./libraw/adapter"),
   "pdf-lib": () => import("./pdf-lib/adapter"),
+  pdfjs: () => import("./pdfjs/adapter"),
   psd: () => import("./psd/adapter"),
   resvg: () => import("./resvg/adapter"),
   tracer: () => import("./tracer/adapter"),

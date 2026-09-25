@@ -42,6 +42,7 @@ as its codec preference table.
 | `exif` | — | — | `strip`: jpg, png, webp | adapter ready |
 | `libraw` | raw | — | — | adapter ready |
 | `pdf-lib` | jpg, png (`merge` only) | — | `merge`, `split`, `rotate`, `extract`, `protect`, `unlock`: pdf | adapter ready |
+| `pdfjs` | — | — | `render`: pdf → jpg, png | adapter ready |
 
 `canvas` also still runs the legacy single-step `transcode` op directly
 (bytes of one format straight to bytes of another) for a tool that predates
@@ -130,6 +131,35 @@ fetched assets. A password-protected input to merge/split/rotate/extract
 fails with `EngineError("unsupported", ...)` rather than being silently
 skipped; unlock it first.
 
+`pdfjs` (ADR-0008) is the one raster-producing PDF engine: `render` turns a
+PDF page into a `RasterImage`-shaped output, but as `EngineResult`'s `"files"`
+kind directly (one JPG/PNG per page, a one-to-many step) rather than through
+the shared `RasterImage` intermediate — a page render already needs its own
+`OffscreenCanvas` and encode step per page, so routing it through ADR-0007's
+raster pipeline would buy nothing. It never spawns pdf.js's own dedicated
+Worker: `pdf.js` is loaded and run inside *our* worker instead, wired to its
+"fake worker" (in-thread, `LoopbackPort`) mode by importing `pdf.worker.mjs`
+directly and assigning it to `globalThis.pdfjsWorker` before calling
+`getDocument()` — see the adapter's `load` doc comment for the full mechanism
+and why it's not a Turbopack-hang risk the way `libraw`'s Emscripten glue is.
+Because pdf.js's default `CanvasFactory`/`FilterFactory` both assume a DOM
+`document` (for `<canvas>` creation and SVG colour filters respectively,
+neither of which exists in a worker), the adapter supplies its own
+`OffscreenCanvas`-backed `CanvasFactory` and a no-op `FilterFactory`.
+`options.pages` (the shared page-range spec) selects which pages render;
+`options.dpi` (72–300, scale = dpi/72) and `options.quality` (jpg only)
+control resolution and compression. jpg output is filled `#ffffff` first
+(via pdf.js's own `render({background})`, since jpg has no alpha channel);
+png keeps whatever transparency the page content itself has. A page over
+8192px on either side, or a job selecting over 200 pages, fails with a clear
+`EngineError("unsupported", ...)` rather than attempting the render. A
+password-protected PDF fails the same way as `pdf-lib`'s ops — "unlock it
+first". Its cmaps and standard fonts (for non-embedded-font PDFs, and CJK
+text via predefined Adobe CMaps) ship as real per-file assets under
+`ctx.baseUrl` — `scripts/sync-engines.ts` gained directory-entry support
+(`{from: "cmaps/", to: "cmaps/"}`) to copy pdf.js's own directory trees of
+them one file at a time, same as every other engine's fixed file list.
+
 ---
 
 ## Delivery table
@@ -160,6 +190,7 @@ Size, placement, threading. Placement is enforced by `scripts/sync-engines.ts`:
 | `exif` | _(our own code)_ | 1.0.0 | MIT | 0 | bundled | no |
 | `libraw` | `libraw-wasm` | 1.6.0 | **LGPL-2.1/CDDL-1.0 dual** | ~1.4 MiB | static | no |
 | `pdf-lib` | `@cantoo/pdf-lib` | 2.11.1 | MIT | 0 (bundled in JS) | bundled | no |
+| `pdfjs` | `pdfjs-dist` | 6.3.289 | Apache-2.0 | ~4.8 MiB (pdf.mjs + pdf.worker.mjs + cmaps + standard_fonts) | static | no |
 
 ### How engine assets ship
 
@@ -200,7 +231,6 @@ first, then adapter, wiring, size budget, docs.
 
 | Engine | For | License | Approx size | Phase |
 |---|---|---|---|---|
-| `pdfjs-dist` | PDF render to image | Apache-2.0 | ~2 MB | 2 |
 | `@embedpdf/pdfium` | PDF compression | Apache-2.0 / BSD-3 | ~10 MB | 2 |
 | `tesseract.js` | OCR | Apache-2.0 | core + traineddata | 2 |
 | `mediabunny` | Video/audio via WebCodecs — **primary path** | MIT | small | 3 |

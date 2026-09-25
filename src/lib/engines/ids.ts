@@ -11,6 +11,7 @@ export type EngineId =
   | "jsquash-webp"
   | "libraw"
   | "pdf-lib"
+  | "pdfjs"
   | "psd"
   | "resvg"
   | "tracer"
