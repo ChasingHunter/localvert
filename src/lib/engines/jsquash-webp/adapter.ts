@@ -4,6 +4,7 @@ import type { Operation, StepFormat } from "@/lib/registry";
 import { FORMATS } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
+import { encodeToTargetSize } from "../shared/target-size";
 import type {
   EngineAdapter,
   EngineInput,
@@ -250,8 +251,15 @@ function clamp01(n: number): number {
   return Math.min(1, Math.max(0, n));
 }
 
-/** encode: `RasterImage` -> webp bytes. `quality` is 0..1 in `EngineTask`
- * options (the option-form convention); jSquash's own scale is 0..100. */
+/**
+ * encode: `RasterImage` -> webp bytes. `quality` is 0..1 in `EngineTask`
+ * options (the option-form convention); jSquash's own scale is 0..100.
+ *
+ * `options.targetSizeKB` (a positive number) switches to
+ * `encodeToTargetSize`, bisecting `quality` until the output fits that byte
+ * budget — skipped when `lossless` is set, since quality has no effect on a
+ * lossless encode's size. Without `targetSizeKB`, behaviour is unchanged.
+ */
 async function runEncode(
   task: EngineTask,
   ensureEncodeReady: () => Promise<void>,
@@ -265,22 +273,42 @@ async function runEncode(
   signal.throwIfAborted();
   onProgress?.(0.3);
 
-  const quality = clamp01(
-    typeof options.quality === "number" ? options.quality : 0.92,
-  );
+  const imageData = new ImageData(image.data, image.width, image.height);
   const lossless = options.lossless === true;
 
+  const encodeAtQuality = async (quality: number): Promise<ArrayBuffer> => {
+    try {
+      return await encode(imageData, {
+        quality: Math.round(clamp01(quality) * 100),
+        lossless: lossless ? 1 : 0,
+      });
+    } catch (e) {
+      throw new EngineError("encode-failed", "failed to encode webp", {
+        engine: metadata.id,
+        cause: e,
+      });
+    }
+  };
+
+  const targetSizeKB = options.targetSizeKB;
   let bytes: ArrayBuffer;
-  try {
-    bytes = await encode(new ImageData(image.data, image.width, image.height), {
-      quality: Math.round(quality * 100),
-      lossless: lossless ? 1 : 0,
-    });
-  } catch (e) {
-    throw new EngineError("encode-failed", "failed to encode webp", {
-      engine: metadata.id,
-      cause: e,
-    });
+  if (!lossless && typeof targetSizeKB === "number" && targetSizeKB > 0) {
+    let iteration = 0;
+    const result = await encodeToTargetSize(
+      async (quality) => {
+        const out = await encodeAtQuality(quality);
+        iteration += 1;
+        onProgress?.(0.3 + 0.6 * Math.min(iteration / 8, 1));
+        return out;
+      },
+      targetSizeKB * 1024,
+      { signal },
+    );
+    bytes = result.bytes;
+  } else {
+    const quality =
+      typeof options.quality === "number" ? options.quality : 0.92;
+    bytes = await encodeAtQuality(quality);
   }
 
   onProgress?.(1);

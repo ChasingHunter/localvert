@@ -5,6 +5,7 @@ import type { Operation, StepFormat } from "@/lib/registry";
 import { FORMATS } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
+import { encodeToTargetSize } from "../shared/target-size";
 import type {
   EngineAdapter,
   EngineInput,
@@ -196,6 +197,11 @@ async function runDecode(
  * `@jsquash/avif/encode.js`) because that function's `init()` is what
  * performs the `wasm-feature-detect` thread check this adapter exists to
  * avoid.
+ *
+ * `options.targetSizeKB` (a positive number) switches to
+ * `encodeToTargetSize`, bisecting `quality` until the output fits that byte
+ * budget — skipped when `lossless` is set, since quality has no effect on a
+ * lossless encode's size. Without `targetSizeKB`, behaviour is unchanged.
  */
 async function runEncode(
   task: EngineTask,
@@ -217,45 +223,67 @@ async function runEncode(
   signal.throwIfAborted();
   onProgress?.(0.3);
 
-  const encodeOptions: EncodeOptions = { ...defaultOptions };
-  if (typeof options.quality === "number") {
-    encodeOptions.quality = Math.round(clamp01(options.quality) * 100);
-  }
-  if (typeof options.speed === "number") {
-    encodeOptions.speed = options.speed;
-  }
-  if (options.lossless === true) {
-    encodeOptions.quality = 100;
-    encodeOptions.qualityAlpha = -1;
-    encodeOptions.subsample = 3; // YUV444 — required for lossless.
-  }
+  const lossless = options.lossless === true;
 
-  let bytes: Uint8Array | null;
-  try {
-    bytes = module.encode(image.data, image.width, image.height, encodeOptions);
-  } catch (e) {
-    throw new EngineError("encode-failed", "failed to encode avif", {
-      engine: metadata.id,
-      cause: e,
-    });
-  }
-  if (!bytes) {
-    throw new EngineError("encode-failed", "failed to encode avif", {
-      engine: metadata.id,
-    });
+  const encodeAtQuality = async (quality: number): Promise<ArrayBuffer> => {
+    const encodeOptions: EncodeOptions = { ...defaultOptions };
+    encodeOptions.quality = Math.round(clamp01(quality) * 100);
+    if (typeof options.speed === "number") {
+      encodeOptions.speed = options.speed;
+    }
+    if (lossless) {
+      encodeOptions.quality = 100;
+      encodeOptions.qualityAlpha = -1;
+      encodeOptions.subsample = 3; // YUV444 — required for lossless.
+    }
+
+    let out: Uint8Array | null;
+    try {
+      out = module.encode(image.data, image.width, image.height, encodeOptions);
+    } catch (e) {
+      throw new EngineError("encode-failed", "failed to encode avif", {
+        engine: metadata.id,
+        cause: e,
+      });
+    }
+    if (!out) {
+      throw new EngineError("encode-failed", "failed to encode avif", {
+        engine: metadata.id,
+      });
+    }
+    // `out.slice()` (no args) copies into a fresh, exactly-sized
+    // `ArrayBuffer` — both trimming Emscripten's possibly-larger backing heap
+    // down to the real output, and sidestepping `out.buffer`'s own type
+    // (`ArrayBuffer | SharedArrayBuffer`, since `Uint8Array.buffer` doesn't
+    // know a copy was never shared).
+    return out.slice().buffer;
+  };
+
+  const targetSizeKB = options.targetSizeKB;
+  let bytes: ArrayBuffer;
+  if (!lossless && typeof targetSizeKB === "number" && targetSizeKB > 0) {
+    let iteration = 0;
+    const result = await encodeToTargetSize(
+      async (quality) => {
+        const out = await encodeAtQuality(quality);
+        iteration += 1;
+        onProgress?.(0.3 + 0.6 * Math.min(iteration / 8, 1));
+        return out;
+      },
+      targetSizeKB * 1024,
+      { signal },
+    );
+    bytes = result.bytes;
+  } else {
+    const quality =
+      typeof options.quality === "number"
+        ? options.quality
+        : defaultOptions.quality / 100;
+    bytes = await encodeAtQuality(quality);
   }
 
   onProgress?.(1);
-  // `bytes.slice()` (no args) copies into a fresh, exactly-sized
-  // `ArrayBuffer` — both trimming Emscripten's possibly-larger backing heap
-  // down to the real output, and sidestepping `bytes.buffer`'s own type
-  // (`ArrayBuffer | SharedArrayBuffer`, since `Uint8Array.buffer` doesn't
-  // know a copy was never shared).
-  return {
-    kind: "bytes",
-    bytes: bytes.slice().buffer,
-    mime: FORMATS.avif.mime,
-  };
+  return { kind: "bytes", bytes, mime: FORMATS.avif.mime };
 }
 
 async function load(ctx: EngineLoadContext): Promise<EngineInstance> {

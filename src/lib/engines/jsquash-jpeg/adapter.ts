@@ -5,6 +5,7 @@ import type { Operation, StepFormat } from "@/lib/registry";
 import { FORMATS } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
+import { encodeToTargetSize } from "../shared/target-size";
 import type {
   EngineAdapter,
   EngineInput,
@@ -186,6 +187,12 @@ async function runDecode(
  * (mozjpeg wants 0..100); `options.progressive` defaults true regardless of
  * jSquash's own default, so this adapter's contract doesn't drift if
  * upstream ever changes theirs.
+ *
+ * `options.targetSizeKB` (a positive number, from a tool's "Target size"
+ * option) switches to `encodeToTargetSize`: it bisects `quality` instead of
+ * using `options.quality` directly, re-encoding until the output fits that
+ * byte budget. Without it, behaviour is unchanged from before target-size
+ * support existed.
  */
 async function runEncode(
   task: EngineTask,
@@ -211,21 +218,50 @@ async function runEncode(
   onProgress?.(0.3);
 
   const imageData = new ImageData(image.data, image.width, image.height);
-  const encodeOptions: Partial<EncodeOptions> = {
-    progressive: options.progressive !== false,
-  };
-  if (typeof options.quality === "number") {
-    encodeOptions.quality = Math.round(clamp01(options.quality) * 100);
-  }
+  const progressive = options.progressive !== false;
 
+  const encodeAtQuality = async (quality: number): Promise<ArrayBuffer> => {
+    try {
+      return await encodeJpeg(imageData, {
+        progressive,
+        quality: Math.round(clamp01(quality) * 100),
+      });
+    } catch (e) {
+      throw new EngineError("encode-failed", "failed to encode jpeg", {
+        engine: metadata.id,
+        cause: e,
+      });
+    }
+  };
+
+  const targetSizeKB = options.targetSizeKB;
   let bytes: ArrayBuffer;
-  try {
-    bytes = await encodeJpeg(imageData, encodeOptions);
-  } catch (e) {
-    throw new EngineError("encode-failed", "failed to encode jpeg", {
-      engine: metadata.id,
-      cause: e,
-    });
+  if (typeof targetSizeKB === "number" && targetSizeKB > 0) {
+    let iteration = 0;
+    const result = await encodeToTargetSize(
+      async (quality) => {
+        const out = await encodeAtQuality(quality);
+        iteration += 1;
+        onProgress?.(0.3 + 0.6 * Math.min(iteration / 8, 1));
+        return out;
+      },
+      targetSizeKB * 1024,
+      { signal },
+    );
+    bytes = result.bytes;
+  } else {
+    const encodeOptions: Partial<EncodeOptions> = { progressive };
+    if (typeof options.quality === "number") {
+      encodeOptions.quality = Math.round(clamp01(options.quality) * 100);
+    }
+    try {
+      bytes = await encodeJpeg(imageData, encodeOptions);
+    } catch (e) {
+      throw new EngineError("encode-failed", "failed to encode jpeg", {
+        engine: metadata.id,
+        cause: e,
+      });
+    }
   }
 
   onProgress?.(1);
