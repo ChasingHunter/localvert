@@ -91,3 +91,24 @@ export const jxlDefaults: z.infer<typeof jxlOptions> = {
 /** PNG is lossless — no encode knob to expose, same reasoning as jpg-to-png. */
 export const pngOptions = z.object({});
 export const pngDefaults: z.infer<typeof pngOptions> = {};
+
+/**
+ * The crop rectangle shared by every `crop-*.ts` tool — source-pixel
+ * coordinates (the dropped image's own `naturalWidth`/`naturalHeight`, not
+ * the on-screen display size), clamped by the `canvas` engine's `runCrop`
+ * (`src/lib/engines/canvas/adapter.ts`). Optional: absent means "pass
+ * through unchanged", same as the engine's own fallback when it's missing.
+ * `CropEditor` (`src/components/crop-editor.tsx`) is the only thing that
+ * ever sets it — `OptionsForm` filters "crop" controls out of the generic
+ * form (`src/components/options-form.tsx`), since no sensible x/y/width/
+ * height control exists without the dropped image's own dimensions.
+ */
+export const cropField = z
+  .object({
+    x: z.number().int().nonnegative(),
+    y: z.number().int().nonnegative(),
+    width: z.number().int().nonnegative(),
+    height: z.number().int().nonnegative(),
+  })
+  .meta({ label: "Crop", control: "crop" })
+  .optional();

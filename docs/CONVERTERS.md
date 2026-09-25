@@ -63,6 +63,9 @@ order (decode [+ transform] [+ encode]).
 | `rotate-jpg` | JPEG | JPEG | jsquash-jpeg, canvas | Yes | 90/180/270° clockwise |
 | `rotate-png` | PNG | PNG | jsquash-png, canvas | Yes | 90/180/270° clockwise |
 | `rotate-webp` | WebP | WebP | jsquash-webp, canvas | Yes | 90/180/270° clockwise |
+| `crop-jpg` | JPEG | JPEG | jsquash-jpeg, canvas | No | Interactive crop box, free or fixed aspect |
+| `crop-png` | PNG | PNG | jsquash-png, canvas | No | Interactive crop box, free or fixed aspect |
+| `crop-webp` | WebP | WebP | jsquash-webp, canvas | No | Interactive crop box, free or fixed aspect |
 
 Crop is out of scope for this slice — it needs an interactive crop UI.
 
