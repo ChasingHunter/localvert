@@ -303,3 +303,33 @@ test.describe("protect-pdf / unlock-pdf", () => {
     ]);
   });
 });
+
+test.describe("pdf-to-png", () => {
+  test("renders a 2-page PDF to two PNG downloads", async ({ page }) => {
+    await page.goto("/tools/pdf-to-png");
+
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles(fixturePath("a.pdf"));
+
+    // One-to-many (ADR-0008): a.pdf has 2 pages, so this job produces 2
+    // downloadable files, same shape as split-pdf's e2e test above. The
+    // privacy guard (autouse fixture, top of this file) already fails the
+    // test if pdf.js ever requests anything off this origin — that covers
+    // the cmaps/standard_fonts/worker fetches this tool's engine makes.
+    const downloadLinks = page.getByRole("link", { name: "Download" });
+    await expect(downloadLinks).toHaveCount(2, { timeout: 15_000 });
+
+    for (let i = 0; i < 2; i++) {
+      const downloadPromise = page.waitForEvent("download");
+      await downloadLinks.nth(i).click();
+      const download = await downloadPromise;
+      const path = await download.path();
+      if (!path) throw new Error("download produced no local path");
+      const bytes = readFileSync(path);
+      expect(Array.from(bytes.subarray(0, 8))).toEqual([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      ]);
+    }
+  });
+});

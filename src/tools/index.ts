@@ -43,6 +43,8 @@ import deletePdfPages from "@/tools/pdf/delete-pdf-pages";
 import extractPdfPages from "@/tools/pdf/extract-pdf-pages";
 import imagesToPdf from "@/tools/pdf/images-to-pdf";
 import mergePdf from "@/tools/pdf/merge-pdf";
+import pdfToJpg from "@/tools/pdf/pdf-to-jpg";
+import pdfToPng from "@/tools/pdf/pdf-to-png";
 import protectPdf from "@/tools/pdf/protect-pdf";
 import rotatePdf from "@/tools/pdf/rotate-pdf";
 import splitPdf from "@/tools/pdf/split-pdf";
@@ -92,6 +94,8 @@ export const TOOLS: readonly ToolDefinition[] = [
   extractPdfPages,
   imagesToPdf,
   mergePdf,
+  pdfToJpg,
+  pdfToPng,
   protectPdf,
   rotatePdf,
   splitPdf,

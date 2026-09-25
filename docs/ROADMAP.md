@@ -132,7 +132,7 @@ Goal: the image matrix people actually search for, fast and batched.
 - [x] Protect / unlock (password, AES-256 via @cantoo/pdf-lib — both
       directions genuinely supported, not just protect) — flatten forms
       still pending (2026-09-26)
-- [ ] Render to image (pdfjs-dist, self-hosted worker + cmaps)
+- [x] Render to image (pdfjs-dist, self-hosted worker + cmaps) (2026-09-26)
 - [ ] OCR (tesseract.js; self-host traineddata — the default CDN fetch
       violates our CSP, which is the point)
 
