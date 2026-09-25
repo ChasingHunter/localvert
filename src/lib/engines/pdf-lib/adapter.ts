@@ -29,7 +29,12 @@ function supports(
   if (input === "jpg" || input === "png") return op === "merge";
   if (input !== "pdf") return false;
   return (
-    op === "merge" || op === "split" || op === "rotate" || op === "extract"
+    op === "merge" ||
+    op === "split" ||
+    op === "rotate" ||
+    op === "extract" ||
+    op === "protect" ||
+    op === "unlock"
   );
 }
 
@@ -105,6 +110,10 @@ async function run(task: EngineTask): Promise<EngineResult> {
         return await runRotate(task);
       case "extract":
         return await runExtract(task);
+      case "protect":
+        return await runProtect(task);
+      case "unlock":
+        return await runUnlock(task);
       default:
         throw new EngineError(
           "unsupported",
@@ -454,6 +463,132 @@ async function runExtract(task: EngineTask): Promise<EngineResult> {
   onProgress?.(1);
 
   const outBytes = await outDoc.save();
+  return {
+    kind: "bytes",
+    bytes: outBytes.slice().buffer,
+    mime: FORMATS.pdf.mime,
+  };
+}
+
+/**
+ * protect (pdf -> pdf): encrypts with `options.password` as the user
+ * password, AES-256 (`PDFDocument.encrypt`'s own default — ISO 32000-2's
+ * only recommended algorithm, and the only one this adapter ever asks for).
+ * No separate owner password: `@cantoo/pdf-lib` falls back to the user
+ * password as the owner password when none is given, so the same password
+ * both opens the document and carries full (owner) access — the same
+ * consumer-grade single-password model most "protect a PDF" tools offer.
+ * `permissions` are advisory (honored by compliant viewers, not a real
+ * access boundary — anyone with the password has full access via the owner
+ * fallback above), which is why `unlock` below doesn't need a separate
+ * "permissions password" concept at all.
+ */
+async function runProtect(task: EngineTask): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  const password = typeof options.password === "string" ? options.password : "";
+  if (password === "") {
+    throw new EngineError("internal", "protect requires a password", {
+      engine: metadata.id,
+    });
+  }
+
+  const bytes = await inputToArrayBuffer(input);
+  signal.throwIfAborted();
+
+  const mod = await import("@cantoo/pdf-lib");
+  const doc = await loadPdf(mod, bytes);
+
+  const allowPrinting = options.allowPrinting !== false;
+  const allowCopying = options.allowCopying === true;
+  doc.encrypt({
+    userPassword: password,
+    permissions: { printing: allowPrinting, copying: allowCopying },
+  });
+  onProgress?.(1);
+
+  const outBytes = await doc.save();
+  return {
+    kind: "bytes",
+    bytes: outBytes.slice().buffer,
+    mime: FORMATS.pdf.mime,
+  };
+}
+
+/**
+ * `PDFDocument.load(bytes, {password})` clears the trailer's own `/Encrypt`
+ * *pointer* once the password checks out (that's what `doc.isEncrypted`
+ * reads), but `@cantoo/pdf-lib` 2.11.1 never evicts the encryption
+ * dictionary *object* itself from the document's object table — its own
+ * source still has that removal call commented out. Left in place, a plain
+ * `doc.save()` writes the orphaned dictionary straight back out, and a
+ * reader that finds it by scanning objects rather than trusting the trailer
+ * alone (`PDFDocument.load` itself included — confirmed by hand: a
+ * password-loaded-then-saved round trip still refused to reopen without a
+ * password until this ran first) sees the file as still encrypted. The
+ * dictionary is unambiguous — ISO 32000's standard security handler always
+ * names itself `/Filter /Standard` — so it's safe to find and delete by
+ * that signature alone, no matter what triggered it (a matching object can
+ * only be the encryption dictionary).
+ */
+function stripOrphanedEncryptDict(
+  mod: PdfLibModule,
+  doc: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>,
+): void {
+  for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
+    if (
+      obj instanceof mod.PDFDict &&
+      obj.get(mod.PDFName.of("Filter"))?.toString() === "/Standard"
+    ) {
+      doc.context.delete(ref);
+    }
+  }
+}
+
+/**
+ * unlock (pdf -> pdf): loads with `options.password` and re-saves without
+ * encryption. Unlike every other op here, this deliberately doesn't go
+ * through the shared `loadPdf` helper — `loadPdf` never passes a password
+ * (an encrypted input there is always a hard `"unsupported"` failure, by
+ * design: unlocking is this separate tool, not a side effect of merge/
+ * split/rotate/extract) — so it has its own password-aware load and its own
+ * error mapping: a wrong password surfaces as `EngineError("decode-failed",
+ * "Wrong password")`, not the "password-protected, unlock it first" message
+ * `loadPdf` gives every other op.
+ */
+async function runUnlock(task: EngineTask): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  const bytes = await inputToArrayBuffer(input);
+  signal.throwIfAborted();
+
+  const password = typeof options.password === "string" ? options.password : "";
+  const mod = await import("@cantoo/pdf-lib");
+
+  let doc: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>;
+  try {
+    doc = await mod.PDFDocument.load(bytes, { password });
+  } catch (e) {
+    if (
+      e instanceof mod.EncryptedPDFError ||
+      (e instanceof Error && e.message === "Password incorrect")
+    ) {
+      throw new EngineError("decode-failed", "Wrong password", {
+        engine: metadata.id,
+        cause: e,
+      });
+    }
+    throw new EngineError("decode-failed", "failed to parse PDF", {
+      engine: metadata.id,
+      cause: e,
+    });
+  }
+  stripOrphanedEncryptDict(mod, doc);
+  onProgress?.(1);
+
+  const outBytes = await doc.save();
   return {
     kind: "bytes",
     bytes: outBytes.slice().buffer,

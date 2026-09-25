@@ -86,11 +86,13 @@ describe("pdf-lib adapter", () => {
   });
 
   describe("supports", () => {
-    it("accepts merge, split, rotate and extract, pdf to pdf", () => {
+    it("accepts merge, split, rotate, extract, protect and unlock, pdf to pdf", () => {
       expect(adapter.supports("merge", "pdf", "pdf")).toBe(true);
       expect(adapter.supports("split", "pdf", "pdf")).toBe(true);
       expect(adapter.supports("rotate", "pdf", "pdf")).toBe(true);
       expect(adapter.supports("extract", "pdf", "pdf")).toBe(true);
+      expect(adapter.supports("protect", "pdf", "pdf")).toBe(true);
+      expect(adapter.supports("unlock", "pdf", "pdf")).toBe(true);
     });
 
     it("accepts merge from jpg/png, for images-to-pdf", () => {
@@ -602,6 +604,158 @@ describe("pdf-lib adapter", () => {
       ).rejects.toSatisfy(
         (e: unknown) => isEngineError(e) && e.code === "unsupported",
       );
+    });
+  });
+
+  describe("run: protect", () => {
+    it("encrypts the pdf so it can only be reopened with the password", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([[100, 100]]);
+
+      const result = await instance.run(
+        baseTask({
+          op: "protect",
+          input: bytesInput(doc),
+          options: { password: "secret" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+
+      await expect(PDFDocument.load(result.bytes)).rejects.toThrow();
+      const opened = await PDFDocument.load(result.bytes, {
+        password: "secret",
+      });
+      expect(opened.getPageCount()).toBe(1);
+    });
+
+    it("throws EngineError('internal') for an empty password", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([[100, 100]]);
+
+      await expect(
+        instance.run(
+          baseTask({
+            op: "protect",
+            input: bytesInput(doc),
+            options: { password: "" },
+          }),
+        ),
+      ).rejects.toSatisfy(
+        (e: unknown) => isEngineError(e) && e.code === "internal",
+      );
+    });
+
+    it("honors allowPrinting/allowCopying without throwing", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([[100, 100]]);
+
+      const result = await instance.run(
+        baseTask({
+          op: "protect",
+          input: bytesInput(doc),
+          options: {
+            password: "secret",
+            allowPrinting: false,
+            allowCopying: true,
+          },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      const opened = await PDFDocument.load(result.bytes, {
+        password: "secret",
+      });
+      expect(opened.getPageCount()).toBe(1);
+    });
+  });
+
+  describe("run: unlock", () => {
+    it("removes encryption, returning a plain pdf", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const encrypted = await buildEncryptedPdf();
+
+      const result = await instance.run(
+        baseTask({
+          op: "unlock",
+          input: bytesInput(encrypted),
+          options: { password: "secret" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+
+      // No password needed this time — the output is no longer encrypted.
+      const reopened = await PDFDocument.load(result.bytes);
+      expect(reopened.isEncrypted).toBe(false);
+      expect(reopened.getPageCount()).toBe(1);
+    });
+
+    it('throws EngineError("decode-failed", "Wrong password") for a wrong password', async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const encrypted = await buildEncryptedPdf();
+
+      await expect(
+        instance.run(
+          baseTask({
+            op: "unlock",
+            input: bytesInput(encrypted),
+            options: { password: "nope" },
+          }),
+        ),
+      ).rejects.toSatisfy(
+        (e: unknown) =>
+          isEngineError(e) &&
+          e.code === "decode-failed" &&
+          e.message === "Wrong password",
+      );
+    });
+
+    it("round-trips through protect then unlock", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([
+        [100, 100],
+        [150, 150],
+      ]);
+
+      const protectedResult = await instance.run(
+        baseTask({
+          op: "protect",
+          input: bytesInput(doc),
+          options: { password: "roundtrip" },
+        }),
+      );
+      if (protectedResult.kind !== "bytes") {
+        throw new Error("expected bytes result");
+      }
+
+      const unlocked = await instance.run(
+        baseTask({
+          op: "unlock",
+          input: bytesInput(protectedResult.bytes),
+          options: { password: "roundtrip" },
+        }),
+      );
+      if (unlocked.kind !== "bytes") throw new Error("expected bytes result");
+      expect(await pageSizes(unlocked.bytes)).toEqual([
+        [100, 100],
+        [150, 150],
+      ]);
     });
   });
 });
