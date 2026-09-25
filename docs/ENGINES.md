@@ -18,11 +18,21 @@ is [ADR-0002](adr/0002-mit-license-gpl-isolation.md).
 
 ## Capability table
 
-What each engine can convert. This is the table to check before adding a tool.
+What each engine can convert. This is the table to check before adding a
+tool. Image engines run ADR-0007's decode → transform\* → encode pipeline, so
+their row is shaped that way — what a format the engine can turn into pixels,
+what it can turn pixels back into, and which of resize/rotate/crop it can do.
+`imagePipeline` (`src/lib/registry/image-pipeline.ts`) reads this same shape
+as its codec preference table.
 
-| Engine | Ops | Input formats | Output formats | Status |
+| Engine | Decodes | Encodes | Transforms | Status |
 |---|---|---|---|---|
-| `canvas` | transcode | jpg, png, webp, bmp, gif | jpg, png, webp | adapter ready (0.5a) |
+| `canvas` | jpg, png, webp, bmp, gif | jpg, png, webp | resize, rotate, crop | adapter ready (0.5a) |
+
+`canvas` also still runs the legacy single-step `transcode` op directly
+(bytes of one format straight to bytes of another) for a tool that predates
+ADR-0007 and doesn't need the raster split — see `EngineAdapter.supports` in
+`src/lib/engines/canvas/adapter.ts`.
 
 ---
 
@@ -47,12 +57,15 @@ A "static" or "r2" engine's `engine.json` names its own source: `package`
 (the npm package the assets come from) and `files` (each one's `{from, to}` —
 `from` relative to the package's own directory, `to` the filename under the
 engine's asset directory). Both are required for "static"/"r2" and forbidden
-for "native", which ships nothing of its own. `version` must equal the
+for "native" or "bundled" — neither ships assets of its own: "native" wraps a
+browser API, "bundled" is pure JS shipped inside the engine's own worker
+chunk instead of a separate fetched asset. `version` must equal the
 installed package's version — engine URLs are versioned by it.
 
 `pnpm sync-engines` reads those fields, copies each file into place
 (`public/engines/<id>@<version>/` for "static", `.engines-r2/xl/<id>@<
-version>/` — a gitignored staging area — for "r2"), and rewrites
+version>/` — a gitignored staging area — for "r2"; a "native" or "bundled"
+engine has nothing to copy and is skipped), and rewrites
 `engine.json`'s `assets` to the real `{path, bytes}` list before running
 `pnpm gen` to rebuild `manifest.ts`. It enforces the placement rule above
 mechanically: a "static" file over 20 MiB fails the command outright

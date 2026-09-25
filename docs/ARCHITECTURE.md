@@ -104,7 +104,7 @@ mediabunny, ffmpeg.wasm, pdf-lib, tesseract. Each sits behind one adapter:
 interface EngineAdapter {
   id: EngineId;
   version: string;                 // must match the asset path segment
-  supports(op: Operation, input: FormatId, output: FormatId): boolean;
+  supports(op: Operation, input: StepFormat, output: StepFormat): boolean;
   load(ctx: EngineLoadContext): Promise<EngineInstance>;
 }
 
@@ -144,6 +144,21 @@ the tool's `pipeline` candidates in order, taking the first whose `when(probe)`
 passes. A tool declares *preference*; the router resolves *capability*. Same
 tool definition, different engine on different browsers, no branching in the
 tool file.
+
+### Image pipeline
+
+Image tools don't convert format A straight to format B in one engine call.
+Instead a pipeline runs **decode → transform\* → encode**, all inside one
+worker, passing a decoded-pixels intermediate (`RasterImage`, RGBA 8-bit)
+between steps by reference — never transferred, never structured-cloned.
+`StepFormat` (a `FormatId`, or `"raster"`) is what a step's input/output
+actually is; `decode` goes (format → raster), `encode` goes (raster →
+format), and `resize`/`rotate`/`crop` go (raster → raster). A tool file stays
+data: `pipeline: imagePipeline("heic", "jpg")` builds the steps and their
+engine candidates from a codec preference table, instead of every tool
+hand-listing candidates for a conversion an N×M table of adapters would
+otherwise require. See [ADR-0007](adr/0007-raster-pipeline.md) for the full
+design and its trade-offs.
 
 ---
 

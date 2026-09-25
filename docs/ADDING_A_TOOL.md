@@ -149,6 +149,49 @@ keeps tools declarative.
 Always end with a candidate that has no `when`, or the tool can resolve to
 nothing on some browser.
 
+### Image tools: use `imagePipeline`
+
+An image conversion is decode → transform\* → encode (ADR-0007), not one
+engine doing format A straight to format B — heic-to can decode HEIC but not
+encode anything we output; mozjpeg can encode JPEG but not decode HEIC. Build
+the `pipeline` with `imagePipeline` instead of hand-listing steps:
+
+```ts
+// src/tools/image/heic-to-jpg.ts
+import { z } from "zod";
+import { defineTool, imagePipeline } from "@/lib/registry";
+
+export default defineTool({
+  slug: "heic-to-jpg",
+  category: "image",
+  title: "HEIC to JPG",
+  description:
+    "Convert iPhone HEIC photos to JPG — free, private, in your browser.",
+
+  accepts: ["heic"],
+  produces: "jpg",
+
+  options: z.object({
+    quality: z.number().min(0).max(1).meta({ label: "Quality", control: "slider" }),
+  }),
+  defaults: { quality: 0.92 },
+
+  pipeline: imagePipeline("heic", "jpg"),
+
+  batch: true,
+});
+```
+
+`imagePipeline(from, to, transforms?)` builds the decode/encode (and, if
+asked, `resize`/`rotate`/`crop`) steps from a codec preference table
+(`src/lib/registry/image-pipeline.ts`) — dedicated codec first, `canvas` as
+the native-browser fallback wherever one exists. It throws at definition time
+if nothing in that table can decode `from` or encode `to` yet, so a tool that
+can't actually work fails the moment its module loads, same as any other
+`defineTool` validation. Never write `{ op: "transcode", ... }` for an image
+tool — `transcode` is for a byte-to-byte op that isn't a format conversion
+(lossless EXIF stripping, say), not for converting between formats.
+
 ### 6. Regenerate
 
 ```sh
