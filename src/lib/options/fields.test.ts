@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { describeFields, validateOptions } from "./fields";
+import {
+  describeFields,
+  type FieldSpec,
+  isFieldVisible,
+  validateOptions,
+} from "./fields";
 
 describe("describeFields", () => {
   it("describes a switch control from a boolean field", () => {
@@ -284,6 +289,71 @@ describe("describeFields", () => {
       quality: z.number().meta({ label: "Quality", control: "slider" }),
     });
     expect(() => describeFields(schema)).toThrow(/^\[options\] field quality:/);
+  });
+
+  it("carries showWhen through to the described field", () => {
+    const schema = z.object({
+      mode: z
+        .enum(["each", "ranges"])
+        .meta({ label: "Split", control: "select" }),
+      ranges: z.string().meta({
+        label: "Page ranges",
+        control: "text",
+        showWhen: { field: "mode", equals: "ranges" },
+      }),
+    });
+    expect(describeFields(schema)).toMatchObject([
+      { key: "mode" },
+      { key: "ranges", showWhen: { field: "mode", equals: "ranges" } },
+    ]);
+  });
+
+  it("omits showWhen from a field whose meta doesn't set it", () => {
+    const schema = z.object({
+      mode: z.enum(["each"]).meta({ label: "Split", control: "select" }),
+    });
+    expect(describeFields(schema)[0]).not.toHaveProperty("showWhen");
+  });
+});
+
+describe("isFieldVisible", () => {
+  const withoutShowWhen: FieldSpec = {
+    key: "ranges",
+    label: "Page ranges",
+    control: "text",
+  };
+  const equalsString: FieldSpec = {
+    ...withoutShowWhen,
+    showWhen: { field: "mode", equals: "ranges" },
+  };
+  const equalsList: FieldSpec = {
+    key: "orientation",
+    label: "Orientation",
+    control: "select",
+    options: [],
+    showWhen: { field: "pageSize", equals: ["a4", "letter"] },
+  };
+
+  it("is always visible with no showWhen", () => {
+    expect(isFieldVisible(withoutShowWhen, {})).toBe(true);
+  });
+
+  it("is visible when the controlling field equals the expected value", () => {
+    expect(isFieldVisible(equalsString, { mode: "ranges" })).toBe(true);
+  });
+
+  it("is hidden when the controlling field doesn't match", () => {
+    expect(isFieldVisible(equalsString, { mode: "each" })).toBe(false);
+  });
+
+  it("is hidden when the controlling field is absent from values", () => {
+    expect(isFieldVisible(equalsString, {})).toBe(false);
+  });
+
+  it("matches any entry of a list equals", () => {
+    expect(isFieldVisible(equalsList, { pageSize: "a4" })).toBe(true);
+    expect(isFieldVisible(equalsList, { pageSize: "letter" })).toBe(true);
+    expect(isFieldVisible(equalsList, { pageSize: "fit" })).toBe(false);
   });
 });
 

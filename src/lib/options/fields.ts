@@ -10,6 +10,11 @@ export type FieldSpec = {
   label: string;
   help?: string;
   unit?: string;
+  /** See the `showWhen` doc comment in `src/lib/registry/types.ts`. */
+  showWhen?: {
+    field: string;
+    equals: string | number | boolean | readonly (string | number | boolean)[];
+  };
 } & (
   | { control: "switch" }
   | { control: "select"; options: readonly { value: string; label: string }[] }
@@ -62,12 +67,13 @@ function describeField(key: string, rawField: CoreField): FieldSpec {
     );
   }
   const { type } = field._zod.def;
-  const { label, control, unit, help } = meta;
+  const { label, control, unit, help, showWhen } = meta;
   const base = {
     key,
     label,
     ...(unit !== undefined && { unit }),
     ...(help !== undefined && { help }),
+    ...(showWhen !== undefined && { showWhen }),
   };
 
   switch (control) {
@@ -150,6 +156,26 @@ export function describeFields(schema: z.ZodObject): FieldSpec[] {
   return Object.entries(schema.shape).map(([key, field]) =>
     describeField(key, field as CoreField),
   );
+}
+
+/**
+ * Whether `field` should be rendered, given the option values currently in
+ * the form — the read side of `showWhen` (see its doc comment in
+ * `src/lib/registry/types.ts`). No `showWhen` means always visible. A field
+ * that fails this check is left out of the form entirely, but `OptionsForm`
+ * never touches its value — it stays whatever it already was, so flipping
+ * the controlling field back and forth doesn't lose it.
+ */
+export function isFieldVisible(
+  field: FieldSpec,
+  values: Readonly<Record<string, unknown>>,
+): boolean {
+  if (!field.showWhen) return true;
+  const current = values[field.showWhen.field];
+  const { equals } = field.showWhen;
+  return Array.isArray(equals)
+    ? (equals as readonly unknown[]).includes(current)
+    : current === equals;
 }
 
 export type ValidateResult<S extends z.ZodObject> =

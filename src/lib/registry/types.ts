@@ -23,6 +23,24 @@ declare module "zod/v4/core" {
      * a quality slider with `step: 0.01` dragged to 0.853.
      */
     step?: number;
+    /**
+     * Renders this field only while another field in the same options
+     * object currently equals `equals` (or, for a list, equals one of its
+     * entries) — e.g. `split-pdf`'s `ranges` field only makes sense once
+     * `mode` is `"ranges"`. Checked against the form's *current* values, not
+     * the schema's defaults; a field that becomes hidden keeps whatever
+     * value it already had (`OptionsForm` never clears it), so toggling the
+     * controlling field back doesn't lose what the user typed. See
+     * `isFieldVisible` in `src/lib/options/fields.ts`.
+     */
+    showWhen?: {
+      field: string;
+      equals:
+        | string
+        | number
+        | boolean
+        | readonly (string | number | boolean)[];
+    };
   }
 }
 
@@ -111,6 +129,11 @@ export interface OptionMeta {
   control: "switch" | "select" | "slider" | "number" | "text" | "crop";
   unit?: string;
   help?: string;
+  /** See the `showWhen` doc comment on the `GlobalMeta` augmentation above. */
+  showWhen?: {
+    field: string;
+    equals: string | number | boolean | readonly (string | number | boolean)[];
+  };
 }
 
 export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {

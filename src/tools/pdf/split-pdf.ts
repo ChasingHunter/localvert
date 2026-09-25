@@ -33,7 +33,8 @@ export default defineTool({
       .meta({
         label: "Page ranges",
         control: "text",
-        help: 'Only used when Split is "ranges" — e.g. 1-3; 4-6 makes one file per range.',
+        help: "e.g. 1-3; 4-6 makes one file per range.",
+        showWhen: { field: "mode", equals: "ranges" },
       })
       .default(""),
   }),

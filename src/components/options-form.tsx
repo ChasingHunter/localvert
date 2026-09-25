@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   describeFields,
   type FieldSpec,
+  isFieldVisible,
   validateOptions,
 } from "@/lib/options/fields";
 
@@ -51,6 +52,10 @@ export function OptionsForm<S extends z.ZodObject>({
 
   const record = value as Record<string, unknown>;
   const defaultRecord = defaults as Record<string, unknown> | undefined;
+  // `defaultRecord` first, `record` on top: the same fallback order every
+  // individual field's own `value` prop below already uses, so a `showWhen`
+  // reading a field the user hasn't touched yet still sees its default.
+  const effectiveValues = { ...defaultRecord, ...record };
 
   const setField = (key: string, fieldValue: unknown) => {
     onChange({ ...record, [key]: fieldValue } as z.infer<S>);
@@ -58,16 +63,18 @@ export function OptionsForm<S extends z.ZodObject>({
 
   return (
     <div className="flex flex-col gap-5">
-      {fields.map((field) => (
-        <OptionField
-          key={field.key}
-          field={field}
-          value={record[field.key] ?? defaultRecord?.[field.key]}
-          error={errors[field.key]}
-          disabled={disabled}
-          onChange={(fieldValue) => setField(field.key, fieldValue)}
-        />
-      ))}
+      {fields
+        .filter((field) => isFieldVisible(field, effectiveValues))
+        .map((field) => (
+          <OptionField
+            key={field.key}
+            field={field}
+            value={record[field.key] ?? defaultRecord?.[field.key]}
+            error={errors[field.key]}
+            disabled={disabled}
+            onChange={(fieldValue) => setField(field.key, fieldValue)}
+          />
+        ))}
     </div>
   );
 }
