@@ -159,8 +159,15 @@ test("batch-converts 50 JPGs to PNG and stays under the main-thread heap budget"
     ) {
       return null;
     }
-    const result = await perf.measureUserAgentSpecificMemory();
-    return result.bytes;
+    // The API can exist yet throw SecurityError (e.g. headless Chromium
+    // without the feature enabled). It's informational only, so treat any
+    // failure as "unavailable" rather than failing the memory test.
+    try {
+      const result = await perf.measureUserAgentSpecificMemory();
+      return result.bytes;
+    } catch {
+      return null;
+    }
   });
 
   const downloadAll = page.getByRole("button", {
