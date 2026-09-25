@@ -77,6 +77,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   const [options, setOptions] = useState<Record<string, unknown>>({});
   const [rejected, setRejected] = useState<RejectedFile[]>([]);
   const [zipping, setZipping] = useState(false);
+  const [zipError, setZipError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,6 +140,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
     if (doneIds.length < 2) return;
 
     setZipping(true);
+    setZipError(null);
     try {
       const stream = await getAppJobEngine().zipOutputs(doneIds);
       const blob = await collectToBlob(stream, "application/zip");
@@ -150,6 +152,12 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+    } catch {
+      // The zip worker failing to load/mid-stream (see spawn.ts's
+      // `workerFailure`) surfaces here as a rejection rather than a hang —
+      // every done job's own download link still works, so this is
+      // recoverable rather than fatal.
+      setZipError("Couldn't build the zip — download files individually.");
     } finally {
       setZipping(false);
     }
@@ -203,6 +211,8 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         onClear={handleClear}
         zipping={zipping}
       />
+
+      {zipError && <p className="text-sm text-danger">{zipError}</p>}
     </div>
   );
 }
