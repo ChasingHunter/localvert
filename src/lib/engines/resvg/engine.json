@@ -1,0 +1,21 @@
+{
+  "id": "resvg",
+  "version": "2.6.2",
+  "license": "MPL-2.0",
+  "location": "static",
+  "needsIsolation": false,
+  "heavy": false,
+  "package": "@resvg/resvg-wasm",
+  "files": [
+    {
+      "from": "index_bg.wasm",
+      "to": "resvg.wasm"
+    }
+  ],
+  "assets": [
+    {
+      "path": "resvg.wasm",
+      "bytes": 2478606
+    }
+  ]
+}
