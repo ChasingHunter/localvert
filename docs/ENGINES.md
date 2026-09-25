@@ -39,6 +39,7 @@ as its codec preference table.
 | `heic` | heic, heif | — | — | adapter ready |
 | `utif` | tiff | — | — | adapter ready |
 | `exif` | — | — | `strip`: jpg, png, webp | adapter ready |
+| `libraw` | raw | — | — | adapter ready |
 
 `canvas` also still runs the legacy single-step `transcode` op directly
 (bytes of one format straight to bytes of another) for a tool that predates
@@ -72,7 +73,18 @@ worker-safe build, hands back an `ImageBitmap` directly (`type: "bitmap"`,
 no lossy intermediate re-encode), then reads it down to raw pixels through
 OffscreenCanvas the same way every other decode-only engine here does.
 `utif` decodes only the first page/frame of a TIFF, matching ADR-0007's
-general "first frame only" rule for any multi-frame source.
+general "first frame only" rule for any multi-frame source. `libraw` wraps
+`libraw-wasm` (LibRaw), LGPL-2.1/CDDL-1.0 — see ADR-0002 and the copyleft
+table in THIRD_PARTY_LICENSES.md — decoding camera raw with camera white
+balance, sRGB output and 8-bit samples; an `options.halfSize` switch asks for
+LibRaw's own faster half-resolution decode. It bypasses `libraw-wasm`'s own
+`index.js`/`worker.js` entry point (which spawns a nested Worker and resolves
+its wasm relative to its own bundled URL, with no hook to redirect it) and
+instead imports the lower-level Emscripten glue directly, pointing its
+`locateFile` hook at this engine's own `ctx.baseUrl` — see the adapter's own
+`load` doc comment for the full reasoning. A decode over 60 MP is rejected
+before the expensive demosaic runs (`RasterImage` is 4 bytes/pixel), and
+anything other than 8-bit RGB output (LibRaw's default) is rejected too.
 
 `exif` doesn't fit the decode/encode/transform shape at all — its one op,
 `strip`, is byte-to-byte (format in, the same format out, no raster
@@ -108,6 +120,7 @@ Size, placement, threading. Placement is enforced by `scripts/sync-engines.ts`:
 | `heic` | `heic-to` | 1.5.2 | **LGPL-3.0** | 0 (bundled in JS) | bundled | no |
 | `utif` | `utif2` | 4.1.0 | MIT | 0 (bundled in JS) | bundled | no |
 | `exif` | _(our own code)_ | 1.0.0 | MIT | 0 | bundled | no |
+| `libraw` | `libraw-wasm` | 1.6.0 | **LGPL-2.1/CDDL-1.0 dual** | ~1.4 MiB | static | no |
 
 ### How engine assets ship
 
@@ -148,7 +161,6 @@ first, then adapter, wiring, size budget, docs.
 
 | Engine | For | License | Approx size | Phase |
 |---|---|---|---|---|
-| `libraw-wasm` | Camera raw | LGPL-2.1 | ~2 MB | 1 |
 | `@cantoo/pdf-lib` | PDF manipulation | MIT | small | 2 |
 | `pdfjs-dist` | PDF render to image | Apache-2.0 | ~2 MB | 2 |
 | `@embedpdf/pdfium` | PDF compression | Apache-2.0 / BSD-3 | ~10 MB | 2 |

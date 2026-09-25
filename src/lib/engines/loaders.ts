@@ -18,6 +18,7 @@ export const ENGINE_LOADERS = {
   "jsquash-png": () => import("./jsquash-png/adapter"),
   "jsquash-resize": () => import("./jsquash-resize/adapter"),
   "jsquash-webp": () => import("./jsquash-webp/adapter"),
+  libraw: () => import("./libraw/adapter"),
   psd: () => import("./psd/adapter"),
   resvg: () => import("./resvg/adapter"),
   utif: () => import("./utif/adapter"),

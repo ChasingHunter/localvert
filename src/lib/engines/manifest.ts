@@ -114,6 +114,17 @@ export const ENGINE_MANIFEST = {
     baseUrl: "/engines/jsquash-webp@1.5.0/",
     totalBytes: 764805,
   },
+  libraw: {
+    id: "libraw",
+    version: "1.6.0",
+    license: "ISC (wrapper) + LibRaw LGPL-2.1 / CDDL-1.0 dual",
+    location: "static",
+    needsIsolation: false,
+    heavy: true,
+    assets: [{ path: "libraw.wasm", bytes: 1417725 }],
+    baseUrl: "/engines/libraw@1.6.0/",
+    totalBytes: 1417725,
+  },
   psd: {
     id: "psd",
     version: "0.4.0",

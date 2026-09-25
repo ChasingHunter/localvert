@@ -9,6 +9,7 @@ export type EngineId =
   | "jsquash-png"
   | "jsquash-resize"
   | "jsquash-webp"
+  | "libraw"
   | "psd"
   | "resvg"
   | "utif";

@@ -63,6 +63,7 @@ beyond attribution. Each is loaded at arms length as described above.
 | Engine | License | Obligation | How it is met |
 |---|---|---|---|
 | `heic` (`heic-to`, wraps libheif) | LGPL-3.0 | Source offer for the LGPL library; users must be able to relink against a modified libheif | We ship `heic-to`'s published build unmodified, fetched from npm at build time and never vendored or patched (ADR-0002) — the link to https://github.com/hoppergee/heic-to above satisfies the source offer. `heic-to` itself wraps libheif compiled to asm.js/wasm, unmodified from upstream. |
+| `libraw` (`libraw-wasm`, wraps LibRaw) | LGPL-2.1 / CDDL-1.0 dual (LibRaw itself; the `libraw-wasm` JS/wasm wrapper is ISC) | Source offer for LibRaw; users must be able to relink against a modified LibRaw | We ship `libraw-wasm`'s published build unmodified, fetched from npm at build time and never vendored or patched (ADR-0002) — https://github.com/ybouane/LibRaw-Wasm satisfies the source offer. `libraw-wasm` itself wraps LibRaw compiled to WebAssembly via Emscripten, unmodified from upstream. |
 
 ## Build and development dependencies
 

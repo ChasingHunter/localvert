@@ -29,6 +29,7 @@ const DECODE_PREFERENCE: Partial<Record<FormatId, readonly string[]>> = {
   svg: ["resvg"],
   tiff: ["utif"],
   psd: ["psd"],
+  raw: ["libraw"],
 };
 
 const ENCODE_PREFERENCE: Partial<Record<FormatId, readonly string[]>> = {

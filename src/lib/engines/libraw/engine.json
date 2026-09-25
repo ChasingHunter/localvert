@@ -1,0 +1,21 @@
+{
+  "id": "libraw",
+  "version": "1.6.0",
+  "license": "ISC (wrapper) + LibRaw LGPL-2.1 / CDDL-1.0 dual",
+  "location": "static",
+  "needsIsolation": false,
+  "heavy": true,
+  "package": "libraw-wasm",
+  "files": [
+    {
+      "from": "dist/libraw.wasm",
+      "to": "libraw.wasm"
+    }
+  ],
+  "assets": [
+    {
+      "path": "libraw.wasm",
+      "bytes": 1417725
+    }
+  ]
+}
