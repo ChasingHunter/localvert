@@ -1,0 +1,29 @@
+{
+  "id": "jsquash-jxl",
+  "version": "1.3.0",
+  "license": "Apache-2.0",
+  "location": "static",
+  "needsIsolation": false,
+  "heavy": false,
+  "package": "@jsquash/jxl",
+  "files": [
+    {
+      "from": "codec/dec/jxl_dec.wasm",
+      "to": "jxl_dec.wasm"
+    },
+    {
+      "from": "codec/enc/jxl_enc.wasm",
+      "to": "jxl_enc.wasm"
+    }
+  ],
+  "assets": [
+    {
+      "path": "jxl_dec.wasm",
+      "bytes": 849240
+    },
+    {
+      "path": "jxl_enc.wasm",
+      "bytes": 1363824
+    }
+  ]
+}
