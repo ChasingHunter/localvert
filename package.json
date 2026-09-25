@@ -35,6 +35,7 @@
     ]
   },
   "dependencies": {
+    "@image-tracer-ts/core": "^1.0.2",
     "@jsquash/avif": "^2.1.1",
     "@jsquash/jpeg": "^1.6.0",
     "@jsquash/jxl": "^1.3.0",

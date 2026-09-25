@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@image-tracer-ts/core':
+        specifier: ^1.0.2
+        version: 1.0.2
       '@jsquash/avif':
         specifier: ^2.1.1
         version: 2.1.1
@@ -409,6 +412,9 @@ packages:
 
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
+
+  '@image-tracer-ts/core@1.0.2':
+    resolution: {integrity: sha512-IY1/AMqvu6444dEwaFwJXwskp2fyKTFFVKvKHXBCT7hGz7OLRLHrWGHJrCsVw6HPSeucoHD5j/gtieWVSzocEw==}
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -2797,6 +2803,8 @@ snapshots:
       react-dom: 19.2.8(react@19.2.8)
 
   '@floating-ui/utils@0.2.12': {}
+
+  '@image-tracer-ts/core@1.0.2': {}
 
   '@img/colour@1.1.0': {}
 
