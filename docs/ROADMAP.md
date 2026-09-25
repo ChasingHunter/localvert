@@ -115,12 +115,12 @@ Goal: the image matrix people actually search for, fast and batched.
 - [x] svg → png/jpg (resvg-wasm) (2026-09-25)
 - [ ] raster → svg trace (later)
 - [x] tiff (utif2), psd (@webtoon/psd) (2026-09-25)
-- [ ] camera raw (libraw-wasm)
+- [x] camera raw (libraw-wasm; glue loaded at runtime — no DNG fixture yet) (2026-09-25)
 - [x] Compress with a **target size** (binary search on quality) (2026-09-25)
 - [x] Resize, rotate, strip EXIF (default on — privacy) (2026-09-25)
-- [ ] Crop (needs an interactive crop UI)
-- [ ] Golden-file tests per codec (byte-stable output)
-- [ ] Batch of 50 images stays under ~1.5 GB peak memory
+- [x] Crop with interactive crop editor (2026-09-25)
+- [x] Golden-file tests per codec (perceptual PSNR + size ±25%, not byte-exact) (2026-09-25)
+- [ ] Batch of 50 images stays under ~1.5 GB peak memory (test written: `E2E_SLOW=1`; not yet run)
 
 ## Phase 2 — PDF
 
