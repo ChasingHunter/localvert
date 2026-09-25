@@ -10,9 +10,17 @@
     {
       "from": "dist/libraw.wasm",
       "to": "libraw.wasm"
+    },
+    {
+      "from": "dist/libraw.js",
+      "to": "libraw.js"
     }
   ],
   "assets": [
+    {
+      "path": "libraw.js",
+      "bytes": 69155
+    },
     {
       "path": "libraw.wasm",
       "bytes": 1417725

@@ -121,9 +121,12 @@ export const ENGINE_MANIFEST = {
     location: "static",
     needsIsolation: false,
     heavy: true,
-    assets: [{ path: "libraw.wasm", bytes: 1417725 }],
+    assets: [
+      { path: "libraw.js", bytes: 69155 },
+      { path: "libraw.wasm", bytes: 1417725 },
+    ],
     baseUrl: "/engines/libraw@1.6.0/",
-    totalBytes: 1417725,
+    totalBytes: 1486880,
   },
   psd: {
     id: "psd",

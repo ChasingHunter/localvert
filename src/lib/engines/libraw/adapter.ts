@@ -1,20 +1,16 @@
 /**
  * `libraw-wasm` only ships types for its documented `index.js` entry point
  * (the `LibRaw` class from the package root) — see `load`'s doc comment
- * below for why this adapter bypasses that entry point and imports the
- * lower-level Emscripten glue, `dist/libraw.js`, directly instead. That
- * subpath ships no `.d.ts` of its own, and — because `allowJs` is on and the
- * subpath resolves to a real, on-disk file — it can't be given one via a
- * `declare module "libraw-wasm/dist/libraw.js"` ambient declaration either:
- * TypeScript treats that as *augmenting* an already-real-but-untyped module
- * and refuses (TS2665), in every tsc program this file reaches, module-body
- * or shorthand, inline or in a sibling `.d.ts`. `load()` below suppresses
- * the resulting single implicit-any at its one call site instead, and casts
- * straight to the local interfaces below — reusing the field shapes the
- * package's own `index.d.ts` already documents for the wrapped `index.js`
- * class (confirmed by reading `worker.js`'s published source that it
- * forwards args/results to these same instance methods untouched, so the
- * same shapes apply here too).
+ * below for why this adapter bypasses that entry point and loads the
+ * lower-level Emscripten glue, `dist/libraw.js`, directly instead. That file
+ * ships no `.d.ts` of its own; since `load()` now loads it at runtime rather
+ * than importing it as a module specifier (see below), there is no static
+ * import site for TypeScript to type at all. `load()` casts the loaded
+ * module's shape straight to the local interfaces below instead — reusing
+ * the field shapes the package's own `index.d.ts` already documents for the
+ * wrapped `index.js` class (confirmed by reading `worker.js`'s published
+ * source that it forwards args/results to these same instance methods
+ * untouched, so the same shapes apply here too).
  */
 import type { LibRawSettings, Metadata, RawImageData } from "libraw-wasm";
 import type { Operation, StepFormat } from "@/lib/registry";
@@ -124,26 +120,42 @@ async function inputToBytes(input: EngineInput): Promise<ArrayBuffer> {
  * chunk, not to `public/engines/libraw@<version>/` — invariant 3 territory,
  * and unversioned besides.
  *
- * `dist/libraw.js` (imported below) is the lower-level Emscripten glue
- * `worker.js` is itself built on. Called directly — we already run inside
- * our own worker, so there is no need for `libraw-wasm`'s nested one — its
- * factory function accepts a `locateFile` hook (confirmed by reading its
- * published source and by calling it directly in Node: `locateFile` is
- * invoked with `"libraw.wasm"` and its return value used as the fetch URL),
- * which this adapter points at `ctx.baseUrl`. `sync-engines` copies the
- * unmodified `dist/libraw.wasm` binary there (see `engine.json`); `libraw.js`
- * itself ships no other assets and needs no copy of its own — it's plain JS,
- * bundled into this adapter's own lazily-imported chunk like any other
- * module import.
+ * `dist/libraw.js` is the lower-level Emscripten glue `worker.js` is itself
+ * built on. Loaded directly — we already run inside our own worker, so there
+ * is no need for `libraw-wasm`'s nested one — its factory function accepts a
+ * `locateFile` hook (confirmed by reading its published source and by
+ * calling it directly in Node: `locateFile` is invoked with `"libraw.wasm"`
+ * and its return value used as the fetch URL), which this adapter points at
+ * `ctx.baseUrl`.
+ *
+ * That glue is loaded here at *runtime*, from our own served copy
+ * (`sync-engines` copies `dist/libraw.js` next to `dist/libraw.wasm`, per
+ * `engine.json`), rather than statically `import`ed like every other
+ * engine's dependencies. `dist/libraw.js` is Emscripten's pthreads build: it
+ * contains `new Worker(new URL("libraw.js", import.meta.url), ...)` — a
+ * worker that loads *itself* by its own module URL, for spawning additional
+ * threads. Turbopack's bundler follows that `new URL(..., import.meta.url)`
+ * into the same module it is already compiling, and never terminates —
+ * confirmed by bisect (`next build` hangs from the commit that first
+ * statically imported this file onward, times out clean before it). The
+ * `webpackIgnore`/`turbopackIgnore` directive comments below tell both
+ * bundlers to leave this one `import()` call alone rather than trace into
+ * it, so `libraw.js` ships as a plain static asset (like `libraw.wasm`) and
+ * is fetched as real ESM by the browser at runtime, where its own
+ * self-referential `new URL(..., import.meta.url)` resolves correctly
+ * against `ctx.baseUrl` and is never a bundling concern.
  */
 async function load(ctx: EngineLoadContext): Promise<EngineInstance> {
-  // `libraw-wasm/dist/libraw.js` has no upstream types and can't be given an
-  // ambient one (see the doc comment above) — this is the one place that
-  // crosses from that untyped import to this file's own known shape
-  // (`CreateLibRawModule`), via an explicit cast right below.
-  // @ts-expect-error — TS7016: no declaration file for this subpath.
-  const imported = await import("libraw-wasm/dist/libraw.js");
-  const createLibRawModule = imported.default as CreateLibRawModule;
+  // @vite-ignore — vitest's browser mode is Vite-powered; same reasoning as
+  // the two directives below, for the bundler this file's own tests run
+  // under.
+  const imported = (await import(
+    /* webpackIgnore: true */
+    /* turbopackIgnore: true */
+    /* @vite-ignore */
+    `${ctx.baseUrl}libraw.js`
+  )) as { default: CreateLibRawModule };
+  const createLibRawModule = imported.default;
   const module = await createLibRawModule({
     locateFile: (path) => `${ctx.baseUrl}${path}`,
   });
