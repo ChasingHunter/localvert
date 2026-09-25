@@ -91,15 +91,15 @@ All `uses:` pinned to full commit SHAs. Top-level `permissions: {}`.
 - [x] Issue/PR templates, README, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT (2026-09-24)
 
 ### 0.9 Ship
-- [ ] `gh repo create ChasingHunter/localvert --public`, first push **(owner)**
+- [x] Public repo ChasingHunter/localvert, first push (2026-09-25)
 - [ ] Branch ruleset on `main`: require CI jobs `check`, `build`, `browser`; block force-push and deletion,
       do not require PRs **(owner)**
 - [x] Cloudflare: R2 bucket `localvert-engines`, `production` environment with
       `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` secrets **(owner)** (2026-09-24)
 - [x] workers.dev subdomain registered (needed before the first CI deploy) **(owner)** (2026-09-25)
-- [ ] First deploy green; E2E against the live URL
-- [ ] Privacy assertion in CI: Playwright fails the run if **any** request
-      leaves the origin during a conversion
+- [x] First deploy green (https://localvert.chasinghunter.workers.dev); E2E 3/3 against the live URL (2026-09-25)
+- [x] Privacy assertion in CI: Playwright fails the run if **any** request
+      leaves the origin during a conversion (2026-09-25)
 
 ---
 
