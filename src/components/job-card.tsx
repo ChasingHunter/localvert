@@ -9,6 +9,14 @@ interface JobCardProps {
   job: Job;
   onCancel: (id: string) => void;
   onRemove: (id: string) => void;
+  /** ADR-0008: zips this one job's own `outputs` (one-to-many, e.g.
+   * split-pdf) — a *different* zip than `JobList`'s cross-job "download all",
+   * scoped to a single job's multiple files. */
+  onDownloadOutputs: (id: string) => void;
+  /** The id of the job currently being zipped via `onDownloadOutputs`, if
+   * any — disables that job's own button so a second click can't start a
+   * second zip. */
+  zippingId: string | null;
 }
 
 const STATUS_LABEL: Record<Job["status"], string> = {
@@ -37,7 +45,13 @@ function formatBytes(bytes: number): string {
  * never touches the job engine itself, only the two callbacks its parent
  * wires to it.
  */
-export function JobCard({ job, onCancel, onRemove }: JobCardProps) {
+export function JobCard({
+  job,
+  onCancel,
+  onRemove,
+  onDownloadOutputs,
+  zippingId,
+}: JobCardProps) {
   const cancellable = job.status === "queued" || job.status === "running";
 
   return (
@@ -50,6 +64,8 @@ export function JobCard({ job, onCancel, onRemove }: JobCardProps) {
           <span className="text-xs text-ink-muted">
             {STATUS_LABEL[job.status]} · {formatBytes(job.inputSize)}
             {job.output && ` → ${formatBytes(job.output.size)}`}
+            {job.outputs &&
+              ` → ${job.outputs.length} files, ${formatBytes(job.outputs.reduce((sum, o) => sum + o.size, 0))}`}
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -61,6 +77,17 @@ export function JobCard({ job, onCancel, onRemove }: JobCardProps) {
             >
               Download
             </a>
+          )}
+          {job.status === "done" && job.outputs && job.outputs.length > 1 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onDownloadOutputs(job.id)}
+              disabled={zippingId === job.id}
+            >
+              {zippingId === job.id ? "Zipping…" : "Download all (.zip)"}
+            </Button>
           )}
           {cancellable ? (
             <Button
@@ -87,6 +114,28 @@ export function JobCard({ job, onCancel, onRemove }: JobCardProps) {
       </div>
 
       {cancellable && <Progress value={Math.round(job.progress * 100)} />}
+
+      {job.status === "done" && job.outputs && (
+        <ul className="flex flex-col gap-1">
+          {job.outputs.map((output) => (
+            <li
+              key={output.name}
+              className="flex items-center justify-between gap-3"
+            >
+              <span className="truncate text-xs text-ink-muted">
+                {output.name} · {formatBytes(output.size)}
+              </span>
+              <a
+                download={output.name}
+                href={output.url}
+                className="shrink-0 text-sm font-medium text-accent hover:underline"
+              >
+                Download
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {job.status === "error" && job.error && (
         <p className="text-xs text-danger">{job.error.message}</p>

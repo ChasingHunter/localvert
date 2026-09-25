@@ -464,6 +464,210 @@ describe("createJobEngine / submit", () => {
   });
 });
 
+describe("createJobEngine / submit — arity: many-to-one", () => {
+  function makeMergeTool(
+    overrides: Partial<ToolDefinition> = {},
+  ): ToolDefinition {
+    return makeTool({
+      slug: "merge-pdf",
+      category: "pdf",
+      accepts: ["pdf"],
+      produces: "pdf",
+      pipeline: [{ op: "merge", candidates: [{ engine: "canvas" }] }],
+      batch: false,
+      arity: "many-to-one",
+      actionLabel: "Merge PDFs",
+      ...overrides,
+    });
+  }
+
+  function makePdfFile(name = "a.pdf"): File {
+    return new File(["%PDF-1.4"], name, { type: "application/pdf" });
+  }
+
+  it("dispatches every file as ONE job carrying all inputs in order", () => {
+    const { engine, calls, store } = setup();
+
+    const ids = engine.submit(
+      makeMergeTool(),
+      [
+        { file: makePdfFile("a.pdf"), format: "pdf" },
+        { file: makePdfFile("b.pdf"), format: "pdf" },
+      ],
+      {},
+    );
+
+    expect(ids).toHaveLength(1);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.req.inputs).toEqual([
+      { kind: "blob", blob: expect.any(File) },
+      { kind: "blob", blob: expect.any(File) },
+    ]);
+    expect(store.getState().jobs).toHaveLength(1);
+    expect(store.getState().jobs[0]).toMatchObject({
+      fileName: "2 files",
+      inputSize: 8 + 8, // both fixture files are 8 bytes ("%PDF-1.4")
+    });
+  });
+
+  it("keeps the single file's own name when only one file is submitted", () => {
+    const { engine, store } = setup();
+    engine.submit(
+      makeMergeTool(),
+      [{ file: makePdfFile("solo.pdf"), format: "pdf" }],
+      {},
+    );
+    expect(store.getState().jobs[0]?.fileName).toBe("solo.pdf");
+  });
+
+  it("names the single output from the first file", async () => {
+    const { engine, calls, store } = setup();
+    engine.submit(
+      makeMergeTool(),
+      [
+        { file: makePdfFile("first.pdf"), format: "pdf" },
+        { file: makePdfFile("second.pdf"), format: "pdf" },
+      ],
+      {},
+    );
+
+    calls[0]?.deferred.resolve(bytesResult("merged", "application/pdf"));
+    await flush();
+
+    const job = store.getState().jobs[0];
+    expect(job?.status).toBe("done");
+    expect(job?.output?.name).toBe("first.pdf");
+  });
+
+  it("marks the single job as error/unsupported when no engine candidate is eligible", () => {
+    const { engine, calls, store } = setup();
+    const tool = makeMergeTool({
+      pipeline: [
+        { op: "merge", candidates: [{ engine: "canvas", when: () => false }] },
+      ],
+    });
+
+    const ids = engine.submit(
+      tool,
+      [
+        { file: makePdfFile("a.pdf"), format: "pdf" },
+        { file: makePdfFile("b.pdf"), format: "pdf" },
+      ],
+      {},
+    );
+
+    expect(ids).toHaveLength(1);
+    expect(calls).toHaveLength(0);
+    expect(store.getState().jobs[0]?.status).toBe("error");
+    expect(store.getState().jobs[0]?.error?.code).toBe("unsupported");
+  });
+
+  it("returns no jobs for an empty file list", () => {
+    const { engine, calls, store } = setup();
+    const ids = engine.submit(makeMergeTool(), [], {});
+    expect(ids).toEqual([]);
+    expect(calls).toHaveLength(0);
+    expect(store.getState().jobs).toHaveLength(0);
+  });
+});
+
+describe("createJobEngine / submit — arity: one-to-many", () => {
+  function makeSplitTool(
+    overrides: Partial<ToolDefinition> = {},
+  ): ToolDefinition {
+    return makeTool({
+      slug: "split-pdf",
+      category: "pdf",
+      accepts: ["pdf"],
+      produces: "pdf",
+      pipeline: [{ op: "split", candidates: [{ engine: "canvas" }] }],
+      batch: false,
+      arity: "one-to-many",
+      ...overrides,
+    });
+  }
+
+  function filesResult(
+    files: { name: string; text: string; mime?: string }[],
+  ): EngineResult {
+    return {
+      kind: "files",
+      files: files.map((f) => ({
+        name: f.name,
+        bytes: new TextEncoder().encode(f.text).buffer,
+        mime: f.mime ?? "application/pdf",
+      })),
+    };
+  }
+
+  it("stores every produced file as one job's outputs, each with its own blob url", async () => {
+    const { engine, calls, store, createObjectURL } = setup();
+
+    const ids = engine.submit(
+      makeSplitTool(),
+      [
+        {
+          file: new File(["%PDF"], "doc.pdf", { type: "application/pdf" }),
+          format: "pdf",
+        },
+      ],
+      {},
+    );
+    expect(ids).toHaveLength(1);
+
+    calls[0]?.deferred.resolve(
+      filesResult([
+        { name: "doc-page-1.pdf", text: "one" },
+        { name: "doc-page-2.pdf", text: "two" },
+      ]),
+    );
+    await flush();
+
+    const job = store.getState().jobs[0];
+    expect(job?.status).toBe("done");
+    expect(job?.output).toBeUndefined();
+    expect(job?.outputs).toHaveLength(2);
+    expect(job?.outputs?.map((o) => o.name)).toEqual([
+      "doc-page-1.pdf",
+      "doc-page-2.pdf",
+    ]);
+    expect(createObjectURL).toHaveBeenCalledTimes(2);
+    expect(job?.outputs?.[0]?.url).toBe("blob:fake-0");
+    expect(job?.outputs?.[1]?.url).toBe("blob:fake-1");
+  });
+
+  it("zipOutputs for a one-to-many job zips every one of its output files", async () => {
+    const { engine, calls, zipCalls } = setup();
+    const ids = engine.submit(
+      makeSplitTool(),
+      [
+        {
+          file: new File(["%PDF"], "doc.pdf", { type: "application/pdf" }),
+          format: "pdf",
+        },
+      ],
+      {},
+    );
+    const id = ids[0];
+    if (!id) throw new Error("expected a job id");
+
+    calls[0]?.deferred.resolve(
+      filesResult([
+        { name: "doc-page-1.pdf", text: "one" },
+        { name: "doc-page-2.pdf", text: "two" },
+      ]),
+    );
+    await flush();
+
+    await engine.zipOutputs([id]);
+    expect(zipCalls[0]).toHaveLength(2);
+    expect(zipCalls[0]?.map((e) => e.name).sort()).toEqual([
+      "doc-page-1.pdf",
+      "doc-page-2.pdf",
+    ]);
+  });
+});
+
 describe("createJobEngine / zipOutputs", () => {
   it("passes only the requested done jobs' blobs and names to the injected zip", async () => {
     const { engine, calls, zip, zipCalls } = setup();

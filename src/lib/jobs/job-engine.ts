@@ -1,4 +1,4 @@
-import type { EngineResult } from "@/lib/engines";
+import type { EngineInput, EngineResult } from "@/lib/engines";
 import { toEngineError } from "@/lib/engines";
 import { ENGINE_MANIFEST } from "@/lib/engines/manifest";
 import type {
@@ -66,9 +66,13 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
   } = opts;
 
   const inflight = new Map<string, Inflight>();
-  // A done job's blob, kept alongside its object URL so `zipOutputs` can
-  // hand the actual bytes to the zip worker without re-fetching the URL.
-  const outputBlobs = new Map<string, { name: string; blob: Blob }>();
+  // A done job's output blob(s), kept alongside their object URL(s) so
+  // `zipOutputs` can hand the actual bytes to the zip worker without
+  // re-fetching a URL. Always an array — one entry for a one-to-one or
+  // many-to-one job's single output, N entries for a one-to-many job's
+  // multiple outputs (ADR-0008) — so `zipOutputs` doesn't need to know which
+  // arity produced a given job.
+  const outputBlobs = new Map<string, { name: string; blob: Blob }[]>();
 
   // One FIFO chain per "single"-concurrency category (see CATEGORY_META) —
   // a small semaphore of concurrency 1. "pool" categories skip this
@@ -106,6 +110,10 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
     } catch (e) {
       if (!(e instanceof NoEngineError)) throw e;
       resolved = e;
+    }
+
+    if (tool.arity === "many-to-one") {
+      return submitManyToOne(tool, files, resolved, parsed.data);
     }
 
     const ids: string[] = [];
@@ -150,6 +158,65 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
   }
 
   /**
+   * ADR-0008: a many-to-one submission is **one** job that owns every file
+   * in `files`, in the order the caller gave them (the order the user
+   * arranged them in `FileOrderList`) — never one job per file, unlike the
+   * loop in `submit` above. `files[0]` stands in for "the file" wherever a
+   * single representative is needed (naming, the sniffed format every
+   * declared pipeline step falls back to).
+   */
+  function submitManyToOne(
+    tool: ToolDefinition,
+    files: SubmitFile[],
+    resolved: ReturnType<typeof resolvePipeline> | NoEngineError,
+    parsedOptions: unknown,
+  ): string[] {
+    if (files.length === 0) return [];
+
+    const id = makeId();
+    const first = files[0];
+    if (!first) return [id]; // unreachable: guarded by the length check above
+    const totalSize = files.reduce((sum, f) => sum + f.file.size, 0);
+    const fileName =
+      files.length === 1 ? first.file.name : `${files.length} files`;
+
+    if (resolved instanceof NoEngineError) {
+      store.getState().add({
+        id,
+        toolSlug: tool.slug,
+        fileName,
+        inputSize: totalSize,
+        inputFormat: first.format,
+        status: "error",
+        progress: 0,
+        error: { code: "unsupported", message: resolved.message },
+      });
+      return [id];
+    }
+
+    store.getState().add({
+      id,
+      toolSlug: tool.slug,
+      fileName,
+      inputSize: totalSize,
+      inputFormat: first.format,
+      status: "queued",
+      progress: 0,
+    });
+
+    dispatch({
+      tool,
+      id,
+      file: first.file,
+      inputs: files.map((f): EngineInput => ({ kind: "blob", blob: f.file })),
+      steps: buildSteps(tool, resolved, first.format),
+      parsedOptions,
+    });
+
+    return [id];
+  }
+
+  /**
    * Zips each resolved step (op + engine, from `resolvePipeline`) with the
    * tool's own declared step (which carries `baseUrl`'s ingredients and, for
    * an `imagePipeline`-built tool, the step's `from`/`to` formats) and this
@@ -190,12 +257,15 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
     tool: ToolDefinition;
     id: string;
     file: File;
+    /** ADR-0008: every input file, in order, for a many-to-one job.
+     * Undefined for every other arity — `file` above is the whole input. */
+    inputs?: readonly EngineInput[];
     steps: readonly RunStep[];
     parsedOptions: unknown;
   }
 
   function dispatch(args: DispatchArgs): void {
-    const { tool, id, file, steps, parsedOptions } = args;
+    const { tool, id, file, inputs, steps, parsedOptions } = args;
     const controller = new AbortController();
     inflight.set(id, { controller });
 
@@ -216,6 +286,7 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
           {
             jobId: id,
             input: { kind: "blob", blob: file },
+            inputs,
             steps,
             options: parsedOptions as Record<string, unknown>,
           },
@@ -281,6 +352,28 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
       return;
     }
 
+    if (result.kind === "files") {
+      // ADR-0008, one-to-many (e.g. split-pdf): every produced file gets its
+      // own blob/url, named by the engine — `job-engine.ts` trusts those
+      // names as-is, so `outputBlobs`' own de-duplication (via
+      // `zipOutputs` -> `uniqueName` in the zip sink) is what keeps two
+      // identically-named outputs from colliding inside a zip.
+      const outputs = result.files.map((f) => {
+        const blob = new Blob([f.bytes], { type: f.mime });
+        return { name: f.name, mime: f.mime, size: blob.size, blob };
+      });
+      outputBlobs.set(
+        id,
+        outputs.map(({ name, blob }) => ({ name, blob })),
+      );
+      store.getState().update(id, {
+        status: "done",
+        progress: 1,
+        outputs: outputs.map((o) => ({ ...o, url: createObjectURL(o.blob) })),
+      });
+      return;
+    }
+
     const blob =
       result.kind === "bytes"
         ? new Blob([result.bytes], { type: result.mime })
@@ -288,7 +381,7 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
 
     const name = outputFileName(tool, file.name, parsedOptions);
     const url = createObjectURL(blob);
-    outputBlobs.set(id, { name, blob });
+    outputBlobs.set(id, [{ name, blob }]);
 
     store.getState().update(id, {
       status: "done",
@@ -319,8 +412,8 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
     const targets = ids ?? [...outputBlobs.keys()];
     const entries: { name: string; blob: Blob }[] = [];
     for (const id of targets) {
-      const entry = outputBlobs.get(id);
-      if (entry) entries.push(entry);
+      const forJob = outputBlobs.get(id);
+      if (forJob) entries.push(...forJob);
     }
     const { stream } = await zip(entries);
     return stream;

@@ -18,7 +18,20 @@ export interface Job {
   /** 0..1. */
   progress: number;
   error?: { code: EngineErrorCode; message: string };
+  /** One-to-one and many-to-one jobs (ADR-0008): a single output file. */
   output?: { name: string; mime: string; size: number; url: string };
+  /** One-to-many jobs (ADR-0008, e.g. `split-pdf`): every output file, in
+   * the order the engine produced them. `blob` rides alongside `url` so the
+   * job card's per-job "Download all (.zip)" can hand the zip sink real
+   * bytes without re-fetching the object URL — same reasoning as
+   * `job-engine.ts`'s own `outputBlobs` map for the single-output case. */
+  outputs?: {
+    name: string;
+    mime: string;
+    size: number;
+    url: string;
+    blob: Blob;
+  }[];
 }
 
 export interface JobStoreState {
@@ -53,11 +66,13 @@ export function createJobStore() {
     remove(id) {
       const job = get().jobs.find((j) => j.id === id);
       if (job?.output) URL.revokeObjectURL(job.output.url);
+      for (const output of job?.outputs ?? []) URL.revokeObjectURL(output.url);
       set((state) => ({ jobs: state.jobs.filter((j) => j.id !== id) }));
     },
     clear() {
       for (const job of get().jobs) {
         if (job.output) URL.revokeObjectURL(job.output.url);
+        for (const output of job.outputs ?? []) URL.revokeObjectURL(output.url);
       }
       set({ jobs: [] });
     },

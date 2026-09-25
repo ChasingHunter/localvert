@@ -5,7 +5,9 @@ import { useCallback, useEffect, useState } from "react";
 import type { Rect } from "@/components/crop-geometry";
 import { Dropzone } from "@/components/dropzone";
 import type { AcceptedFile, RejectedFile } from "@/components/dropzone-logic";
+import { FileOrderList } from "@/components/file-order-list";
 import { JobList } from "@/components/job-list";
+import { Button } from "@/components/ui/button";
 import { jobStore, selectOrderedJobs } from "@/lib/jobs/store";
 import { FORMATS, formatFromFilename } from "@/lib/registry/formats";
 import type { ToolDefinition } from "@/lib/registry/types";
@@ -98,6 +100,16 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   const [zipping, setZipping] = useState(false);
   const [zipError, setZipError] = useState<string | null>(null);
   const [cropTarget, setCropTarget] = useState<AcceptedFile | null>(null);
+  // ADR-0008, arity "many-to-one" (e.g. merge-pdf): files accumulate here
+  // across drops instead of submitting immediately, in the order the user
+  // arranges them via `FileOrderList` — submission is the explicit
+  // `actionLabel` button below, not on-drop.
+  const [orderedFiles, setOrderedFiles] = useState<AcceptedFile[]>([]);
+  // The job currently being zipped via a `JobCard`'s own per-job
+  // "Download all (.zip)" (one-to-many outputs) — a separate concern from
+  // `zipping`/`zipError` above, which track the cross-job "download all".
+  const [zippingJobId, setZippingJobId] = useState<string | null>(null);
+  const [jobZipError, setJobZipError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,6 +146,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   // ever loads lazily, inside the tool's own dynamically-imported chunk
   // (`TOOL_LOADERS[slug]()` above).
   const hasCropField = tool ? "crop" in tool.options.shape : false;
+  const isManyToOne = tool?.arity === "many-to-one";
 
   const handleFiles = useCallback(
     async (accepted: AcceptedFile[], rejectedFiles: RejectedFile[]) => {
@@ -147,6 +160,12 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         if (first) setCropTarget(first);
         return;
       }
+      if (isManyToOne) {
+        // Accumulate across drops instead of submitting — see
+        // `handleSubmitOrdered` for the explicit submit this arity uses.
+        setOrderedFiles((prev) => [...prev, ...accepted]);
+        return;
+      }
       const engine = await jobEngine();
       engine.submit(
         tool,
@@ -154,8 +173,19 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         options,
       );
     },
-    [tool, options, hasCropField],
+    [tool, options, hasCropField, isManyToOne],
   );
+
+  const handleSubmitOrdered = useCallback(async () => {
+    if (!tool || orderedFiles.length < 2) return;
+    const engine = await jobEngine();
+    engine.submit(
+      tool,
+      orderedFiles.map((a) => ({ file: a.file, format: a.format })),
+      options,
+    );
+    setOrderedFiles([]);
+  }, [tool, orderedFiles, options]);
 
   const handleCropSubmit = useCallback(
     async (crop: Rect) => {
@@ -227,6 +257,35 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
     }
   }, [tool, jobs]);
 
+  /** ADR-0008: zips one job's own multiple `outputs` (one-to-many, e.g.
+   * split-pdf) — `zipOutputs([id])` scopes the zip sink to just that job,
+   * see `job-engine.ts`'s `outputBlobs`. */
+  const handleDownloadJobOutputs = useCallback(
+    async (id: string) => {
+      if (!tool) return;
+      setZippingJobId(id);
+      setJobZipError(null);
+      try {
+        const engine = await jobEngine();
+        const stream = await engine.zipOutputs([id]);
+        const blob = await collectToBlob(stream, "application/zip");
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `localvert-${tool.slug}-${id}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch {
+        setJobZipError("Couldn't build the zip — download files individually.");
+      } finally {
+        setZippingJobId(null);
+      }
+    },
+    [tool],
+  );
+
   if (loadError) {
     return <p className="text-sm text-danger">{loadError}</p>;
   }
@@ -244,9 +303,22 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
       {!(hasCropField && cropTarget) && (
         <Dropzone
           accepts={tool.accepts}
-          multiple={tool.batch}
+          multiple={tool.batch || isManyToOne}
           onFiles={handleFiles}
         />
+      )}
+
+      {isManyToOne && orderedFiles.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <FileOrderList files={orderedFiles} onChange={setOrderedFiles} />
+          <Button
+            type="button"
+            onClick={handleSubmitOrdered}
+            disabled={orderedFiles.length < 2}
+          >
+            {tool.actionLabel ?? "Convert"}
+          </Button>
+        </div>
       )}
 
       {rejected.length > 0 && (
@@ -287,9 +359,12 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         onDownloadAll={handleDownloadAll}
         onClear={handleClear}
         zipping={zipping}
+        onDownloadJobOutputs={handleDownloadJobOutputs}
+        zippingJobId={zippingJobId}
       />
 
       {zipError && <p className="text-sm text-danger">{zipError}</p>}
+      {jobZipError && <p className="text-sm text-danger">{jobZipError}</p>}
     </div>
   );
 }

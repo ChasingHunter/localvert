@@ -78,6 +78,38 @@ describe("createJobStore", () => {
     expect(URL.revokeObjectURL).not.toHaveBeenCalled();
   });
 
+  it("remove revokes every url in a one-to-many job's outputs", () => {
+    const store = createJobStore();
+    store.getState().add(
+      makeJob({
+        id: "a",
+        status: "done",
+        outputs: [
+          {
+            name: "p1.pdf",
+            mime: "application/pdf",
+            size: 1,
+            url: "blob:1",
+            blob: new Blob(),
+          },
+          {
+            name: "p2.pdf",
+            mime: "application/pdf",
+            size: 1,
+            url: "blob:2",
+            blob: new Blob(),
+          },
+        ],
+      }),
+    );
+
+    store.getState().remove("a");
+
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:1");
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:2");
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
+  });
+
   it("clear removes every job and revokes every output URL", () => {
     const store = createJobStore();
     store.getState().add(

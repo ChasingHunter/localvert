@@ -13,6 +13,10 @@ interface JobListProps {
   onClear: () => void;
   /** True while `zipOutputs` is running — disables the button so a second click can't start a second zip. */
   zipping: boolean;
+  /** ADR-0008: zips one job's own multiple outputs — passed through to
+   * every `JobCard`, see its own doc comment. */
+  onDownloadJobOutputs: (id: string) => void;
+  zippingJobId: string | null;
 }
 
 /**
@@ -27,6 +31,8 @@ export function JobList({
   onDownloadAll,
   onClear,
   zipping,
+  onDownloadJobOutputs,
+  zippingJobId,
 }: JobListProps) {
   const doneCount = jobs.filter((j) => j.status === "done").length;
   const settledCount = jobs.filter((j) =>
@@ -79,6 +85,8 @@ export function JobList({
             job={job}
             onCancel={onCancel}
             onRemove={onRemove}
+            onDownloadOutputs={onDownloadJobOutputs}
+            zippingId={zippingJobId}
           />
         ))}
       </ul>
