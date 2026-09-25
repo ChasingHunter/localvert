@@ -74,4 +74,22 @@ describe("classifyFiles", () => {
       { file, format: "webp", extensionMismatch: true },
     ]);
   });
+
+  it("reclassifies a TIFF-based camera raw (e.g. CR2) by extension, no mismatch", async () => {
+    // CR2 is byte-for-byte a TIFF file — sniffFile alone returns "tiff" for
+    // it, same as the injected sniff below stands in for. classifyFiles'
+    // refineFormat pass is what upgrades it to "raw" before the accepts
+    // check, so it lands in the "raw"-accepting bucket with no extension
+    // mismatch flagged (the .cr2 name agrees with the refined format).
+    const file = new File([], "IMG_0001.cr2");
+    const { accepted, rejected } = await classifyFiles(
+      [file],
+      ["raw"],
+      async () => "tiff",
+    );
+    expect(rejected).toEqual([]);
+    expect(accepted).toEqual([
+      { file, format: "raw", extensionMismatch: false },
+    ]);
+  });
 });

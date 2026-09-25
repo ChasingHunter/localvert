@@ -4,6 +4,7 @@ import {
   type FormatId,
   formatFromFilename,
   type MagicPattern,
+  refineFormat,
   SNIFF_BYTES,
   sniffFile,
   sniffFormat,
@@ -80,6 +81,36 @@ describe("formatFromFilename", () => {
 
   it("returns null for an unknown extension", () => {
     expect(formatFromFilename("file.xyz")).toBeNull();
+  });
+});
+
+describe("refineFormat", () => {
+  it("upgrades a tiff sniff to raw when the filename has a raw extension (CR2-like)", () => {
+    // CR2 (and every TIFF-based raw) is byte-for-byte a TIFF file, so this
+    // is exactly what sniffFormat itself returns for one.
+    expect(sniffFormat(headerFor(FORMATS.tiff.magic[0]))).toBe("tiff");
+    expect(refineFormat("tiff", "photo.cr2")).toBe("raw");
+  });
+
+  it("leaves a tiff sniff alone for a plain .tif/.tiff name", () => {
+    expect(refineFormat("tiff", "scan.tif")).toBe("tiff");
+    expect(refineFormat("tiff", "scan.tiff")).toBe("tiff");
+  });
+
+  it("leaves a tiff sniff alone for an unrelated or missing extension", () => {
+    expect(refineFormat("tiff", "photo.jpg")).toBe("tiff");
+    expect(refineFormat("tiff", "noext")).toBe("tiff");
+  });
+
+  it("passes a non-tiff sniff through unchanged, e.g. RAF bytes regardless of name", () => {
+    const raf = headerFor([FORMATS.raw.magic[0]?.[0] as MagicPattern]);
+    expect(sniffFormat(raf)).toBe("raw");
+    expect(refineFormat("raw", "whatever.xyz")).toBe("raw");
+    expect(refineFormat("png", "photo.cr2")).toBe("png");
+  });
+
+  it("passes null through unchanged", () => {
+    expect(refineFormat(null, "photo.cr2")).toBeNull();
   });
 });
 

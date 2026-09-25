@@ -1,6 +1,7 @@
 import {
   type FormatId,
   formatFromFilename,
+  refineFormat,
   sniffFile,
 } from "@/lib/registry/formats";
 
@@ -38,7 +39,11 @@ export async function classifyFiles(
   const rejected: RejectedFile[] = [];
 
   for (const file of files) {
-    const detected = await sniff(file);
+    // `refineFormat` upgrades a "tiff" sniff to "raw" by extension — CR2,
+    // NEF, ARW, DNG and the rest are themselves valid TIFF files, so bytes
+    // alone can't tell a camera raw from a plain scan (see its doc comment
+    // in `formats.ts`). Every other sniffed format passes through unchanged.
+    const detected = refineFormat(await sniff(file), file.name);
     if (detected === null) {
       rejected.push({ file, reason: "unknown-format", detected: null });
       continue;

@@ -85,6 +85,53 @@ export const FORMATS = {
     category: "image",
     magic: [[{ offset: 0, bytes: ascii("BM") }]],
   },
+  raw: {
+    label: "Camera RAW",
+    ext: [
+      "cr2",
+      "cr3",
+      "nef",
+      "nrw",
+      "arw",
+      "srf",
+      "sr2",
+      "dng",
+      "raf",
+      "orf",
+      "rw2",
+      "pef",
+      "srw",
+      "3fr",
+      "iiq",
+      "rwl",
+      "mrw",
+      "x3f",
+      "erf",
+      "kdc",
+      "mos",
+      "raw",
+    ],
+    mime: "image/x-raw",
+    category: "image",
+    // Only the non-TIFF-based raw formats can be told apart by magic bytes
+    // here. CR2, NEF, ARW, DNG, PEF, SRW and others are themselves valid
+    // TIFF/EP files — every raw format built on TIFF shares TIFF's own
+    // signature byte-for-byte — so they sniff as `tiff` below and are only
+    // reclassified to `raw` afterwards, by extension: see `refineFormat`.
+    // Declared before `tiff` (and therefore before `heic`, which comes
+    // later still) so these unambiguous signatures always win over either.
+    magic: [
+      [{ offset: 0, bytes: ascii("FUJIFILMCCD-RAW") }], // RAF (Fujifilm)
+      [{ offset: 0, bytes: ascii("IIRO") }], // ORF (Olympus), variant 1
+      [{ offset: 0, bytes: ascii("IIRS") }], // ORF (Olympus), variant 2
+      [{ offset: 0, bytes: ascii("MMOR") }], // ORF (Olympus), variant 3
+      [{ offset: 0, bytes: ascii("IIU\0") }], // RW2 (Panasonic)
+      [
+        { offset: 4, bytes: ascii("ftyp") },
+        { offset: 8, bytes: ascii("crx ") },
+      ], // CR3 (Canon) — an ISO-BMFF "ftyp" box, like AVIF/HEIC.
+    ],
+  },
   tiff: {
     label: "TIFF",
     ext: ["tiff", "tif"],
@@ -235,14 +282,20 @@ export async function sniffFile(file: Blob): Promise<FormatId | null> {
   return sniffFormat(new Uint8Array(head));
 }
 
+/** Lowercase extension with no leading dot, or `null` if `name` has none. */
+function extOf(name: string): string | null {
+  const dot = name.lastIndexOf(".");
+  if (dot === -1 || dot === name.length - 1) return null;
+  return name.slice(dot + 1).toLowerCase();
+}
+
 /**
  * Case-insensitive extension lookup. A hint for pre-filling UI before a
  * file's bytes are read — never a substitute for `sniffFormat`/`sniffFile`.
  */
 export function formatFromFilename(name: string): FormatId | null {
-  const dot = name.lastIndexOf(".");
-  if (dot === -1 || dot === name.length - 1) return null;
-  const ext = name.slice(dot + 1).toLowerCase();
+  const ext = extOf(name);
+  if (ext === null) return null;
   for (const [id, spec] of Object.entries(FORMATS) as [
     FormatId,
     FormatSpec,
@@ -250,4 +303,28 @@ export function formatFromFilename(name: string): FormatId | null {
     if ((spec.ext as readonly string[]).includes(ext)) return id;
   }
   return null;
+}
+
+/**
+ * Upgrades a `sniffFormat`/`sniffFile` result from `"tiff"` to `"raw"` when
+ * the filename's extension names one of the TIFF-based raw formats (CR2,
+ * NEF, ARW, DNG, PEF, SRW, …) — see the `raw` format's magic comment above
+ * for why bytes alone can't tell them apart. Called *after* sniffing, never
+ * instead of it: every other format is returned unchanged, sniffed or not.
+ *
+ * This is a best-effort fallback, not a guarantee. A plain TIFF file
+ * mislabelled with a raw extension (e.g. renamed to "photo.dng") gets
+ * refined to `"raw"` here and is then handed to the libraw decoder, which
+ * rejects it with a clear "decode-failed" rather than silently
+ * mis-converting it — an accepted, narrow failure mode in exchange for not
+ * having to parse TIFF IFD tags just to tell a camera raw from a scan.
+ */
+export function refineFormat(
+  sniffed: FormatId | null,
+  filename: string,
+): FormatId | null {
+  if (sniffed !== "tiff") return sniffed;
+  const ext = extOf(filename);
+  if (ext === null) return sniffed;
+  return (FORMATS.raw.ext as readonly string[]).includes(ext) ? "raw" : sniffed;
 }
