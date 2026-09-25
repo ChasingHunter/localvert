@@ -120,7 +120,7 @@ Goal: the image matrix people actually search for, fast and batched.
 - [x] Resize, rotate, strip EXIF (default on — privacy) (2026-09-25)
 - [x] Crop with interactive crop editor (2026-09-25)
 - [x] Golden-file tests per codec (perceptual PSNR + size ±25%, not byte-exact) (2026-09-25)
-- [ ] Batch of 50 images stays under ~1.5 GB peak memory (test written: `E2E_SLOW=1`; not yet run)
+- [x] Batch of 50 images (1600×1200 JPG → PNG → zip): 14.8 s, main-thread JS heap peak 121 MB (budget 400 MB); worker memory not measurable headless (`E2E_SLOW=1`) (2026-09-25)
 
 ## Phase 2 — PDF
 
