@@ -28,11 +28,41 @@ as its codec preference table.
 | Engine | Decodes | Encodes | Transforms | Status |
 |---|---|---|---|---|
 | `canvas` | jpg, png, webp, bmp, gif | jpg, png, webp | resize, rotate, crop | adapter ready (0.5a) |
+| `jsquash-jpeg` | jpg | jpg | — | adapter ready |
+| `jsquash-png` | png | png | — | adapter ready |
+| `jsquash-webp` | webp | webp | — | adapter ready |
+| `jsquash-resize` | — | — | resize | adapter ready |
+| `jsquash-avif` | avif | avif | — | adapter ready |
+| `jsquash-jxl` | jxl | jxl | — | adapter ready |
+| `resvg` | svg | — | — | adapter ready |
+| `psd` | psd | — | — | adapter ready |
 
 `canvas` also still runs the legacy single-step `transcode` op directly
 (bytes of one format straight to bytes of another) for a tool that predates
 ADR-0007 and doesn't need the raster split — see `EngineAdapter.supports` in
 `src/lib/engines/canvas/adapter.ts`.
+
+`jsquash-webp` wraps libwebp's own decoder/encoder instead of the browser's
+built-in webp support `canvas` uses — smaller, more consistent output across
+browsers, and works in browsers with no native webp encoder. `jsquash-resize`
+wraps a dedicated Lanczos3 resize kernel instead of `<canvas>`'s `drawImage`
+scaling — sharper downscaling at a similar cost. Both share
+`src/lib/engines/shared/resize-box.ts` with `canvas` for the resize
+width/height/fit/allowUpscale math, so a resize step produces the same output
+size regardless of which of the two resize-capable engines the router picks.
+`jsquash-avif` and `jsquash-jxl` each ship only their single-threaded
+decode/encode wasm — never the multi-threaded variants jSquash's own
+`wasm-feature-detect`-based auto-selection would otherwise pick — so both
+stay `needsIsolation: false` and never depend on `crossOriginIsolated`.
+
+`resvg` and `psd` are decode-only: they turn their format into a
+`RasterImage` and nothing else, per the codec preference tables in
+`src/lib/registry/image-pipeline.ts` — an `encode` step to any output format
+still comes from a codec that can encode (jSquash, `canvas`, ...). `resvg`
+loads no system fonts (`font.loadSystemFonts: false` — a worker has none to
+load), so SVG text without an embedded font does not render; bundling a
+default font is future work. `psd` only decodes 8-bit, non-CMYK image data —
+the limits of `@webtoon/psd`'s own decoder.
 
 ---
 
@@ -50,6 +80,14 @@ Size, placement, threading. Placement is enforced by `scripts/sync-engines.ts`:
 | Engine | Package | Version | License | Size | Placement | Isolation |
 |---|---|---|---|---|---|---|
 | `canvas` | _(native browser API)_ | — | — | 0 | native | no |
+| `jsquash-jpeg` | `@jsquash/jpeg` | 1.6.0 | Apache-2.0 | ~0.4 MiB (dec + enc wasm) | static | no |
+| `jsquash-png` | `@jsquash/png` | 3.1.1 | Apache-2.0 | ~0.2 MiB | static | no |
+| `jsquash-webp` | `@jsquash/webp` | 1.5.0 | Apache-2.0 | ~135 KB decode + ~275/338 KB encode (non-SIMD/SIMD variant) | static | no |
+| `jsquash-resize` | `@jsquash/resize` | 2.1.1 | Apache-2.0 | ~34 KB | static | no |
+| `jsquash-avif` | `@jsquash/avif` | 2.1.1 | Apache-2.0 | ~4.4 MiB (dec + enc wasm, single-threaded only) | static | no |
+| `jsquash-jxl` | `@jsquash/jxl` | 1.3.0 | Apache-2.0 | ~2.1 MiB (dec + enc wasm, single-threaded only) | static | no |
+| `resvg` | `@resvg/resvg-wasm` | 2.6.2 | MPL-2.0 | ~2.4 MiB | static | no |
+| `psd` | `@webtoon/psd` | 0.4.0 | MIT | 0 (bundled in JS) | bundled | no |
 
 ### How engine assets ship
 
@@ -90,11 +128,8 @@ first, then adapter, wiring, size budget, docs.
 
 | Engine | For | License | Approx size | Phase |
 |---|---|---|---|---|
-| jSquash family | jpg, png, webp, avif, jxl (MT variants) | Apache-2.0 / MIT | < 5 MB each | 1 |
 | `heic-to` | HEIC/HEIF from iPhones | **LGPL-3.0** (libheif) | ~3 MB | 1 |
-| `resvg-wasm` | SVG rasterisation | MPL-2.0 | ~5 MB | 1 |
 | `utif2` | TIFF | MIT | small | 1 |
-| `@webtoon/psd` | PSD | MIT | small | 1 |
 | `libraw-wasm` | Camera raw | LGPL-2.1 | ~2 MB | 1 |
 | `@cantoo/pdf-lib` | PDF manipulation | MIT | small | 2 |
 | `pdfjs-dist` | PDF render to image | Apache-2.0 | ~2 MB | 2 |

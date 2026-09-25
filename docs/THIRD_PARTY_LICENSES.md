@@ -29,7 +29,30 @@ requires its own ADR and we must publish the modified source.
 
 | Engine | Version | License | Copyright | Source |
 |---|---|---|---|---|
-| _none yet_ | | | | |
+| `jsquash-jpeg` (`@jsquash/jpeg`, wraps mozjpeg) | 1.6.0 | Apache-2.0 (wrapper); the mozjpeg codec itself is the libjpeg-turbo tri-license (IJG / Modified 3-clause BSD / zlib) | Independent JPEG Group; D. R. Commander and libjpeg-turbo contributors; Google Inc. (Squoosh repackaging); Jamie Sinclair (jSquash) | https://github.com/jamsinclair/jSquash |
+| `jsquash-png` (`@jsquash/png`, wraps Squoosh's png codec) | 3.1.1 | Apache-2.0 (wrapper); the png codec itself is BSD-3-Clause | Copyright (c) 2010, Google Inc.; Jamie Sinclair (jSquash) | https://github.com/jamsinclair/jSquash |
+| `jsquash-webp` (`@jsquash/webp`, wraps libwebp) | 1.5.0 | Apache-2.0 (wrapper); libwebp itself is BSD-3-Clause | Copyright (c) 2010, Google Inc.; Jamie Sinclair (jSquash) | https://github.com/jamsinclair/jSquash |
+| `jsquash-resize` (`@jsquash/resize`) | 2.1.1 | Apache-2.0 (wrapper); the Lanczos3 resize kernel this adapter uses is MIT | Copyright 2015 PistonDevelopers; Jamie Sinclair (jSquash) | https://github.com/jamsinclair/jSquash |
+| `jsquash-avif` (`@jsquash/avif`, wraps libavif) | 2.1.1 | Apache-2.0 (wrapper); libavif is BSD-2-Clause, its aom/dav1d codec dependencies are BSD-2-Clause / BSD-2-Clause | Alliance for Open Media; Jamie Sinclair (jSquash) | https://github.com/jamsinclair/jSquash |
+| `jsquash-jxl` (`@jsquash/jxl`, wraps libjxl) | 1.3.0 | Apache-2.0 (wrapper); libjxl itself is BSD-3-Clause | JPEG XL contributors; Jamie Sinclair (jSquash) | https://github.com/jamsinclair/jSquash |
+| `resvg` (`@resvg/resvg-wasm`) | 2.6.2 | MPL-2.0 (file-level copyleft — see below) | yisibl and resvg-js contributors | https://github.com/yisibl/resvg-js |
+| `psd` (`@webtoon/psd`) | 0.4.0 | MIT | NAVER WEBTOON | https://github.com/webtoon/psd |
+
+`jsquash-webp`'s underlying codec is libwebp, Copyright 2010 Google Inc.,
+BSD-3-Clause (`node_modules/@jsquash/webp/codec/LICENSE.codec.md` after
+install) — permissive, no additional obligation beyond attribution, recorded
+here for completeness since it's a different license than the npm wrapper's.
+`jsquash-resize`'s resize kernel (the only one of its three bundled
+algorithms this adapter uses — see `src/lib/engines/jsquash-resize/
+adapter.ts`) is Copyright 2015 PistonDevelopers, MIT
+(`node_modules/@jsquash/resize/lib/resize/LICENSE.codec.md`).
+
+`resvg` (`@resvg/resvg-wasm`) is MPL-2.0, a **file-level** copyleft: it only
+requires that modified *files* of the covered work be published under MPL,
+not the combining application. We ship the unmodified upstream wasm/JS
+build, so this carries no obligation beyond attribution — recorded here
+rather than in the copyleft table below, which is for GPL/LGPL's
+whole-work-level obligations.
 
 ## Copyleft engines
 

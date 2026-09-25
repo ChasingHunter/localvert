@@ -1,0 +1,29 @@
+{
+  "id": "jsquash-jpeg",
+  "version": "1.6.0",
+  "license": "Apache-2.0",
+  "location": "static",
+  "package": "@jsquash/jpeg",
+  "files": [
+    {
+      "from": "codec/dec/mozjpeg_dec.wasm",
+      "to": "mozjpeg_dec.wasm"
+    },
+    {
+      "from": "codec/enc/mozjpeg_enc.wasm",
+      "to": "mozjpeg_enc.wasm"
+    }
+  ],
+  "needsIsolation": false,
+  "heavy": false,
+  "assets": [
+    {
+      "path": "mozjpeg_dec.wasm",
+      "bytes": 166470
+    },
+    {
+      "path": "mozjpeg_enc.wasm",
+      "bytes": 251524
+    }
+  ]
+}
