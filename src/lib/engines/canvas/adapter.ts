@@ -380,15 +380,27 @@ async function runResize(task: EngineTask): Promise<EngineResult> {
   }
 }
 
-/** rotate: `RasterImage` -> `RasterImage`, rotated clockwise by
+/**
+ * rotate: `RasterImage` -> `RasterImage`, rotated clockwise by
  * `options.rotate` degrees (0/90/180/270; anything else passes through
- * unchanged). 90/270 swap width and height. */
+ * unchanged). Accepts a number or a numeric string: a tool's "Rotate"
+ * option is a `control: "select"` field, and `describeFields`
+ * (`src/lib/options/fields.ts`) requires a `select` field to be a real
+ * `z.enum(...)`, which always parses to a string — there's no
+ * `.transform()` available that would turn it into a number without also
+ * breaking `defineTool`'s defaults-satisfy-options check (input and output
+ * types would differ). So rotate tools pass "90"/"180"/"270" as strings, and
+ * this coerces before comparing. 90/270 swap width and height.
+ */
 async function runRotate(task: EngineTask): Promise<EngineResult> {
   const { input, options, signal, onProgress } = task;
   signal.throwIfAborted();
 
   const image = inputToRaster(input);
-  const rotate = options.rotate;
+  const rotate =
+    typeof options.rotate === "string"
+      ? Number(options.rotate)
+      : options.rotate;
   const angle: 0 | 90 | 180 | 270 =
     rotate === 90 || rotate === 180 || rotate === 270 ? rotate : 0;
 

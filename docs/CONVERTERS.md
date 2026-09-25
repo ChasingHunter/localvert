@@ -40,6 +40,25 @@ candidate — the router may pick a fallback at runtime, see
 | `tiff-to-png` | TIFF | PNG | utif → jsquash-png | Yes | First page only; strips EXIF (incl. GPS) |
 | `strip-exif` | JPEG/PNG/WebP | same format | exif | Yes | Byte-level metadata strip, no re-encode; drops GPS/EXIF/XMP/IPTC, keeps ICC colour profile; optionally rebuilds a minimal orientation-only EXIF |
 
+## Image operations
+
+Same-format tools — compress, resize, rotate — rather than a format
+conversion. **Engine** lists every step's preferred candidate in pipeline
+order (decode [+ transform] [+ encode]).
+
+| Slug | From | To | Engine | Batch | Notes |
+|---|---|---|---|---|---|
+| `compress-jpg` | JPEG | JPEG | jsquash-jpeg | Yes | Target size (KB) or quality |
+| `compress-webp` | WebP | WebP | jsquash-webp | Yes | Target size (KB) or quality |
+| `resize-image-jpg` | JPEG | JPEG | jsquash-jpeg, jsquash-resize | Yes | Width/height, fit, allow upscale |
+| `resize-image-png` | PNG | PNG | jsquash-png, jsquash-resize | Yes | Width/height, fit, allow upscale |
+| `resize-image-webp` | WebP | WebP | jsquash-webp, jsquash-resize | Yes | Width/height, fit, allow upscale |
+| `rotate-jpg` | JPEG | JPEG | jsquash-jpeg, canvas | Yes | 90/180/270° clockwise |
+| `rotate-png` | PNG | PNG | jsquash-png, canvas | Yes | 90/180/270° clockwise |
+| `rotate-webp` | WebP | WebP | jsquash-webp, canvas | Yes | 90/180/270° clockwise |
+
+Crop is out of scope for this slice — it needs an interactive crop UI.
+
 ## PDF
 
 | Slug | From | To | Engine | Batch | Notes |
