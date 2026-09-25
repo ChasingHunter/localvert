@@ -1,0 +1,9 @@
+{
+  "id": "heic",
+  "version": "1.5.2",
+  "license": "LGPL-3.0",
+  "location": "bundled",
+  "needsIsolation": false,
+  "heavy": true,
+  "assets": []
+}
