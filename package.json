@@ -1,6 +1,6 @@
 {
   "name": "localvert",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Local-first file converter. Images, video, audio, PDF, documents and compression, converted entirely in your browser. Files never leave your device.",
   "license": "MIT",
