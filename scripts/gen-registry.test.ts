@@ -302,6 +302,40 @@ describe("parseEngineMeta", () => {
       ),
     ).toThrow(/"files" is not allowed when location is "native"/);
   });
+
+  it("parses a bundled engine.json with no package/files", () => {
+    const meta = parseEngineMeta(
+      "foo",
+      engineJson({ location: "bundled", package: undefined, files: undefined }),
+    );
+    expect(meta).toEqual({
+      id: "foo",
+      version: "1.0.0",
+      license: "MIT",
+      location: "bundled",
+      needsIsolation: false,
+      heavy: false,
+      assets: [],
+    });
+  });
+
+  it('forbids "package" when location is "bundled"', () => {
+    expect(() =>
+      parseEngineMeta(
+        "foo",
+        engineJson({ location: "bundled", files: undefined }),
+      ),
+    ).toThrow(/"package" is not allowed when location is "bundled"/);
+  });
+
+  it('forbids "files" when location is "bundled"', () => {
+    expect(() =>
+      parseEngineMeta(
+        "foo",
+        engineJson({ location: "bundled", package: undefined }),
+      ),
+    ).toThrow(/"files" is not allowed when location is "bundled"/);
+  });
 });
 
 describe("scanEngines", () => {
@@ -414,6 +448,21 @@ describe("genEngineManifest", () => {
     expect(out).toContain("totalBytes: 2500,"); // baz: 2000 + 500
     expect(out).toContain("totalBytes: 1024,"); // foo: single asset
     expect(out).toContain("totalBytes: 0,"); // bar: no assets
+  });
+
+  it("computes an empty baseUrl for a bundled engine, same as native", () => {
+    const out = genEngineManifest([
+      {
+        id: "qux",
+        version: "1.0.0",
+        license: "MIT",
+        location: "bundled",
+        needsIsolation: false,
+        heavy: false,
+        assets: [],
+      },
+    ]);
+    expect(out).toContain('baseUrl: "",');
   });
 });
 

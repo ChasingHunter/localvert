@@ -163,7 +163,7 @@ export function genToolsLoaders(tools: readonly ToolFileInfo[]): string {
 // Engines: src/lib/engines/<id>/{engine.json,adapter.ts} -> ids.ts / manifest.ts / loaders.ts
 // ---------------------------------------------------------------------------
 
-const ENGINE_LOCATIONS = ["native", "static", "r2"] as const;
+const ENGINE_LOCATIONS = ["native", "static", "r2", "bundled"] as const;
 type EngineLocationLike = (typeof ENGINE_LOCATIONS)[number];
 
 export interface EngineAssetLike {
@@ -261,8 +261,9 @@ export function parseEngineMeta(
   });
 
   // "package"/"files" name the npm package and files `sync-engines` copies
-  // the engine's assets from — meaningless for "native", which wraps a
-  // browser API and ships nothing of its own.
+  // the engine's assets from — meaningless for "native" (wraps a browser
+  // API) or "bundled" (pure JS in the engine's own worker chunk), neither of
+  // which ships assets of its own.
   const needsSource = j.location === "static" || j.location === "r2";
   let pkg: string | undefined;
   let files: EngineSourceFileLike[] | undefined;
@@ -293,10 +294,10 @@ export function parseEngineMeta(
     });
   } else {
     if (j.package !== undefined) {
-      fail(`"package" is not allowed when location is "native"`);
+      fail(`"package" is not allowed when location is "${j.location}"`);
     }
     if (j.files !== undefined) {
-      fail(`"files" is not allowed when location is "native"`);
+      fail(`"files" is not allowed when location is "${j.location}"`);
     }
   }
 
@@ -388,6 +389,7 @@ function engineBaseUrl(
 ): string {
   switch (location) {
     case "native":
+    case "bundled":
       return "";
     case "static":
       return `/engines/${id}@${version}/`;

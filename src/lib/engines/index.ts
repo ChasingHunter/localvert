@@ -20,4 +20,5 @@ export type {
   EngineMarker,
   EngineResult,
   EngineTask,
+  RasterImage,
 } from "./types";

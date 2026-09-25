@@ -19,4 +19,10 @@ describe("engineBaseUrl", () => {
       engineBaseUrl({ id: "ffmpeg", version: "0.12.6", location: "r2" }),
     ).toBe("/engines/xl/ffmpeg@0.12.6/");
   });
+
+  it("is empty for a bundled engine, same as native", () => {
+    expect(
+      engineBaseUrl({ id: "resvg", version: "1.0.0", location: "bundled" }),
+    ).toBe("");
+  });
 });

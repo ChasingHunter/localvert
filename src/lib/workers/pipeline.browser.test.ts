@@ -38,12 +38,16 @@ describe("engine worker + zip worker (real browser)", () => {
       const result = await pool.run(
         {
           jobId: "pipeline-job-1",
-          engine: "canvas",
-          baseUrl: ENGINE_MANIFEST.canvas.baseUrl,
-          op: "transcode",
           input: { kind: "blob", blob: pngBlob },
-          inputFormat: "png",
-          outputFormat: "jpg",
+          steps: [
+            {
+              engine: "canvas",
+              baseUrl: ENGINE_MANIFEST.canvas.baseUrl,
+              op: "transcode",
+              inputFormat: "png",
+              outputFormat: "jpg",
+            },
+          ],
           options: {},
         },
         { onProgress: (fraction) => progressValues.push(fraction) },
@@ -69,12 +73,16 @@ describe("engine worker + zip worker (real browser)", () => {
       const cancelledRun = pool.run(
         {
           jobId: "pipeline-job-2",
-          engine: "canvas",
-          baseUrl: ENGINE_MANIFEST.canvas.baseUrl,
-          op: "transcode",
           input: { kind: "blob", blob: pngBlob },
-          inputFormat: "png",
-          outputFormat: "jpg",
+          steps: [
+            {
+              engine: "canvas",
+              baseUrl: ENGINE_MANIFEST.canvas.baseUrl,
+              op: "transcode",
+              inputFormat: "png",
+              outputFormat: "jpg",
+            },
+          ],
           options: {},
         },
         { signal: controller.signal },
@@ -100,6 +108,66 @@ describe("engine worker + zip worker (real browser)", () => {
         "source.png",
       ]);
       dispose();
+    } finally {
+      pool.destroy();
+    }
+  });
+
+  it("runs a real decode -> resize -> encode pipeline (ADR-0007) through the real pool, all on canvas", async () => {
+    const pool = createWorkerPool({
+      size: 2,
+      spawn: spawnEngineWorker,
+      isHeavy: (engine) => ENGINE_MANIFEST[engine].heavy,
+    });
+
+    try {
+      // A rectangular source so the resize step's dimensions are unambiguous.
+      const canvas = new OffscreenCanvas(20, 10);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("no 2d context in test setup");
+      ctx.fillStyle = "#3366ff";
+      ctx.fillRect(0, 0, 20, 10);
+      const pngBlob = await canvas.convertToBlob({ type: "image/png" });
+
+      const result = await pool.run({
+        jobId: "raster-pipeline-job",
+        input: { kind: "blob", blob: pngBlob },
+        steps: [
+          {
+            engine: "canvas",
+            baseUrl: ENGINE_MANIFEST.canvas.baseUrl,
+            op: "decode",
+            inputFormat: "png",
+            outputFormat: "raster",
+          },
+          {
+            engine: "canvas",
+            baseUrl: ENGINE_MANIFEST.canvas.baseUrl,
+            op: "resize",
+            inputFormat: "raster",
+            outputFormat: "raster",
+          },
+          {
+            engine: "canvas",
+            baseUrl: ENGINE_MANIFEST.canvas.baseUrl,
+            op: "encode",
+            inputFormat: "raster",
+            outputFormat: "jpg",
+          },
+        ],
+        options: { width: 10, height: 5 },
+      });
+
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      const jpgBytes = new Uint8Array(result.bytes);
+      expect(sniffFormat(jpgBytes)).toBe("jpg");
+
+      const outBitmap = await createImageBitmap(
+        new Blob([jpgBytes], { type: result.mime }),
+      );
+      expect(outBitmap.width).toBe(10);
+      expect(outBitmap.height).toBe(5);
+      outBitmap.close();
     } finally {
       pool.destroy();
     }

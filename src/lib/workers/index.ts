@@ -13,6 +13,7 @@ export type {
   Promisified,
   RunOutcome,
   RunRequest,
+  RunStep,
   SerializedEngineError,
 } from "./protocol";
 export { deserializeEngineError, serializeEngineError } from "./protocol";

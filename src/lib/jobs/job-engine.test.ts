@@ -53,7 +53,7 @@ function createFakePool() {
         if (opts.signal.aborted) {
           d.reject(
             new EngineError("aborted", "cancelled before dispatch", {
-              engine: req.engine,
+              engine: req.steps[0]?.engine,
             }),
           );
         } else {
@@ -61,7 +61,9 @@ function createFakePool() {
             "abort",
             () => {
               d.reject(
-                new EngineError("aborted", "cancelled", { engine: req.engine }),
+                new EngineError("aborted", "cancelled", {
+                  engine: req.steps[0]?.engine,
+                }),
               );
             },
             { once: true },
@@ -193,21 +195,105 @@ describe("createJobEngine / submit", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("throws before creating any job when the pipeline has more than one step", () => {
-    const { engine, calls, store } = setup();
+  it("dispatches a single-step tool with no declared from/to using (sniffed format -> produces), same as before ADR-0007", () => {
+    const { engine, calls } = setup();
+    // makeTool()'s default pipeline is exactly this shape: one step, no
+    // `from`/`to` — the legacy fallback this test is about.
+    engine.submit(makeTool(), [{ file: makeFile(), format: "jpg" }], {});
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.req.steps).toEqual([
+      {
+        engine: "canvas",
+        baseUrl: "",
+        op: "transcode",
+        inputFormat: "jpg", // the submitted file's own sniffed format
+        outputFormat: "png", // tool.produces
+      },
+    ]);
+  });
+
+  it("resolves a multi-step pipeline into one RunStep per step, with each step's own declared from/to", () => {
+    const { engine, calls } = setup();
     const tool = makeTool({
       pipeline: [
-        { op: "transcode", candidates: [{ engine: "canvas" }] },
-        { op: "compress", candidates: [{ engine: "canvas" }] },
+        {
+          op: "decode",
+          from: "jpg",
+          to: "raster",
+          candidates: [{ engine: "canvas" }],
+        },
+        {
+          op: "encode",
+          from: "raster",
+          to: "png",
+          candidates: [{ engine: "canvas" }],
+        },
       ],
     });
 
-    expect(() =>
-      engine.submit(tool, [{ file: makeFile(), format: "jpg" }], {}),
-    ).toThrow(/multi-step pipelines are not supported yet/);
+    engine.submit(tool, [{ file: makeFile(), format: "jpg" }], {});
 
-    expect(store.getState().jobs).toHaveLength(0);
-    expect(calls).toHaveLength(0);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.req.steps).toEqual([
+      {
+        engine: "canvas",
+        baseUrl: "",
+        op: "decode",
+        inputFormat: "jpg",
+        outputFormat: "raster",
+      },
+      {
+        engine: "canvas",
+        baseUrl: "",
+        op: "encode",
+        inputFormat: "raster",
+        outputFormat: "png",
+      },
+    ]);
+  });
+
+  it("hands the whole parsed options object to the request, shared across every step", () => {
+    const { engine, calls } = setup();
+    const tool = makeTool({
+      options: z.object({ quality: z.number() }),
+      defaults: { quality: 80 },
+      pipeline: [
+        {
+          op: "decode",
+          from: "jpg",
+          to: "raster",
+          candidates: [{ engine: "canvas" }],
+        },
+        {
+          op: "encode",
+          from: "raster",
+          to: "png",
+          candidates: [{ engine: "canvas" }],
+        },
+      ],
+    });
+
+    engine.submit(tool, [{ file: makeFile(), format: "jpg" }], { quality: 42 });
+
+    expect(calls[0]?.req.options).toEqual({ quality: 42 });
+  });
+
+  it("dispatches every file's own detected format into a legacy step's inputFormat", () => {
+    const { engine, calls } = setup();
+
+    engine.submit(
+      makeTool({ accepts: ["jpg", "png"] }),
+      [
+        { file: makeFile("a.jpg"), format: "jpg" },
+        { file: makeFile("b.png"), format: "png" },
+      ],
+      {},
+    );
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.req.steps[0]?.inputFormat).toBe("jpg");
+    expect(calls[1]?.req.steps[0]?.inputFormat).toBe("png");
   });
 
   it("marks every job as error/unsupported when no engine candidate is eligible", () => {

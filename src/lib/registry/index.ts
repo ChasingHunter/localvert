@@ -9,6 +9,7 @@ export {
   sniffFile,
   sniffFormat,
 } from "./formats";
+export { imagePipeline } from "./image-pipeline";
 export { outputFileName } from "./naming";
 export type {
   Capabilities,
@@ -17,5 +18,6 @@ export type {
   Operation,
   OptionMeta,
   PipelineStep,
+  StepFormat,
   ToolDefinition,
 } from "./types";

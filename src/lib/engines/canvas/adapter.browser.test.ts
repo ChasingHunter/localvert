@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FORMATS, type FormatId, sniffFormat } from "@/lib/registry";
 import { isEngineError } from "../errors";
-import type { EngineTask } from "../types";
+import type { EngineTask, RasterImage } from "../types";
 import adapter from "./adapter";
 
 const WIDTH = 32;
@@ -47,6 +47,24 @@ function baseTask(overrides: Partial<EngineTask> = {}): EngineTask {
   };
 }
 
+/** Builds a `RasterImage` directly with OffscreenCanvas + getImageData — no
+ * fixture files, no network, and no dependency on the adapter's own decode
+ * (so resize/rotate/crop tests stay focused on those ops). A 1x1 red marker
+ * pixel sits at the top-left corner, over an otherwise solid blue fill, so a
+ * transform that moves or crops pixels around has something distinct to
+ * check for. */
+async function rasterOf(width: number, height: number): Promise<RasterImage> {
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d context in test setup");
+  ctx.fillStyle = "#3366ff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "#ff0000";
+  ctx.fillRect(0, 0, 1, 1);
+  const { data } = ctx.getImageData(0, 0, width, height);
+  return { width, height, data };
+}
+
 describe("canvas adapter", () => {
   it("carries the metadata defineEngine validated", () => {
     expect(adapter.id).toBe("canvas");
@@ -72,6 +90,45 @@ describe("canvas adapter", () => {
 
     it("rejects an unsupported input format", () => {
       expect(adapter.supports("transcode", "pdf", "jpg")).toBe(false);
+    });
+
+    it("accepts decode for a decodable format -> raster", () => {
+      for (const input of inputs) {
+        expect(adapter.supports("decode", input, "raster")).toBe(true);
+      }
+    });
+
+    it("rejects decode for a non-decodable format", () => {
+      expect(adapter.supports("decode", "pdf", "raster")).toBe(false);
+    });
+
+    it("rejects decode with a non-raster output", () => {
+      expect(adapter.supports("decode", "png", "jpg")).toBe(false);
+    });
+
+    it("accepts encode for raster -> an encodable format", () => {
+      for (const output of outputs) {
+        expect(adapter.supports("encode", "raster", output)).toBe(true);
+      }
+    });
+
+    it("rejects encode with a non-raster input", () => {
+      expect(adapter.supports("encode", "png", "jpg")).toBe(false);
+    });
+
+    it("rejects encode with a non-encodable output", () => {
+      expect(adapter.supports("encode", "raster", "gif")).toBe(false);
+    });
+
+    it("accepts resize/rotate/crop for raster -> raster", () => {
+      for (const op of ["resize", "rotate", "crop"] as const) {
+        expect(adapter.supports(op, "raster", "raster")).toBe(true);
+      }
+    });
+
+    it("rejects resize/rotate/crop with a non-raster side", () => {
+      expect(adapter.supports("resize", "png", "raster")).toBe(false);
+      expect(adapter.supports("crop", "raster", "png")).toBe(false);
     });
 
     it("rejects an unsupported output format", () => {
@@ -240,6 +297,345 @@ describe("canvas adapter", () => {
       ).rejects.toSatisfy(
         (e: unknown) => isEngineError(e) && e.code === "decode-failed",
       );
+    });
+  });
+
+  describe("decode / encode", () => {
+    it("round-trips: decode a real format to raster, then encode raster back to bytes", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const srcBlob = await sourceImage("image/png");
+
+      const decoded = await instance.run(
+        baseTask({
+          op: "decode",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "png",
+          outputFormat: "raster",
+        }),
+      );
+      if (decoded.kind !== "raster")
+        throw new Error("expected a raster result");
+      expect(decoded.image.width).toBe(WIDTH);
+      expect(decoded.image.height).toBe(HEIGHT);
+      expect(decoded.image.data.length).toBe(WIDTH * HEIGHT * 4);
+
+      const encoded = await instance.run(
+        baseTask({
+          op: "encode",
+          input: { kind: "raster", image: decoded.image },
+          inputFormat: "raster",
+          outputFormat: "jpg",
+        }),
+      );
+      if (encoded.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(sniffFormat(new Uint8Array(encoded.bytes))).toBe("jpg");
+
+      const outBitmap = await createImageBitmap(
+        new Blob([encoded.bytes], { type: encoded.mime }),
+      );
+      expect(outBitmap.width).toBe(WIDTH);
+      expect(outBitmap.height).toBe(HEIGHT);
+      outBitmap.close();
+    });
+
+    it("encode fills a transparent pixel white, not black, for jpg", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const srcBlob = await sourceImage("image/png");
+      const decoded = await instance.run(
+        baseTask({
+          op: "decode",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "png",
+          outputFormat: "raster",
+        }),
+      );
+      if (decoded.kind !== "raster")
+        throw new Error("expected a raster result");
+
+      const encoded = await instance.run(
+        baseTask({
+          op: "encode",
+          input: { kind: "raster", image: decoded.image },
+          inputFormat: "raster",
+          outputFormat: "jpg",
+        }),
+      );
+      if (encoded.kind !== "bytes") throw new Error("expected a bytes result");
+
+      const outBitmap = await createImageBitmap(
+        new Blob([encoded.bytes], { type: encoded.mime }),
+      );
+      const canvas = new OffscreenCanvas(outBitmap.width, outBitmap.height);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("no 2d context in test verification");
+      ctx.drawImage(outBitmap, 0, 0);
+      outBitmap.close();
+
+      const { data } = ctx.getImageData(0, 0, 1, 1);
+      expect(data[0]).toBeGreaterThan(240);
+      expect(data[1]).toBeGreaterThan(240);
+      expect(data[2]).toBeGreaterThan(240);
+    });
+
+    it("encode honors a custom background color for jpg", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const srcBlob = await sourceImage("image/png");
+      const decoded = await instance.run(
+        baseTask({
+          op: "decode",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "png",
+          outputFormat: "raster",
+        }),
+      );
+      if (decoded.kind !== "raster")
+        throw new Error("expected a raster result");
+
+      const encoded = await instance.run(
+        baseTask({
+          op: "encode",
+          input: { kind: "raster", image: decoded.image },
+          inputFormat: "raster",
+          outputFormat: "jpg",
+          options: { background: "#000000" },
+        }),
+      );
+      if (encoded.kind !== "bytes") throw new Error("expected a bytes result");
+
+      const outBitmap = await createImageBitmap(
+        new Blob([encoded.bytes], { type: encoded.mime }),
+      );
+      const canvas = new OffscreenCanvas(outBitmap.width, outBitmap.height);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("no 2d context in test verification");
+      ctx.drawImage(outBitmap, 0, 0);
+      outBitmap.close();
+
+      const { data } = ctx.getImageData(0, 0, 1, 1);
+      expect(data[0]).toBeLessThan(30);
+      expect(data[1]).toBeLessThan(30);
+      expect(data[2]).toBeLessThan(30);
+    });
+  });
+
+  describe("resize", () => {
+    it("fit=contain (default) scales down to fit within the box, preserving aspect ratio", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const image = await rasterOf(100, 50);
+
+      const result = await instance.run(
+        baseTask({
+          op: "resize",
+          input: { kind: "raster", image },
+          inputFormat: "raster",
+          outputFormat: "raster",
+          options: { width: 50, height: 50 },
+        }),
+      );
+      if (result.kind !== "raster") throw new Error("expected a raster result");
+      expect(result.image.width).toBe(50);
+      expect(result.image.height).toBe(25);
+    });
+
+    it("fit=cover scales to cover the box, preserving aspect ratio", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const image = await rasterOf(100, 50);
+
+      const result = await instance.run(
+        baseTask({
+          op: "resize",
+          input: { kind: "raster", image },
+          inputFormat: "raster",
+          outputFormat: "raster",
+          options: { width: 50, height: 50, fit: "cover" },
+        }),
+      );
+      if (result.kind !== "raster") throw new Error("expected a raster result");
+      expect(result.image.width).toBe(100);
+      expect(result.image.height).toBe(50);
+    });
+
+    it("never upscales past the source size unless allowUpscale is set", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const image = await rasterOf(20, 20);
+
+      const clamped = await instance.run(
+        baseTask({
+          op: "resize",
+          input: { kind: "raster", image },
+          inputFormat: "raster",
+          outputFormat: "raster",
+          options: { width: 100, height: 100 },
+        }),
+      );
+      if (clamped.kind !== "raster")
+        throw new Error("expected a raster result");
+      expect(clamped.image.width).toBe(20);
+      expect(clamped.image.height).toBe(20);
+
+      const upscaled = await instance.run(
+        baseTask({
+          op: "resize",
+          input: { kind: "raster", image },
+          inputFormat: "raster",
+          outputFormat: "raster",
+          options: { width: 100, height: 100, allowUpscale: true },
+        }),
+      );
+      if (upscaled.kind !== "raster")
+        throw new Error("expected a raster result");
+      expect(upscaled.image.width).toBe(100);
+      expect(upscaled.image.height).toBe(100);
+    });
+
+    it("passes through unchanged when neither width nor height is given", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const image = await rasterOf(40, 30);
+
+      const result = await instance.run(
+        baseTask({
+          op: "resize",
+          input: { kind: "raster", image },
+          inputFormat: "raster",
+          outputFormat: "raster",
+          options: {},
+        }),
+      );
+      if (result.kind !== "raster") throw new Error("expected a raster result");
+      expect(result.image.width).toBe(40);
+      expect(result.image.height).toBe(30);
+    });
+  });
+
+  describe("rotate", () => {
+    it("90 degrees swaps width/height and moves the top-left pixel to the top-right", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const width = 4;
+      const height = 2;
+      const image = await rasterOf(width, height);
+
+      const result = await instance.run(
+        baseTask({
+          op: "rotate",
+          input: { kind: "raster", image },
+          inputFormat: "raster",
+          outputFormat: "raster",
+          options: { rotate: 90 },
+        }),
+      );
+      if (result.kind !== "raster") throw new Error("expected a raster result");
+      expect(result.image.width).toBe(height);
+      expect(result.image.height).toBe(width);
+
+      // A 90-degree clockwise rotation moves the marker pixel from the
+      // source's top-left corner to the rotated image's top-right corner.
+      const canvas = new OffscreenCanvas(
+        result.image.width,
+        result.image.height,
+      );
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("no 2d context in test verification");
+      ctx.putImageData(
+        new ImageData(
+          result.image.data,
+          result.image.width,
+          result.image.height,
+        ),
+        0,
+        0,
+      );
+      const corner = ctx.getImageData(result.image.width - 1, 0, 1, 1).data;
+      expect(corner[0]).toBeGreaterThan(200); // red marker
+      expect(corner[2]).toBeLessThan(100); // not the blue background
+    });
+
+    it("0 degrees passes through unchanged", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const image = await rasterOf(10, 6);
+
+      const result = await instance.run(
+        baseTask({
+          op: "rotate",
+          input: { kind: "raster", image },
+          inputFormat: "raster",
+          outputFormat: "raster",
+          options: { rotate: 0 },
+        }),
+      );
+      if (result.kind !== "raster") throw new Error("expected a raster result");
+      expect(result.image.width).toBe(10);
+      expect(result.image.height).toBe(6);
+    });
+  });
+
+  describe("crop", () => {
+    it("crops to the given rect, clamped to the source bounds", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const image = await rasterOf(20, 20);
+
+      const result = await instance.run(
+        baseTask({
+          op: "crop",
+          input: { kind: "raster", image },
+          inputFormat: "raster",
+          outputFormat: "raster",
+          options: { crop: { x: 5, y: 5, width: 100, height: 100 } },
+        }),
+      );
+      if (result.kind !== "raster") throw new Error("expected a raster result");
+      expect(result.image.width).toBe(15); // clamped: 20 source - 5 offset
+      expect(result.image.height).toBe(15);
+    });
+
+    it("passes through unchanged when no crop is given", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const image = await rasterOf(20, 12);
+
+      const result = await instance.run(
+        baseTask({
+          op: "crop",
+          input: { kind: "raster", image },
+          inputFormat: "raster",
+          outputFormat: "raster",
+          options: {},
+        }),
+      );
+      if (result.kind !== "raster") throw new Error("expected a raster result");
+      expect(result.image.width).toBe(20);
+      expect(result.image.height).toBe(12);
     });
   });
 });

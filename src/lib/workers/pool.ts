@@ -51,6 +51,11 @@ interface Job {
   resolve: (result: EngineResult) => void;
   reject: (err: unknown) => void;
   state: JobState;
+  /** Set once at creation iff this job is heavy-routed — the engine of the
+   * first heavy step in `req.steps` (see `firstHeavyEngine`), and the key
+   * this job's pinned worker sits under in `heavySlots`. Undefined for a
+   * light job. */
+  heavyEngine?: EngineId;
   removeAbortListener?: () => void;
   cancelGraceTimer?: ReturnType<typeof setTimeout>;
 }
@@ -65,6 +70,28 @@ interface HeavySlot {
   queue: Job[];
   running: Job | null;
   idleTimer: ReturnType<typeof setTimeout> | null;
+}
+
+/** A request's own primary engine, for `EngineError`'s optional `engine`
+ * context — its first step's engine, regardless of whether the request ends
+ * up heavy- or light-routed. Purely informational (error messages, crash
+ * logging); routing itself goes through `firstHeavyEngine` below. */
+function primaryEngine(req: RunRequest): EngineId | undefined {
+  return req.steps[0]?.engine;
+}
+
+/** The engine of the first step whose engine `isHeavy`, or undefined if no
+ * step is heavy — see `PoolOptions.isHeavy` and docs/ARCHITECTURE.md
+ * "Concurrency and memory". A request is heavy if *any* step is, and it runs
+ * on that first heavy engine's pinned worker. */
+function firstHeavyEngine(
+  req: RunRequest,
+  isHeavy: (engine: EngineId) => boolean,
+): EngineId | undefined {
+  for (const step of req.steps) {
+    if (isHeavy(step.engine)) return step.engine;
+  }
+  return undefined;
 }
 
 export function createWorkerPool(o: PoolOptions): WorkerPool {
@@ -139,7 +166,7 @@ export function createWorkerPool(o: PoolOptions): WorkerPool {
         settle(job, () =>
           job.reject(
             new EngineError("internal", "worker crashed", {
-              engine: job.req.engine,
+              engine: primaryEngine(job.req),
               cause: crashErr,
             }),
           ),
@@ -169,8 +196,7 @@ export function createWorkerPool(o: PoolOptions): WorkerPool {
 
   // ---- heavy (pinned, one worker per engine) ---------------------------
 
-  function enqueueHeavy(job: Job): void {
-    const engine = job.req.engine;
+  function enqueueHeavy(job: Job, engine: EngineId): void {
     let slot = heavySlots.get(engine);
     if (!slot) {
       slot = { handle: o.spawn(), queue: [], running: null, idleTimer: null };
@@ -300,24 +326,27 @@ export function createWorkerPool(o: PoolOptions): WorkerPool {
         settle(job, () =>
           job.reject(
             new EngineError("aborted", "cancelled while queued", {
-              engine: job.req.engine,
+              engine: primaryEngine(job.req),
             }),
           ),
         );
         return;
       }
-      const heavySlot = heavySlots.get(job.req.engine);
-      if (heavySlot) {
-        const hi = heavySlot.queue.indexOf(job);
-        if (hi !== -1) {
-          heavySlot.queue.splice(hi, 1);
-          settle(job, () =>
-            job.reject(
-              new EngineError("aborted", "cancelled while queued", {
-                engine: job.req.engine,
-              }),
-            ),
-          );
+      if (job.heavyEngine !== undefined) {
+        const engine = job.heavyEngine;
+        const heavySlot = heavySlots.get(engine);
+        if (heavySlot) {
+          const hi = heavySlot.queue.indexOf(job);
+          if (hi !== -1) {
+            heavySlot.queue.splice(hi, 1);
+            settle(job, () =>
+              job.reject(
+                new EngineError("aborted", "cancelled while queued", {
+                  engine,
+                }),
+              ),
+            );
+          }
         }
       }
       return;
@@ -332,7 +361,7 @@ export function createWorkerPool(o: PoolOptions): WorkerPool {
         settle(job, () =>
           job.reject(
             new EngineError("aborted", "cancelled (grace timeout)", {
-              engine: job.req.engine,
+              engine: primaryEngine(job.req),
             }),
           ),
         );
@@ -341,21 +370,23 @@ export function createWorkerPool(o: PoolOptions): WorkerPool {
       return;
     }
 
-    const heavySlot = heavySlots.get(job.req.engine);
-    if (heavySlot && heavySlot.running === job) {
-      const engine = job.req.engine;
-      beginCancelGrace(job, heavySlot.handle, () => {
-        removeHeavySlot(engine, heavySlot);
-        heavySlot.handle.terminate();
-        settle(job, () =>
-          job.reject(
-            new EngineError("aborted", "cancelled (grace timeout)", {
-              engine,
-            }),
-          ),
-        );
-        requeueHeavy(engine, heavySlot.queue.splice(0));
-      });
+    if (job.heavyEngine !== undefined) {
+      const engine = job.heavyEngine;
+      const heavySlot = heavySlots.get(engine);
+      if (heavySlot && heavySlot.running === job) {
+        beginCancelGrace(job, heavySlot.handle, () => {
+          removeHeavySlot(engine, heavySlot);
+          heavySlot.handle.terminate();
+          settle(job, () =>
+            job.reject(
+              new EngineError("aborted", "cancelled (grace timeout)", {
+                engine,
+              }),
+            ),
+          );
+          requeueHeavy(engine, heavySlot.queue.splice(0));
+        });
+      }
     }
   }
 
@@ -364,19 +395,29 @@ export function createWorkerPool(o: PoolOptions): WorkerPool {
   function run(req: RunRequest, opts: RunOptions = {}): Promise<EngineResult> {
     if (destroyed) {
       return Promise.reject(
-        new EngineError("aborted", "pool destroyed", { engine: req.engine }),
+        new EngineError("aborted", "pool destroyed", {
+          engine: primaryEngine(req),
+        }),
       );
     }
     if (opts.signal?.aborted) {
       return Promise.reject(
         new EngineError("aborted", "cancelled before dispatch", {
-          engine: req.engine,
+          engine: primaryEngine(req),
         }),
       );
     }
 
     return new Promise<EngineResult>((resolve, reject) => {
-      const job: Job = { req, opts, resolve, reject, state: "queued" };
+      const heavyEngine = firstHeavyEngine(req, o.isHeavy);
+      const job: Job = {
+        req,
+        opts,
+        resolve,
+        reject,
+        state: "queued",
+        ...(heavyEngine !== undefined ? { heavyEngine } : {}),
+      };
 
       const signal = opts.signal;
       if (signal) {
@@ -386,8 +427,8 @@ export function createWorkerPool(o: PoolOptions): WorkerPool {
           signal.removeEventListener("abort", onAbort);
       }
 
-      if (o.isHeavy(req.engine)) {
-        enqueueHeavy(job);
+      if (heavyEngine !== undefined) {
+        enqueueHeavy(job, heavyEngine);
       } else {
         lightQueue.push(job);
         pumpLight();
@@ -403,7 +444,7 @@ export function createWorkerPool(o: PoolOptions): WorkerPool {
       settle(job, () =>
         job.reject(
           new EngineError("aborted", "pool destroyed", {
-            engine: job.req.engine,
+            engine: primaryEngine(job.req),
           }),
         ),
       );
@@ -415,7 +456,7 @@ export function createWorkerPool(o: PoolOptions): WorkerPool {
         settle(running, () =>
           running.reject(
             new EngineError("aborted", "pool destroyed", {
-              engine: running.req.engine,
+              engine: primaryEngine(running.req),
             }),
           ),
         );

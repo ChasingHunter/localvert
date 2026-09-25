@@ -102,6 +102,7 @@ describe("syncEngines", () => {
   it("is a no-op when there are no static/r2 engines", () => {
     const dir = makeTempDir();
     writeEngine(dir, "canvas", { location: "native" });
+    writeEngine(dir, "resvg", { location: "bundled" });
 
     const result = syncEngines(dir);
 

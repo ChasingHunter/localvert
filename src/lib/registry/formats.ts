@@ -128,6 +128,36 @@ export const FORMATS = {
       ],
     ),
   },
+  svg: {
+    label: "SVG",
+    ext: ["svg"],
+    mime: "image/svg+xml",
+    category: "image",
+    // Any XML document sniffs as SVG here — a bare "<svg" root, or an
+    // "<?xml" prolog with or without a leading UTF-8 BOM. That's broader
+    // than real SVG (an arbitrary XML file matches too), but the resvg
+    // decoder itself rejects anything that isn't actually SVG once decoded,
+    // so this is a coarse pre-filter, not the final word.
+    magic: [
+      [{ offset: 0, bytes: ascii("<svg") }],
+      [{ offset: 0, bytes: ascii("<?xml") }],
+      [
+        { offset: 0, bytes: [0xef, 0xbb, 0xbf] },
+        { offset: 3, bytes: ascii("<svg") },
+      ],
+      [
+        { offset: 0, bytes: [0xef, 0xbb, 0xbf] },
+        { offset: 3, bytes: ascii("<?xml") },
+      ],
+    ],
+  },
+  psd: {
+    label: "PSD",
+    ext: ["psd"],
+    mime: "image/vnd.adobe.photoshop",
+    category: "image",
+    magic: [[{ offset: 0, bytes: ascii("8BPS") }]],
+  },
   pdf: {
     label: "PDF",
     ext: ["pdf"],

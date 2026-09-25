@@ -17,15 +17,16 @@ export interface EngineMeta {
   assets: readonly EngineAsset[];
   /**
    * The npm package `sync-engines` copies assets from. Required iff
-   * `location` is "static" or "r2"; absent for "native", which ships no
-   * assets of its own. `pnpm gen` does not need this for main-thread
-   * consumption, so it is not carried into `EngineManifestEntry`.
+   * `location` is "static" or "r2"; absent for "native" or "bundled", which
+   * ship no assets of their own. `pnpm gen` does not need this for
+   * main-thread consumption, so it is not carried into `EngineManifestEntry`.
    */
   package?: string;
   /**
    * Files to copy from `package`'s directory into this engine's asset
    * directory. Required iff `location` is "static" or "r2"; absent for
-   * "native". Not carried into `EngineManifestEntry` — see `package`.
+   * "native" or "bundled". Not carried into `EngineManifestEntry` — see
+   * `package`.
    */
   files?: readonly EngineSourceFile[];
 }
@@ -44,6 +45,8 @@ export interface EngineManifestEntry extends EngineMeta {
 /**
  * Pure. Where an engine's assets are served from, by `location`:
  *  - "native": ships no assets of its own — empty string, unused.
+ *  - "bundled": pure JS inside the engine's own worker chunk — empty
+ *    string, unused, same as "native".
  *  - "static": this origin's `public/engines/<id>@<version>/`, immutable
  *    per version.
  *  - "r2": the same origin's R2-backed `/engines/xl/<id>@<version>/`
@@ -55,6 +58,7 @@ export function engineBaseUrl(
 ): string {
   switch (meta.location) {
     case "native":
+    case "bundled":
       return "";
     case "static":
       return `/engines/${meta.id}@${meta.version}/`;

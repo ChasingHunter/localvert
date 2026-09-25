@@ -3,8 +3,8 @@ import { EngineError } from "@/lib/engines";
 import type {
   Capabilities,
   EngineId,
-  FormatId,
   Operation,
+  StepFormat,
 } from "@/lib/registry";
 
 /**
@@ -15,15 +15,36 @@ import type {
  * ADR-0005.
  */
 
-/** One conversion job, as dispatched to a worker. */
-export interface RunRequest {
-  jobId: string;
+/**
+ * One resolved pipeline step, as dispatched to a worker — the engine to run
+ * it on, where that engine's assets live, and the op/format shape the
+ * engine-host uses both to route (`EngineAdapter.supports`) and to build
+ * that step's `EngineTask`. See ADR-0007: `inputFormat`/`outputFormat` are
+ * `StepFormat` (a real `FormatId`, or `"raster"` for the in-worker
+ * decoded-pixels intermediate a multi-step image pipeline passes between
+ * steps).
+ */
+export interface RunStep {
   engine: EngineId;
   baseUrl: string;
   op: Operation;
+  inputFormat: StepFormat;
+  outputFormat: StepFormat;
+}
+
+/**
+ * One conversion job, as dispatched to a worker: the whole resolved
+ * pipeline, run in step order inside that one worker (ADR-0007) so a raster
+ * intermediate between steps never crosses a thread boundary. `input` feeds
+ * the first step only — each later step's input is the previous step's
+ * `EngineResult`, converted in-place by `engine-host.ts`. `options` is the
+ * tool's whole parsed options object, handed to every step unchanged; a step
+ * reads only the keys it cares about.
+ */
+export interface RunRequest {
+  jobId: string;
   input: EngineInput;
-  inputFormat: FormatId;
-  outputFormat: FormatId;
+  steps: readonly RunStep[];
   options: Readonly<Record<string, unknown>>;
 }
 

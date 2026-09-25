@@ -62,7 +62,7 @@ export interface SourceFile {
 export interface EngineSource {
   id: string;
   version: string;
-  location: "native" | "static" | "r2";
+  location: "native" | "static" | "r2" | "bundled";
   package?: string;
   files?: readonly SourceFile[];
 }
@@ -118,13 +118,15 @@ function readEngineSource(dir: string, id: string): EngineSource {
   if (
     j.location !== "native" &&
     j.location !== "static" &&
-    j.location !== "r2"
+    j.location !== "r2" &&
+    j.location !== "bundled"
   ) {
-    fail(`"location" must be one of native, static, r2`);
+    fail(`"location" must be one of native, static, r2, bundled`);
   }
-  const location = j.location as "native" | "static" | "r2";
+  const location = j.location as "native" | "static" | "r2" | "bundled";
 
-  if (location === "native") {
+  // Neither ships assets of its own — nothing for this script to copy.
+  if (location === "native" || location === "bundled") {
     return { id, version: j.version as string, location };
   }
 

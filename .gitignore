@@ -14,6 +14,7 @@ playwright-report/
 test-results/
 blob-report/
 .playwright/
+.vitest/
 
 # Engine assets (synced from node_modules by `pnpm sync-engines`, never committed)
 public/engines/

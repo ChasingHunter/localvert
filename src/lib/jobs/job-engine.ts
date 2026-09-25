@@ -4,15 +4,17 @@ import { ENGINE_MANIFEST } from "@/lib/engines/manifest";
 import type {
   Capabilities,
   Category,
-  EngineId,
   FormatId,
-  Operation,
   ToolDefinition,
 } from "@/lib/registry";
 import { CATEGORY_META, outputFileName } from "@/lib/registry";
-import { NoEngineError, resolvePipeline } from "@/lib/router";
+import {
+  NoEngineError,
+  type ResolvedStep,
+  resolvePipeline,
+} from "@/lib/router";
 import { collectToBlob } from "@/lib/sinks";
-import type { WorkerPool, ZipResult } from "@/lib/workers";
+import type { RunStep, WorkerPool, ZipResult } from "@/lib/workers";
 import { zipInWorker } from "@/lib/workers";
 import type { JobStore } from "./store";
 
@@ -106,11 +108,6 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
       resolved = e;
     }
 
-    if (!(resolved instanceof NoEngineError) && resolved.length > 1) {
-      // Lands with the first multi-step tool.
-      throw new Error("multi-step pipelines are not supported yet");
-    }
-
     const ids: string[] = [];
     for (const { file, format } of files) {
       const id = makeId();
@@ -140,19 +137,11 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
         progress: 0,
       });
 
-      const step = resolved[0];
-      if (!step) {
-        // Unreachable: defineTool requires every pipeline to have at least
-        // one step, and resolvePipeline resolves one engine per step.
-        throw new Error(`[job] tool "${tool.slug}" resolved to no steps`);
-      }
       dispatch({
         tool,
         id,
         file,
-        inputFormat: format,
-        engine: step.engine,
-        op: step.op,
+        steps: buildSteps(tool, resolved, format),
         parsedOptions: parsed.data,
       });
     }
@@ -160,18 +149,49 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
     return ids;
   }
 
+  /**
+   * Zips each resolved step (op + engine, from `resolvePipeline`) with the
+   * tool's own declared step (which carries `baseUrl`'s ingredients and, for
+   * an `imagePipeline`-built tool, the step's `from`/`to` formats) and this
+   * file's sniffed input format, into the `RunStep[]` a `RunRequest` sends
+   * to a worker. A step with no declared `from`/`to` (a single-step tool
+   * that predates ADR-0007's raster pipeline) falls back to
+   * (this file's format -> `tool.produces`) — the same pair `job-engine.ts`
+   * always used before this field existed.
+   */
+  function buildSteps(
+    tool: ToolDefinition,
+    resolved: readonly ResolvedStep[],
+    format: FormatId,
+  ): RunStep[] {
+    return resolved.map((step, i) => {
+      const declared = tool.pipeline[i];
+      if (!declared) {
+        // Unreachable: resolvePipeline maps tool.pipeline 1:1.
+        throw new Error(
+          `[job] tool "${tool.slug}" resolved more steps than it declared`,
+        );
+      }
+      return {
+        engine: step.engine,
+        baseUrl: ENGINE_MANIFEST[step.engine].baseUrl,
+        op: step.op,
+        inputFormat: declared.from ?? format,
+        outputFormat: declared.to ?? tool.produces,
+      };
+    });
+  }
+
   interface DispatchArgs {
     tool: ToolDefinition;
     id: string;
     file: File;
-    inputFormat: FormatId;
-    engine: EngineId;
-    op: Operation;
+    steps: readonly RunStep[];
     parsedOptions: unknown;
   }
 
   function dispatch(args: DispatchArgs): void {
-    const { tool, id, file, inputFormat, engine, op, parsedOptions } = args;
+    const { tool, id, file, steps, parsedOptions } = args;
     const controller = new AbortController();
     inflight.set(id, { controller });
 
@@ -191,12 +211,8 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
         const result = await pool.run(
           {
             jobId: id,
-            engine,
-            baseUrl: ENGINE_MANIFEST[engine].baseUrl,
-            op,
             input: { kind: "blob", blob: file },
-            inputFormat,
-            outputFormat: tool.produces,
+            steps,
             options: parsedOptions as Record<string, unknown>,
           },
           {
@@ -240,6 +256,22 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
         error: {
           code: "unsupported",
           message: "OPFS outputs are not supported yet",
+        },
+      });
+      return;
+    }
+
+    if (result.kind === "raster") {
+      // Unreachable: engine-host.ts (ADR-0007) rejects a pipeline whose
+      // final step produces a raw raster rather than bytes/stream/opfs
+      // before it ever gets here — see "pipeline ended without an encode
+      // step". Handled anyway so this function's `result` narrowing stays
+      // exhaustive rather than assuming that guarantee holds.
+      store.getState().update(id, {
+        status: "error",
+        error: {
+          code: "internal",
+          message: "pipeline ended without an encode step",
         },
       });
       return;

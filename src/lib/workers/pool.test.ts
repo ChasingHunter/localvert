@@ -1,12 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
-import type { EngineAdapter, EngineResult, EngineTask } from "@/lib/engines";
+import type {
+  EngineAdapter,
+  EngineInput,
+  EngineResult,
+  EngineTask,
+} from "@/lib/engines";
 import { EngineError, isEngineError } from "@/lib/engines";
 import type { EngineId } from "@/lib/registry";
 import { makeCaps } from "@/test/caps";
 import { createEngineHost } from "./engine-host";
 import type { WorkerHandle } from "./pool";
 import { createWorkerPool } from "./pool";
-import type { RunRequest } from "./protocol";
+import type { RunRequest, RunStep } from "./protocol";
 
 /**
  * Fake `WorkerHandle`s backed by a real `createEngineHost` instance each —
@@ -22,6 +27,10 @@ const CANVAS: EngineId = "canvas";
 // synthetic id so pool tests can exercise the heavy/light split, the same
 // way engine-host.test.ts casts a synthetic id for "no loader registered".
 const HEAVY_ENGINE = "fake-heavy" as EngineId;
+// A second, distinct heavy engine id — only used to test that a
+// multi-step request pins to the *first* heavy engine among its steps, not
+// just *a* heavy one.
+const HEAVY_ENGINE_2 = "fake-heavy-2" as EngineId;
 
 type Loaders = Partial<
   Record<EngineId, () => Promise<{ default: EngineAdapter }>>
@@ -201,17 +210,35 @@ const BYTES_RESULT: EngineResult = {
   mime: "image/jpeg",
 };
 
-function baseReq(overrides: Partial<RunRequest> = {}): RunRequest {
+function step(overrides: Partial<RunStep> = {}): RunStep {
   return {
-    jobId: "job-1",
     engine: CANVAS,
     baseUrl: "/engines/canvas@1.0.0/",
     op: "transcode",
-    input: { kind: "bytes", bytes: new ArrayBuffer(0) },
     inputFormat: "png",
     outputFormat: "jpg",
-    options: {},
     ...overrides,
+  };
+}
+
+interface BaseReqOverrides {
+  jobId?: string;
+  input?: EngineInput;
+  /** Shorthand for a single-step request on this engine — most tests only
+   * care which engine the (one) step runs on. Ignored if `steps` is given. */
+  engine?: EngineId;
+  /** A full step list, for a test that needs more than one step (or a
+   * step's own op/format). Overrides `engine`. */
+  steps?: readonly RunStep[];
+  options?: Readonly<Record<string, unknown>>;
+}
+
+function baseReq(overrides: BaseReqOverrides = {}): RunRequest {
+  return {
+    jobId: overrides.jobId ?? "job-1",
+    input: overrides.input ?? { kind: "bytes", bytes: new ArrayBuffer(0) },
+    steps: overrides.steps ?? [step({ engine: overrides.engine ?? CANVAS })],
+    options: overrides.options ?? {},
   };
 }
 
@@ -357,6 +384,106 @@ describe("createWorkerPool", () => {
       runLight.resolve(BYTES_RESULT);
       runHeavy.resolve(BYTES_RESULT);
       await Promise.all([pLight, pHeavy]);
+
+      pool.destroy();
+    });
+
+    it("treats a request as heavy if any step's engine is heavy, even when it isn't the first step", async () => {
+      const tracker = runTracker();
+      const loaders: Loaders = {
+        canvas: async () => ({
+          default: makeControlledAdapter(CANVAS, false, tracker.onStart),
+        }),
+      };
+      loaders[HEAVY_ENGINE] = async () => ({
+        default: makeControlledAdapter(HEAVY_ENGINE, true, tracker.onStart),
+      });
+
+      const { pool, spawned } = makePool({
+        loaders,
+        size: 1, // already saturated by a light job below
+        isHeavy: (e) => e === HEAVY_ENGINE,
+      });
+
+      const pLight = pool.run(baseReq({ jobId: "light" }));
+      const runLight = await tracker.nextStart();
+      expect(pool.stats).toEqual({ workers: 1, busy: 1, queued: 0 });
+
+      // A two-step request whose *second* step — not the first — is the
+      // heavy engine. It must still route to a pinned worker, not queue
+      // behind the already-full light pool.
+      const pMulti = pool.run(
+        baseReq({
+          jobId: "multi",
+          steps: [
+            step({ engine: CANVAS, op: "decode", outputFormat: "raster" }),
+            step({ engine: HEAVY_ENGINE, op: "encode", inputFormat: "raster" }),
+          ],
+        }),
+      );
+      const runMultiStep0 = await tracker.nextStart();
+      expect(spawned.length).toBe(2); // a second worker, for the heavy pinned slot
+      expect(pool.stats).toEqual({ workers: 2, busy: 2, queued: 0 });
+
+      runMultiStep0.resolve({
+        kind: "raster",
+        image: { width: 1, height: 1, data: new Uint8ClampedArray(4) },
+      });
+      const runMultiStep1 = await tracker.nextStart();
+      runMultiStep1.resolve(BYTES_RESULT);
+
+      runLight.resolve(BYTES_RESULT);
+      await Promise.all([pLight, pMulti]);
+
+      pool.destroy();
+    });
+
+    it("pins to the FIRST heavy engine among a request's steps, not a later one", async () => {
+      const tracker = runTracker();
+      const loaders: Loaders = {};
+      loaders[HEAVY_ENGINE] = async () => ({
+        default: makeControlledAdapter(HEAVY_ENGINE, true, tracker.onStart),
+      });
+      loaders[HEAVY_ENGINE_2] = async () => ({
+        default: makeControlledAdapter(HEAVY_ENGINE_2, true, tracker.onStart),
+      });
+
+      const { pool, spawned } = makePool({
+        loaders,
+        isHeavy: (e) => e === HEAVY_ENGINE || e === HEAVY_ENGINE_2,
+      });
+
+      // A solo request pinned to HEAVY_ENGINE, occupying its worker.
+      const p1 = pool.run(
+        baseReq({ jobId: "solo-heavy", engine: HEAVY_ENGINE }),
+      );
+      const run1 = await tracker.nextStart();
+      expect(spawned.length).toBe(1);
+
+      // A second request whose steps are [HEAVY_ENGINE, HEAVY_ENGINE_2]. If
+      // it pinned to the *second* step's engine, this would spawn a
+      // distinct worker; pinning to the first instead means it queues
+      // behind p1 on the very same one.
+      const p2 = pool.run(
+        baseReq({
+          jobId: "double-heavy",
+          steps: [
+            step({ engine: HEAVY_ENGINE }),
+            step({ engine: HEAVY_ENGINE_2 }),
+          ],
+        }),
+      );
+      expect(spawned.length).toBe(1);
+      expect(pool.stats).toEqual({ workers: 1, busy: 1, queued: 1 });
+
+      run1.resolve(BYTES_RESULT);
+      await p1;
+
+      const run2Step0 = await tracker.nextStart();
+      run2Step0.resolve(BYTES_RESULT);
+      const run2Step1 = await tracker.nextStart();
+      run2Step1.resolve(BYTES_RESULT);
+      await p2;
 
       pool.destroy();
     });

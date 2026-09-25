@@ -3,11 +3,12 @@ import type {
   EngineAdapter,
   EngineInstance,
   EngineResult,
+  RasterImage,
 } from "@/lib/engines";
-import type { EngineId, FormatId, Operation } from "@/lib/registry";
+import type { EngineId, Operation, StepFormat } from "@/lib/registry";
 import { makeCaps } from "@/test/caps";
 import { createEngineHost } from "./engine-host";
-import type { RunRequest } from "./protocol";
+import type { RunRequest, RunStep } from "./protocol";
 
 // EngineId is a closed union of real, registered engines (today just
 // "canvas" — see src/lib/registry/types.ts). This cast makes a synthetic id
@@ -15,16 +16,32 @@ import type { RunRequest } from "./protocol";
 // on a second real engine existing yet, the same way define-engine.test.ts
 // casts a synthetic marker.
 const UNKNOWN_ENGINE = "unregistered-engine" as EngineId;
+// Three more synthetic ids, for the multi-step pipeline tests below — same
+// cast, same reasoning.
+const DECODE_ENGINE = "decode-engine" as EngineId;
+const RESIZE_ENGINE = "resize-engine" as EngineId;
+const ENCODE_ENGINE = "encode-engine" as EngineId;
+
+type Loaders = Partial<
+  Record<EngineId, () => Promise<{ default: EngineAdapter }>>
+>;
+
+function step(overrides: Partial<RunStep> = {}): RunStep {
+  return {
+    engine: "canvas",
+    baseUrl: "/engines/canvas@1.0.0/",
+    op: "transcode",
+    inputFormat: "png",
+    outputFormat: "jpg",
+    ...overrides,
+  };
+}
 
 function baseReq(overrides: Partial<RunRequest> = {}): RunRequest {
   return {
     jobId: "job-1",
-    engine: "canvas",
-    baseUrl: "/engines/canvas@1.0.0/",
-    op: "transcode",
     input: { kind: "bytes", bytes: new ArrayBuffer(0) },
-    inputFormat: "png",
-    outputFormat: "jpg",
+    steps: [step()],
     options: {},
     ...overrides,
   };
@@ -32,15 +49,17 @@ function baseReq(overrides: Partial<RunRequest> = {}): RunRequest {
 
 function makeAdapter(
   overrides: Partial<{
-    supports: (op: Operation, i: FormatId, o: FormatId) => boolean;
+    id: EngineId;
+    supports: (op: Operation, i: StepFormat, o: StepFormat) => boolean;
     load: () => Promise<EngineInstance>;
   }> = {},
 ): EngineAdapter {
+  const id = overrides.id ?? "canvas";
   return {
-    id: "canvas",
+    id,
     version: "1.0.0",
     license: "MIT",
-    marker: "localvert-engine:canvas",
+    marker: `localvert-engine:${id}` as EngineAdapter["marker"],
     location: "static",
     needsIsolation: false,
     heavy: false,
@@ -60,6 +79,12 @@ const BYTES_RESULT: EngineResult = {
   kind: "bytes",
   bytes: new ArrayBuffer(0),
   mime: "image/jpeg",
+};
+
+const RASTER: RasterImage = {
+  width: 2,
+  height: 2,
+  data: new Uint8ClampedArray(2 * 2 * 4),
 };
 
 describe("createEngineHost", () => {
@@ -100,7 +125,9 @@ describe("createEngineHost", () => {
 
     it("returns ok:false unsupported when no loader is registered for the engine", async () => {
       const host = createEngineHost({}, () => makeCaps());
-      const outcome = await host.run(baseReq({ engine: UNKNOWN_ENGINE }));
+      const outcome = await host.run(
+        baseReq({ steps: [step({ engine: UNKNOWN_ENGINE })] }),
+      );
       expect(outcome.ok).toBe(false);
       if (outcome.ok) throw new Error("expected ok:false");
       expect(outcome.error).toEqual({
@@ -186,6 +213,230 @@ describe("createEngineHost", () => {
         () => makeCaps(),
       );
       const outcome = await host.run(baseReq());
+      expect(outcome.ok).toBe(false);
+      if (outcome.ok) throw new Error("expected ok:false");
+      expect(outcome.error.code).toBe("aborted");
+    });
+
+    it("returns ok:false internal for a request with zero steps", async () => {
+      const host = createEngineHost({}, () => makeCaps());
+      const outcome = await host.run(baseReq({ steps: [] }));
+      expect(outcome.ok).toBe(false);
+      if (outcome.ok) throw new Error("expected ok:false");
+      expect(outcome.error.code).toBe("internal");
+    });
+  });
+
+  describe("multi-step pipelines (ADR-0007)", () => {
+    /** A fake decode/resize/encode trio: decode and resize hand back a
+     * fixed raster; encode hands back fixed bytes. Each records the
+     * `EngineInput` it was actually called with, so a test can assert the
+     * raster passed from one step to the next is the very same object
+     * reference — never re-serialized. */
+    function makePipelineLoaders(): {
+      seenInputs: unknown[];
+      loaders: Loaders;
+    } {
+      const seenInputs: unknown[] = [];
+      const decodeAdapter = makeAdapter({
+        id: DECODE_ENGINE,
+        load: async () => ({
+          run: async (task) => {
+            seenInputs.push(task.input);
+            task.onProgress?.(1);
+            return { kind: "raster", image: RASTER } satisfies EngineResult;
+          },
+          dispose: () => {},
+        }),
+      });
+      const resizeAdapter = makeAdapter({
+        id: RESIZE_ENGINE,
+        load: async () => ({
+          run: async (task) => {
+            seenInputs.push(task.input);
+            task.onProgress?.(1);
+            return { kind: "raster", image: RASTER } satisfies EngineResult;
+          },
+          dispose: () => {},
+        }),
+      });
+      const encodeAdapter = makeAdapter({
+        id: ENCODE_ENGINE,
+        load: async () => ({
+          run: async (task) => {
+            seenInputs.push(task.input);
+            task.onProgress?.(1);
+            return BYTES_RESULT;
+          },
+          dispose: () => {},
+        }),
+      });
+      const loaders: Loaders = {};
+      loaders[DECODE_ENGINE] = async () => ({ default: decodeAdapter });
+      loaders[RESIZE_ENGINE] = async () => ({ default: resizeAdapter });
+      loaders[ENCODE_ENGINE] = async () => ({ default: encodeAdapter });
+      return { seenInputs, loaders };
+    }
+
+    const PIPELINE_STEPS: RunStep[] = [
+      step({
+        engine: DECODE_ENGINE,
+        op: "decode",
+        inputFormat: "png",
+        outputFormat: "raster",
+      }),
+      step({
+        engine: RESIZE_ENGINE,
+        op: "resize",
+        inputFormat: "raster",
+        outputFormat: "raster",
+      }),
+      step({
+        engine: ENCODE_ENGINE,
+        op: "encode",
+        inputFormat: "raster",
+        outputFormat: "jpg",
+      }),
+    ];
+
+    it("runs decode -> resize -> encode in order and returns the final bytes", async () => {
+      const { loaders } = makePipelineLoaders();
+      const host = createEngineHost(loaders, () => makeCaps());
+
+      const outcome = await host.run(baseReq({ steps: PIPELINE_STEPS }));
+      expect(outcome.ok).toBe(true);
+      if (!outcome.ok) throw new Error("expected ok:true");
+      expect(outcome.result).toBe(BYTES_RESULT);
+    });
+
+    it("passes the raster intermediate to the next step by reference, not re-serialized", async () => {
+      const { loaders, seenInputs } = makePipelineLoaders();
+      const host = createEngineHost(loaders, () => makeCaps());
+
+      await host.run(baseReq({ steps: PIPELINE_STEPS }));
+
+      expect(seenInputs).toHaveLength(3);
+      // decode's own input is whatever the request supplied (bytes, in
+      // baseReq); resize's and encode's input is decode's/resize's raster
+      // result, handed straight through as the same object.
+      expect(seenInputs[1]).toEqual({ kind: "raster", image: RASTER });
+      expect((seenInputs[1] as { image: unknown }).image).toBe(RASTER);
+      expect((seenInputs[2] as { image: unknown }).image).toBe(RASTER);
+    });
+
+    it("reports progress as (stepIndex + stepFraction) / stepCount, monotonic up to a final 1", async () => {
+      const { loaders } = makePipelineLoaders();
+      const host = createEngineHost(loaders, () => makeCaps());
+
+      const received: number[] = [];
+      await host.run(baseReq({ steps: PIPELINE_STEPS }), (f) =>
+        received.push(f),
+      );
+
+      expect(received.length).toBeGreaterThan(0);
+      expect(received.at(-1)).toBe(1);
+      for (let i = 1; i < received.length; i++) {
+        expect(received[i]).toBeGreaterThanOrEqual(received[i - 1] as number);
+      }
+    });
+
+    it("returns ok:false internal when the pipeline ends without an encode step (final result is raster)", async () => {
+      const decodeAdapter = makeAdapter({
+        id: DECODE_ENGINE,
+        load: async () => ({
+          run: async () =>
+            ({ kind: "raster", image: RASTER }) satisfies EngineResult,
+          dispose: () => {},
+        }),
+      });
+      const loaders: Loaders = {};
+      loaders[DECODE_ENGINE] = async () => ({ default: decodeAdapter });
+      const host = createEngineHost(loaders, () => makeCaps());
+
+      const outcome = await host.run(
+        baseReq({
+          steps: [
+            step({
+              engine: DECODE_ENGINE,
+              op: "decode",
+              inputFormat: "png",
+              outputFormat: "raster",
+            }),
+          ],
+        }),
+      );
+      expect(outcome.ok).toBe(false);
+      if (outcome.ok) throw new Error("expected ok:false");
+      expect(outcome.error.code).toBe("internal");
+      expect(outcome.error.message).toMatch(/without an encode step/);
+    });
+
+    it("returns ok:false unsupported when a mid-pipeline step's adapter rejects it", async () => {
+      const decodeAdapter = makeAdapter({
+        id: DECODE_ENGINE,
+        load: async () => ({
+          run: async () =>
+            ({ kind: "raster", image: RASTER }) satisfies EngineResult,
+          dispose: () => {},
+        }),
+      });
+      const resizeAdapter = makeAdapter({
+        id: RESIZE_ENGINE,
+        supports: () => false, // rejects every op/format pair
+      });
+      const loaders: Loaders = {};
+      loaders[DECODE_ENGINE] = async () => ({ default: decodeAdapter });
+      loaders[RESIZE_ENGINE] = async () => ({ default: resizeAdapter });
+      const host = createEngineHost(loaders, () => makeCaps());
+
+      const outcome = await host.run(
+        baseReq({ steps: PIPELINE_STEPS.slice(0, 2) }),
+      );
+      expect(outcome.ok).toBe(false);
+      if (outcome.ok) throw new Error("expected ok:false");
+      expect(outcome.error.code).toBe("unsupported");
+      expect(outcome.error.engine).toBe(RESIZE_ENGINE);
+    });
+
+    it("cancel(jobId) aborts whichever step is running — even the second one", async () => {
+      let resizeReady!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        resizeReady = resolve;
+      });
+
+      const decodeAdapter = makeAdapter({
+        id: DECODE_ENGINE,
+        load: async () => ({
+          run: async () =>
+            ({ kind: "raster", image: RASTER }) satisfies EngineResult,
+          dispose: () => {},
+        }),
+      });
+      const resizeAdapter = makeAdapter({
+        id: RESIZE_ENGINE,
+        load: async () => ({
+          run: ({ signal }) =>
+            new Promise((_resolve, reject) => {
+              signal.addEventListener("abort", () => {
+                reject(new DOMException("stopped", "AbortError"));
+              });
+              resizeReady();
+            }),
+          dispose: () => {},
+        }),
+      });
+      const loaders: Loaders = {};
+      loaders[DECODE_ENGINE] = async () => ({ default: decodeAdapter });
+      loaders[RESIZE_ENGINE] = async () => ({ default: resizeAdapter });
+      const host = createEngineHost(loaders, () => makeCaps());
+
+      const pending = host.run(
+        baseReq({ jobId: "job-x", steps: PIPELINE_STEPS.slice(0, 2) }),
+      );
+      await ready;
+      host.cancel("job-x");
+
+      const outcome = await pending;
       expect(outcome.ok).toBe(false);
       if (outcome.ok) throw new Error("expected ok:false");
       expect(outcome.error.code).toBe("aborted");

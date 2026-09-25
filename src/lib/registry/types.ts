@@ -28,13 +28,26 @@ export type { EngineId };
 
 export type Operation =
   | "transcode"
+  | "decode"
+  | "encode"
   | "resize"
-  | "compress"
   | "rotate"
+  | "crop"
+  | "compress"
   | "merge"
   | "split"
   | "extract"
   | "ocr";
+
+/**
+ * A pipeline step's input/output "format": either a real `FormatId` (bytes
+ * of that format) or `"raster"`, the in-memory decoded-pixels intermediate
+ * ADR-0007's image pipeline passes between steps (`RasterImage` in
+ * `src/lib/engines/types.ts`). `decode`/`encode`/`resize`/`rotate`/`crop`
+ * steps traffic in `"raster"` on at least one side; a byte-to-byte op like
+ * `transcode` never does.
+ */
+export type StepFormat = FormatId | "raster";
 
 /** Runtime capability probes — see `src/lib/router/` (Phase 0.4). */
 export interface Capabilities {
@@ -66,6 +79,16 @@ export interface EngineCandidate {
 
 export interface PipelineStep {
   op: Operation;
+  /**
+   * This step's declared input/output "format", for building the
+   * `RunStep`s a pipeline dispatches — see `src/lib/workers/protocol.ts`.
+   * `imagePipeline` (ADR-0007) always sets both. A tool built the old way,
+   * with a single untyped step, may leave both unset; `job-engine.ts` then
+   * falls back to (the file's sniffed format -> `produces`), same as before
+   * this field existed.
+   */
+  from?: StepFormat;
+  to?: StepFormat;
   candidates: readonly EngineCandidate[];
 }
 

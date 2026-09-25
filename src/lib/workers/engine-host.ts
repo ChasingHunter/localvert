@@ -1,7 +1,17 @@
-import type { EngineAdapter, EngineInstance } from "@/lib/engines";
+import type {
+  EngineAdapter,
+  EngineInput,
+  EngineInstance,
+  EngineResult,
+} from "@/lib/engines";
 import { EngineError, toEngineError } from "@/lib/engines";
 import type { Capabilities, EngineId } from "@/lib/registry";
-import type { EngineHostApi, RunOutcome, RunRequest } from "./protocol";
+import type {
+  EngineHostApi,
+  RunOutcome,
+  RunRequest,
+  RunStep,
+} from "./protocol";
 import { serializeEngineError } from "./protocol";
 
 /**
@@ -85,81 +95,149 @@ export function createEngineHost(
     return probe();
   }
 
+  function clamp01(n: number): number {
+    return Math.min(1, Math.max(0, n));
+  }
+
+  /**
+   * Feeds one step's `EngineResult` into the next step as its `EngineInput`
+   * — the raster intermediate stays a plain in-memory reference, never
+   * transferred or cloned (ADR-0007: both steps run in this same worker). A
+   * `"stream"` result mid-pipeline has no `EngineInput` counterpart; only a
+   * final step may produce one.
+   */
+  function resultToInput(result: EngineResult, engine: EngineId): EngineInput {
+    switch (result.kind) {
+      case "raster":
+        return { kind: "raster", image: result.image };
+      case "bytes":
+        return { kind: "bytes", bytes: result.bytes };
+      case "opfs":
+        return { kind: "opfs", path: result.path };
+      case "stream":
+        throw new EngineError(
+          "internal",
+          "a stream result cannot feed the next pipeline step",
+          { engine },
+        );
+    }
+  }
+
   async function run(
     req: RunRequest,
     onProgress?: (fraction: number) => void,
   ): Promise<RunOutcome> {
-    const {
-      jobId,
-      engine,
-      baseUrl,
-      op,
-      input,
-      inputFormat,
-      outputFormat,
-      options,
-    } = req;
+    const { jobId, input, steps, options } = req;
+
+    if (steps.length === 0) {
+      return {
+        ok: false,
+        error: serializeEngineError(
+          new EngineError("internal", "pipeline has no steps"),
+        ),
+      };
+    }
 
     const controller = new AbortController();
     controllers.set(jobId, controller);
 
     try {
-      let entry: CacheEntry;
-      try {
-        entry = await loadEngine(engine, baseUrl);
-      } catch (e) {
+      const n = steps.length;
+      let lastReportedAt = 0;
+      let lastReported: number | null = null;
+      const reportOverall = (overall: number) => {
+        const clamped = clamp01(overall);
+        const now = Date.now();
+        if (now - lastReportedAt < PROGRESS_INTERVAL_MS) return;
+        lastReportedAt = now;
+        lastReported = clamped;
+        onProgress?.(clamped);
+      };
+
+      let currentInput: EngineInput = input;
+      let result: EngineResult | undefined;
+
+      for (let i = 0; i < n; i++) {
+        const step: RunStep | undefined = steps[i];
+        if (!step) break; // unreachable: guarded by `i < n === steps.length`
+
+        let entry: CacheEntry;
+        try {
+          entry = await loadEngine(step.engine, step.baseUrl);
+        } catch (e) {
+          return {
+            ok: false,
+            error: serializeEngineError(toEngineError(e, step.engine)),
+          };
+        }
+
+        if (
+          !entry.adapter.supports(step.op, step.inputFormat, step.outputFormat)
+        ) {
+          return {
+            ok: false,
+            error: serializeEngineError(
+              new EngineError(
+                "unsupported",
+                `engine "${step.engine}" does not support step ${i} ` +
+                  `(${step.op} ${step.inputFormat} -> ${step.outputFormat})`,
+                { engine: step.engine },
+              ),
+            ),
+          };
+        }
+
+        try {
+          result = await entry.instance.run({
+            op: step.op,
+            input: currentInput,
+            inputFormat: step.inputFormat,
+            outputFormat: step.outputFormat,
+            options,
+            signal: controller.signal,
+            onProgress: onProgress
+              ? (fraction: number) => reportOverall((i + clamp01(fraction)) / n)
+              : undefined,
+          });
+        } catch (e) {
+          return {
+            ok: false,
+            error: serializeEngineError(toEngineError(e, step.engine)),
+          };
+        }
+
+        if (i < n - 1) {
+          currentInput = resultToInput(result, step.engine);
+        }
+      }
+
+      // Unreachable: `steps.length === 0` returns above, and every iteration
+      // of a non-empty loop either assigns `result` or returns early.
+      if (!result) {
         return {
           ok: false,
-          error: serializeEngineError(toEngineError(e, engine)),
+          error: serializeEngineError(
+            new EngineError("internal", "pipeline produced no result"),
+          ),
         };
       }
 
-      if (!entry.adapter.supports(op, inputFormat, outputFormat)) {
+      if (result.kind === "raster") {
         return {
           ok: false,
           error: serializeEngineError(
             new EngineError(
-              "unsupported",
-              `engine "${engine}" does not support ${op} ${inputFormat} -> ${outputFormat}`,
-              { engine },
+              "internal",
+              "pipeline ended without an encode step",
             ),
           ),
         };
       }
 
-      let lastReportedAt = 0;
-      let lastReported: number | null = null;
-      const throttledProgress = onProgress
-        ? (fraction: number) => {
-            const clamped = Math.min(1, Math.max(0, fraction));
-            const now = Date.now();
-            if (now - lastReportedAt < PROGRESS_INTERVAL_MS) return;
-            lastReportedAt = now;
-            lastReported = clamped;
-            onProgress(clamped);
-          }
-        : undefined;
-
-      try {
-        const result = await entry.instance.run({
-          op,
-          input,
-          inputFormat,
-          outputFormat,
-          options,
-          signal: controller.signal,
-          onProgress: throttledProgress,
-        });
-        // The throttle above can swallow the true last update; the caller
-        // is always owed a final 1 on success regardless of what it ate.
-        if (onProgress && lastReported !== 1) onProgress(1);
-        return { ok: true, result };
-      } catch (e) {
-        return {
-          ok: false,
-          error: serializeEngineError(toEngineError(e, engine)),
-        };
-      }
+      // The throttle above can swallow the true last update; the caller is
+      // always owed a final 1 on success regardless of what it ate.
+      if (onProgress && lastReported !== 1) onProgress(1);
+      return { ok: true, result };
     } finally {
       controllers.delete(jobId);
     }
