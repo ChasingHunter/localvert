@@ -107,7 +107,18 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
   title: string;
   description: string;
   accepts: readonly FormatId[];
-  produces: FormatId;
+  /**
+   * The produced format, or `"same"` for a tool whose output format always
+   * matches whichever `accepts` format the input actually sniffed as (e.g.
+   * `strip-exif`, which takes jpg/png/webp and returns the same format it was
+   * given). A single-step tool with no declared pipeline `from`/`to` (the
+   * ADR-0007 legacy fallback — see `job-engine.ts`'s `buildSteps`) resolves
+   * `"same"` to the file's own sniffed format at dispatch time, and
+   * `outputFileName` (naming.ts) keeps the input's own extension instead of
+   * swapping in a fixed one. Not valid pipeline `from`/`to` — those stay a
+   * concrete `StepFormat`.
+   */
+  produces: FormatId | "same";
   options: S;
   defaults: z.infer<S>;
   pipeline: readonly PipelineStep[];

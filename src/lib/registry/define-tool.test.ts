@@ -56,6 +56,11 @@ describe("defineTool", () => {
     expect(() => defineTool(def)).toThrow(/^\[tool jpg-to-png\]/);
   });
 
+  it('accepts produces: "same" without requiring a FORMATS entry', () => {
+    const def = validDef({ produces: "same" });
+    expect(() => defineTool(def)).not.toThrow();
+  });
+
   it("rejects defaults that do not satisfy the options schema", () => {
     const def = validDef({
       options: z.object({ quality: z.number().min(1).max(100) }),

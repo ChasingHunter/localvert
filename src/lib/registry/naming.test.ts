@@ -40,4 +40,11 @@ describe("outputFileName", () => {
     });
     expect(outputFileName(t, "photo.jpg", {})).toBe("custom-photo.jpg");
   });
+
+  it('produces: "same" keeps the input name (and its extension\'s case) unchanged', () => {
+    const t = tool({ accepts: ["jpg", "png", "webp"], produces: "same" });
+    expect(outputFileName(t, "photo.JPG", {})).toBe("photo.JPG");
+    expect(outputFileName(t, "archive.tar.gz", {})).toBe("archive.tar.gz");
+    expect(outputFileName(t, "noext", {})).toBe("noext");
+  });
 });

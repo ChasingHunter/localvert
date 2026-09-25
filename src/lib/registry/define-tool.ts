@@ -56,7 +56,7 @@ export function defineTool<S extends z.ZodObject>(
       fail(`accepts unknown format "${id}"`);
     }
   }
-  if (!(def.produces in FORMATS)) {
+  if (def.produces !== "same" && !(def.produces in FORMATS)) {
     fail(`produces unknown format "${def.produces}"`);
   }
 

@@ -44,7 +44,9 @@ describe("TOOLS", () => {
       for (const format of tool.accepts) {
         expect(format in FORMATS).toBe(true);
       }
-      expect(tool.produces in FORMATS).toBe(true);
+      // "same" (produces === input's own sniffed format, e.g. strip-exif)
+      // isn't a FORMATS key — see ToolDefinition.produces's doc comment.
+      expect(tool.produces === "same" || tool.produces in FORMATS).toBe(true);
     }
   });
 

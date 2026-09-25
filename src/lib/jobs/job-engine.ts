@@ -157,7 +157,10 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
    * to a worker. A step with no declared `from`/`to` (a single-step tool
    * that predates ADR-0007's raster pipeline) falls back to
    * (this file's format -> `tool.produces`) — the same pair `job-engine.ts`
-   * always used before this field existed.
+   * always used before this field existed. `tool.produces === "same"` (e.g.
+   * `strip-exif`) has no fixed format to fall back to — the file's own
+   * sniffed format is the output format too, since the tool guarantees its
+   * output is always the same format as its input.
    */
   function buildSteps(
     tool: ToolDefinition,
@@ -172,12 +175,13 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
           `[job] tool "${tool.slug}" resolved more steps than it declared`,
         );
       }
+      const produces = tool.produces === "same" ? format : tool.produces;
       return {
         engine: step.engine,
         baseUrl: ENGINE_MANIFEST[step.engine].baseUrl,
         op: step.op,
         inputFormat: declared.from ?? format,
-        outputFormat: declared.to ?? tool.produces,
+        outputFormat: declared.to ?? produces,
       };
     });
   }

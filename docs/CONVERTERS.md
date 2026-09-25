@@ -17,6 +17,7 @@ candidate — the router may pick a fallback at runtime, see
 | Slug | From | To | Engine | Batch | Notes |
 |---|---|---|---|---|---|
 | `jpg-to-png` | JPEG | PNG | canvas | Yes | Lossless re-encode; strips EXIF (incl. GPS) |
+| `strip-exif` | JPEG/PNG/WebP | same format | exif | Yes | Byte-level metadata strip, no re-encode; drops GPS/EXIF/XMP/IPTC, keeps ICC colour profile; optionally rebuilds a minimal orientation-only EXIF |
 
 ## PDF
 

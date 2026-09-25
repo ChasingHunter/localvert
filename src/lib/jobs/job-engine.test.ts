@@ -279,6 +279,34 @@ describe("createJobEngine / submit", () => {
     expect(calls[0]?.req.options).toEqual({ quality: 42 });
   });
 
+  it('resolves produces: "same" to each file\'s own sniffed format, not a fixed one', () => {
+    const { engine, calls } = setup();
+    const tool = makeTool({
+      accepts: ["jpg", "png"],
+      produces: "same",
+      pipeline: [{ op: "strip", candidates: [{ engine: "canvas" }] }],
+    });
+
+    engine.submit(
+      tool,
+      [
+        { file: makeFile("a.jpg"), format: "jpg" },
+        { file: makeFile("b.png"), format: "png" },
+      ],
+      {},
+    );
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.req.steps[0]).toMatchObject({
+      inputFormat: "jpg",
+      outputFormat: "jpg",
+    });
+    expect(calls[1]?.req.steps[0]).toMatchObject({
+      inputFormat: "png",
+      outputFormat: "png",
+    });
+  });
+
   it("dispatches every file's own detected format into a legacy step's inputFormat", () => {
     const { engine, calls } = setup();
 

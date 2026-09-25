@@ -3,4 +3,5 @@ import type { ToolDefinition } from "@/lib/registry";
 
 export const TOOL_LOADERS = {
   "jpg-to-png": () => import("./image/jpg-to-png"),
+  "strip-exif": () => import("./image/strip-exif"),
 } satisfies Record<string, () => Promise<{ default: ToolDefinition }>>;
