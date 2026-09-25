@@ -57,14 +57,14 @@ One small commit per bullet — these are the contracts everything else hangs on
 - [x] `src/lib/router/` — capability probes (WebCodecs, SAB, OffscreenCanvas,
       OPFS) and the engine router that reads them (2026-09-24)
 - [x] `src/lib/sinks/` — blob sink, streaming ZIP sink (fflate) (2026-09-24)
-- [ ] UI: dropzone, job card, generated options form
+- [x] UI: dropzone, job card, generated options form (2026-09-25)
 
 ### 0.5 First tool end-to-end
 - [x] `canvas` engine adapter (2026-09-25)
-- [ ] `src/tools/image/jpg-to-png.ts` registry entry
-- [ ] Unit tests (registry, router) + browser-mode test (real worker, real canvas)
-- [ ] E2E: single file, and batch of 3 → streaming ZIP, magic-bytes asserted
-- [ ] `feat(tool): jpg to png via canvas engine`
+- [x] `src/tools/image/jpg-to-png.ts` registry entry (2026-09-25)
+- [x] Unit tests (registry, router) + browser-mode test (real worker, real canvas) (2026-09-25)
+- [x] E2E: single file, and batch of 3 → ZIP, magic-bytes asserted; SW-controlled path covered (2026-09-25)
+- [x] `feat(tool): jpg to png via canvas engine` (2026-09-25)
 
 ### 0.6 PWA and headers
 - [x] `public/_headers` — COOP/COEP + the CSP that makes upload impossible (2026-09-24)
