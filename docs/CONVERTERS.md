@@ -14,6 +14,11 @@ candidate — the router may pick a fallback at runtime, see
 
 ## Image
 
+Known gap: no HEIC fixture. HEIC's own license terms make it impractical to
+check a real `.heic` file into the repo, so `heic-to-jpg`/`heic-to-png` have
+no e2e coverage — they're covered by registry tests (pipeline resolution,
+options, defaults) only, not an actual decode through `heic-to`.
+
 | Slug | From | To | Engine | Batch | Notes |
 |---|---|---|---|---|---|
 | `heic-to-jpg` | HEIC | JPEG | heic → jsquash-jpeg | Yes | Primary image only (no Live Photo video, no burst frames); strips EXIF (incl. GPS) |

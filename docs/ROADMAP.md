@@ -110,12 +110,15 @@ Goal: the image matrix people actually search for, fast and batched.
 - [x] Raster pipeline foundation: decode → transform → encode in one worker (ADR-0007) (2026-09-25)
 - [x] Image engines: jsquash jpeg/png/webp/avif/jxl (single-threaded — MT
       variants still open), heic, resvg, utif, psd (2026-09-25)
-- [ ] Format matrix: jpg · png · webp · avif · jxl (jSquash, MT when isolated)
-- [ ] heic/heif → jpg/png (heic-to; LGPL — record in THIRD_PARTY_LICENSES)
-- [ ] svg → png/jpg (resvg-wasm) and raster → svg trace (later)
-- [ ] tiff (utif2), psd (@webtoon/psd), camera raw (libraw-wasm)
-- [ ] Compress with a **target size** (binary search on quality)
-- [ ] Resize, crop, rotate, strip EXIF (default on — privacy)
+- [x] Format matrix: jpg · png · webp · avif · jxl (jSquash, MT when isolated) (2026-09-25)
+- [x] heic/heif → jpg/png (heic-to; LGPL — record in THIRD_PARTY_LICENSES) (2026-09-25)
+- [x] svg → png/jpg (resvg-wasm) (2026-09-25)
+- [ ] raster → svg trace (later)
+- [x] tiff (utif2), psd (@webtoon/psd) (2026-09-25)
+- [ ] camera raw (libraw-wasm)
+- [x] Compress with a **target size** (binary search on quality) (2026-09-25)
+- [x] Resize, rotate, strip EXIF (default on — privacy) (2026-09-25)
+- [ ] Crop (needs an interactive crop UI)
 - [ ] Golden-file tests per codec (byte-stable output)
 - [ ] Batch of 50 images stays under ~1.5 GB peak memory
 
