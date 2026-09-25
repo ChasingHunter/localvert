@@ -1,10 +1,10 @@
 {
-  "canvas:png:lossless": null,
-  "canvas:jpg:0.9": null,
-  "canvas:webp:0.85": null,
-  "jsquash-jpeg:jpg:0.9": null,
-  "jsquash-png:png:lossless": null,
-  "jsquash-webp:webp:0.85": null,
-  "jsquash-avif:avif:0.6": null,
-  "jsquash-jxl:jxl:0.85": null
+  "canvas:png:lossless": 4100,
+  "canvas:jpg:0.9": 1146,
+  "canvas:webp:0.85": 804,
+  "jsquash-jpeg:jpg:0.9": 757,
+  "jsquash-png:png:lossless": 5861,
+  "jsquash-webp:webp:0.85": 332,
+  "jsquash-avif:avif:0.6": 613,
+  "jsquash-jxl:jxl:0.85": 510
 }
