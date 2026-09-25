@@ -10,6 +10,7 @@ export type EngineId =
   | "jsquash-resize"
   | "jsquash-webp"
   | "libraw"
+  | "pdf-lib"
   | "psd"
   | "resvg"
   | "tracer"

@@ -41,6 +41,7 @@ as its codec preference table.
 | `tracer` | — | svg | — | adapter ready |
 | `exif` | — | — | `strip`: jpg, png, webp | adapter ready |
 | `libraw` | raw | — | — | adapter ready |
+| `pdf-lib` | — | — | `merge`, `split`: pdf | adapter ready |
 
 `canvas` also still runs the legacy single-step `transcode` op directly
 (bytes of one format straight to bytes of another) for a tool that predates
@@ -106,6 +107,18 @@ the metadata segments (EXIF incl. GPS, XMP, IPTC, PNG text/time chunks),
 keeping the ICC colour profile and the image data itself untouched and
 unre-encoded. See `src/lib/engines/exif/strip.ts`.
 
+`pdf-lib` (ADR-0008) is another byte-to-byte engine, not a raster pipeline:
+`merge` copies every page of every input, in the user's own order, into one
+new document (`EngineTask.inputs`, a many-to-one step); `split` copies pages
+out of one input into N new documents (`EngineResult`'s `"files"` kind, a
+one-to-many step) — either every page as its own file (`mode: "each"`), or
+one file per `;`-separated segment of `options.ranges`, each segment itself
+parsed by the shared `parsePageRange` (`src/lib/registry/page-range.ts`). It
+is pure JS (no wasm), so — like `psd`/`tracer`/`utif`/`exif` — it ships
+`location: "bundled"`, no separate fetched assets. A password-protected
+input fails with `EngineError("unsupported", ...)` rather than being
+silently skipped; unlocking one is a separate tool, not part of merge/split.
+
 ---
 
 ## Delivery table
@@ -135,6 +148,7 @@ Size, placement, threading. Placement is enforced by `scripts/sync-engines.ts`:
 | `tracer` | `@image-tracer-ts/core` | 1.0.2 | MIT | 0 (bundled in JS) | bundled | no |
 | `exif` | _(our own code)_ | 1.0.0 | MIT | 0 | bundled | no |
 | `libraw` | `libraw-wasm` | 1.6.0 | **LGPL-2.1/CDDL-1.0 dual** | ~1.4 MiB | static | no |
+| `pdf-lib` | `@cantoo/pdf-lib` | 2.11.1 | MIT | 0 (bundled in JS) | bundled | no |
 
 ### How engine assets ship
 
@@ -175,7 +189,6 @@ first, then adapter, wiring, size budget, docs.
 
 | Engine | For | License | Approx size | Phase |
 |---|---|---|---|---|
-| `@cantoo/pdf-lib` | PDF manipulation | MIT | small | 2 |
 | `pdfjs-dist` | PDF render to image | Apache-2.0 | ~2 MB | 2 |
 | `@embedpdf/pdfium` | PDF compression | Apache-2.0 / BSD-3 | ~10 MB | 2 |
 | `tesseract.js` | OCR | Apache-2.0 | core + traineddata | 2 |

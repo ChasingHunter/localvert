@@ -1,0 +1,9 @@
+{
+  "id": "pdf-lib",
+  "version": "2.11.1",
+  "license": "MIT",
+  "location": "bundled",
+  "needsIsolation": false,
+  "heavy": false,
+  "assets": []
+}

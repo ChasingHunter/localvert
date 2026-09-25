@@ -128,6 +128,17 @@ export const ENGINE_MANIFEST = {
     baseUrl: "/engines/libraw@1.6.0/",
     totalBytes: 1486880,
   },
+  "pdf-lib": {
+    id: "pdf-lib",
+    version: "2.11.1",
+    license: "MIT",
+    location: "bundled",
+    needsIsolation: false,
+    heavy: false,
+    assets: [],
+    baseUrl: "",
+    totalBytes: 0,
+  },
   psd: {
     id: "psd",
     version: "0.4.0",
