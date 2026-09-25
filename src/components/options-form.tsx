@@ -91,6 +91,44 @@ function OptionField({
       .filter((v) => v !== null)
       .join(" ") || undefined;
 
+  const control = (
+    <FieldControl
+      id={id}
+      field={field}
+      value={value}
+      disabled={disabled}
+      describedBy={describedBy}
+      onChange={onChange}
+    />
+  );
+  const help = field.help && (
+    <p id={helpId} className="text-xs text-ink-muted">
+      {field.help}
+    </p>
+  );
+  const fieldError = error && (
+    <p id={errorId} className="text-xs text-danger">
+      {error}
+    </p>
+  );
+
+  // A switch reads as a single on/off row — label and help on the left,
+  // the toggle itself on the right — rather than the label-above-control
+  // stack every other field uses, which would leave the toggle floating
+  // under its own label for no reason.
+  if (field.control === "switch") {
+    return (
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-0.5">
+          <Label htmlFor={id}>{field.label}</Label>
+          {help}
+          {fieldError}
+        </div>
+        {control}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between gap-2">
@@ -101,30 +139,15 @@ function OptionField({
           )}
         </Label>
         {isNumeric(field) && (
-          <span className="text-sm text-ink-muted">
+          <span className="font-mono text-sm text-ink-muted">
             {String(value ?? "")}
             {field.unit}
           </span>
         )}
       </div>
-      <FieldControl
-        id={id}
-        field={field}
-        value={value}
-        disabled={disabled}
-        describedBy={describedBy}
-        onChange={onChange}
-      />
-      {field.help && (
-        <p id={helpId} className="text-xs text-ink-muted">
-          {field.help}
-        </p>
-      )}
-      {error && (
-        <p id={errorId} className="text-xs text-danger">
-          {error}
-        </p>
-      )}
+      {control}
+      {help}
+      {fieldError}
     </div>
   );
 }
