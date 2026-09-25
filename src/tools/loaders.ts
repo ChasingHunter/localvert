@@ -41,4 +41,6 @@ export const TOOL_LOADERS = {
   "webp-to-jpg": () => import("./image/webp-to-jpg"),
   "webp-to-png": () => import("./image/webp-to-png"),
   "webp-to-svg": () => import("./image/webp-to-svg"),
+  "merge-pdf": () => import("./pdf/merge-pdf"),
+  "split-pdf": () => import("./pdf/split-pdf"),
 } satisfies Record<string, () => Promise<{ default: ToolDefinition }>>;

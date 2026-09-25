@@ -124,7 +124,8 @@ Goal: the image matrix people actually search for, fast and batched.
 
 ## Phase 2 — PDF
 
-- [ ] merge, split, rotate, reorder, delete pages (@cantoo/pdf-lib)
+- [x] merge, split (@cantoo/pdf-lib; ADR-0008 many-to-one/one-to-many tools) —
+      rotate, reorder, delete pages still pending (2026-09-25)
 - [ ] images ↔ PDF both directions
 - [ ] Compress: ≥40% reduction on an image-heavy fixture
 - [ ] Protect / unlock (password), flatten forms

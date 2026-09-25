@@ -77,9 +77,14 @@ Crop is out of scope for this slice — it needs an interactive crop UI.
 
 ## PDF
 
-| Slug | From | To | Engine | Batch | Notes |
+`merge-pdf` and `split-pdf` are ADR-0008 multi-file tools, not one-to-one
+conversions — **Batch** (repeat per dropped file) doesn't apply to either, so
+that column reads their own **Arity** instead.
+
+| Slug | From | To | Engine | Arity | Notes |
 |---|---|---|---|---|---|
-| _none yet_ | | | | | Phase 2 |
+| `merge-pdf` | PDF | PDF | pdf-lib | many-to-one | Combines every dropped PDF into one, in the order arranged via drag/keyboard reorder |
+| `split-pdf` | PDF | PDF | pdf-lib | one-to-many | One file per page, or one per `;`-separated page range |
 
 ## Video
 

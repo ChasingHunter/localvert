@@ -39,6 +39,8 @@ import tiffToPng from "@/tools/image/tiff-to-png";
 import webpToJpg from "@/tools/image/webp-to-jpg";
 import webpToPng from "@/tools/image/webp-to-png";
 import webpToSvg from "@/tools/image/webp-to-svg";
+import mergePdf from "@/tools/pdf/merge-pdf";
+import splitPdf from "@/tools/pdf/split-pdf";
 
 export const TOOLS: readonly ToolDefinition[] = [
   avifToJpg,
@@ -80,6 +82,8 @@ export const TOOLS: readonly ToolDefinition[] = [
   webpToJpg,
   webpToPng,
   webpToSvg,
+  mergePdf,
+  splitPdf,
 ];
 
 export const TOOLS_BY_SLUG: ReadonlyMap<string, ToolDefinition> = new Map(
