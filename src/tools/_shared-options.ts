@@ -97,6 +97,44 @@ export const pngOptions = z.object({});
 export const pngDefaults: z.infer<typeof pngOptions> = {};
 
 /**
+ * Shared by every `*-to-svg` tool — tracing options for the `tracer` engine
+ * (`src/lib/engines/tracer/adapter.ts`), not pixel-encode options like the
+ * groups above. `colors`/`detail` map to the library's own knobs there; see
+ * that adapter's doc comments for the exact mapping. `maxSize` caps the long
+ * side a raster is traced at — tracing cost grows fast with pixel count.
+ */
+export const svgOptions = z.object({
+  colors: z
+    .number()
+    .int()
+    .min(2)
+    .max(64)
+    .meta({ label: "Colours", control: "slider", step: 1 })
+    .default(16),
+  detail: z
+    .enum(["low", "medium", "high"])
+    .meta({ label: "Detail", control: "select" })
+    .default("medium"),
+  maxSize: z
+    .number()
+    .int()
+    .min(256)
+    .max(4096)
+    .meta({
+      label: "Max size for tracing",
+      control: "number",
+      unit: "px",
+      help: "Large images are traced at up to this size on the long side, to keep tracing fast. The output is a vector, so it still scales to any display size.",
+    })
+    .default(1600),
+});
+export const svgDefaults: z.infer<typeof svgOptions> = {
+  colors: 16,
+  detail: "medium",
+  maxSize: 1600,
+};
+
+/**
  * The crop rectangle shared by every `crop-*.ts` tool — source-pixel
  * coordinates (the dropped image's own `naturalWidth`/`naturalHeight`, not
  * the on-screen display size), clamped by the `canvas` engine's `runCrop`

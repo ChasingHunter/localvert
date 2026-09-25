@@ -46,6 +46,9 @@ level, not through the full UI.
 | `svg-to-png` | SVG | PNG | resvg → jsquash-png | Yes | Text needs an embedded font to render |
 | `tiff-to-jpg` | TIFF | JPEG | utif → jsquash-jpeg | Yes | First page only; strips EXIF (incl. GPS) |
 | `tiff-to-png` | TIFF | PNG | utif → jsquash-png | Yes | First page only; strips EXIF (incl. GPS) |
+| `png-to-svg` | PNG | SVG | jsquash-png → tracer | Yes | Traces color-region outlines, not a pixel re-encode; colours/detail/max trace size are configurable; large images traced at up to 1600 px on the long side |
+| `jpg-to-svg` | JPEG | SVG | jsquash-jpeg → tracer | Yes | Traces color-region outlines, not a pixel re-encode; colours/detail/max trace size are configurable; large images traced at up to 1600 px on the long side |
+| `webp-to-svg` | WebP | SVG | jsquash-webp → tracer | Yes | Traces color-region outlines, not a pixel re-encode; colours/detail/max trace size are configurable; large images traced at up to 1600 px on the long side |
 | `strip-exif` | JPEG/PNG/WebP | same format | exif | Yes | Byte-level metadata strip, no re-encode; drops GPS/EXIF/XMP/IPTC, keeps ICC colour profile; optionally rebuilds a minimal orientation-only EXIF |
 | `raw-to-jpg` | Camera RAW (CR2, NEF, ARW, DNG, RAF, ORF, RW2, …) | JPEG | libraw → jsquash-jpeg | Yes | Camera white balance, sRGB, 8-bit; optional half-size decode; strips EXIF (incl. GPS) |
 | `raw-to-png` | Camera RAW (CR2, NEF, ARW, DNG, RAF, ORF, RW2, …) | PNG | libraw → jsquash-png | Yes | Camera white balance, sRGB, 8-bit; optional half-size decode; strips EXIF (incl. GPS) |

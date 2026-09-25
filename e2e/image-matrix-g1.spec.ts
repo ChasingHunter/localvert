@@ -8,7 +8,9 @@ import { test as base, expect } from "@playwright/test";
  * 1C-tools-G1 (jpg-to-webp, jpg-to-avif, jpg-to-jxl, png-to-jpg,
  * png-to-webp, png-to-avif, png-to-jxl): one parameterised test per tool,
  * each re-verifying the product's core privacy promise (files never leave
- * the browser) alongside the actual conversion.
+ * the browser) alongside the actual conversion. Slice 1F added the three
+ * `*-to-svg` tracing tools (png-to-svg, jpg-to-svg, webp-to-svg) to the same
+ * matrix rather than a new spec file.
  *
  * `not-a-jpg.png` (already a fixture, used elsewhere to test rejection on a
  * jpg-only tool) doubles as the PNG source here — a real, valid, tiny PNG,
@@ -17,6 +19,7 @@ import { test as base, expect } from "@playwright/test";
 
 const PNG_SOURCE = "not-a-jpg.png";
 const JPG_SOURCE = "photo-small.jpg";
+const WEBP_SOURCE = "sample.webp";
 
 function fixturePath(name: string): string {
   return `e2e/fixtures/${name}`;
@@ -59,6 +62,12 @@ function isJpg(bytes: Uint8Array): boolean {
   return hasBytesAt(bytes, 0, [0xff, 0xd8, 0xff]);
 }
 
+/** The `tracer` engine's SVG output — text, not binary magic bytes. */
+function isSvg(bytes: Uint8Array): boolean {
+  const text = new TextDecoder().decode(bytes.subarray(0, 16));
+  return text.startsWith("<svg") || text.startsWith("<?xml");
+}
+
 interface MatrixCase {
   slug: string;
   source: string;
@@ -73,6 +82,9 @@ const MATRIX: MatrixCase[] = [
   { slug: "png-to-webp", source: PNG_SOURCE, isExpectedFormat: isWebp },
   { slug: "png-to-avif", source: PNG_SOURCE, isExpectedFormat: isAvif },
   { slug: "png-to-jxl", source: PNG_SOURCE, isExpectedFormat: isJxl },
+  { slug: "png-to-svg", source: PNG_SOURCE, isExpectedFormat: isSvg },
+  { slug: "jpg-to-svg", source: JPG_SOURCE, isExpectedFormat: isSvg },
+  { slug: "webp-to-svg", source: WEBP_SOURCE, isExpectedFormat: isSvg },
 ];
 
 interface Fixtures {

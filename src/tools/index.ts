@@ -12,12 +12,14 @@ import heicToPng from "@/tools/image/heic-to-png";
 import jpgToAvif from "@/tools/image/jpg-to-avif";
 import jpgToJxl from "@/tools/image/jpg-to-jxl";
 import jpgToPng from "@/tools/image/jpg-to-png";
+import jpgToSvg from "@/tools/image/jpg-to-svg";
 import jpgToWebp from "@/tools/image/jpg-to-webp";
 import jxlToJpg from "@/tools/image/jxl-to-jpg";
 import jxlToPng from "@/tools/image/jxl-to-png";
 import pngToAvif from "@/tools/image/png-to-avif";
 import pngToJpg from "@/tools/image/png-to-jpg";
 import pngToJxl from "@/tools/image/png-to-jxl";
+import pngToSvg from "@/tools/image/png-to-svg";
 import pngToWebp from "@/tools/image/png-to-webp";
 import psdToJpg from "@/tools/image/psd-to-jpg";
 import psdToPng from "@/tools/image/psd-to-png";
@@ -36,6 +38,7 @@ import tiffToJpg from "@/tools/image/tiff-to-jpg";
 import tiffToPng from "@/tools/image/tiff-to-png";
 import webpToJpg from "@/tools/image/webp-to-jpg";
 import webpToPng from "@/tools/image/webp-to-png";
+import webpToSvg from "@/tools/image/webp-to-svg";
 
 export const TOOLS: readonly ToolDefinition[] = [
   avifToJpg,
@@ -50,12 +53,14 @@ export const TOOLS: readonly ToolDefinition[] = [
   jpgToAvif,
   jpgToJxl,
   jpgToPng,
+  jpgToSvg,
   jpgToWebp,
   jxlToJpg,
   jxlToPng,
   pngToAvif,
   pngToJpg,
   pngToJxl,
+  pngToSvg,
   pngToWebp,
   psdToJpg,
   psdToPng,
@@ -74,6 +79,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   tiffToPng,
   webpToJpg,
   webpToPng,
+  webpToSvg,
 ];
 
 export const TOOLS_BY_SLUG: ReadonlyMap<string, ToolDefinition> = new Map(
