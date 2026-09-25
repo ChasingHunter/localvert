@@ -4,17 +4,28 @@
 assertions on whether it exists (`describe.skipIf`) — no fixture, no failing
 CI, just a smaller test.
 
-No free, license-clean tiny camera raw sample was found for this slice. Every
-real-world CR2/NEF/DNG/... sample turned up while writing this adapter was
-either copyrighted press/sample material with unclear redistribution terms,
-or tens of megabytes — too large for this repo and not needed to exercise the
-decode path.
+## sample.dng
 
-What's needed: a **public-domain or CC0** DNG, **≤ 200 KB**, small enough that
-its own pixel dimensions don't matter (the tests only check that decoding
-succeeds and that the output is plausible-shaped and fully opaque). A synthetic
-DNG built by a small script (rather than a real camera capture) would be fine
-too, as long as libraw can actually decode it.
+Synthetic, generated for this repo — not a real camera capture, so there is
+no licensing question. Built with a throwaway Python script (not committed)
+using `tifffile` + `numpy`:
 
-Once `sample.dng` is added here, the gated tests in `adapter.browser.test.ts`
-start running automatically — no code change needed.
+- 64x48 uint16 RGGB Bayer mosaic sampled from the same four-quadrant +
+  gradient synthetic scene as `../../heic/fixtures/sample.heic` (red / green
+  / blue / yellow), so both fixtures' expected colours are easy to reason
+  about together.
+- Written as a `PhotometricInterpretation = 32803` (CFA) TIFF with the DNG
+  tags LibRaw needs to recognise and demosaic it: `DNGVersion` (1.4.0.0),
+  `UniqueCameraModel` ("Localvert Test"), `CFARepeatPatternDim` ([2,2]),
+  `CFAPattern` (RGGB), `BlackLevel` (0), `WhiteLevel` (65535),
+  `ColorMatrix1` (identity-ish 3x3 SRATIONAL), `AsShotNeutral` ([1,1,1]),
+  16-bit/1-sample-per-pixel.
+- Verified before committing with `rawpy` (LibRaw's own Python binding):
+  `rawpy.imread(path).postprocess()` demosaics it to a 64x48x3 image whose
+  quadrant colours match the source mosaic. File size: 6,608 bytes — well
+  under the 200 KB budget.
+
+`adapter.browser.test.ts`'s fixture-gated tests check the decoded raster is
+~64x48 (±2px, for LibRaw's demosaic border handling), fully opaque, that the
+red quadrant's centre pixel is red-dominant, and that `halfSize` decodes to
+smaller dimensions than a full decode.

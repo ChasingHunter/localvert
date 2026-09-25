@@ -149,8 +149,13 @@ describe("libraw adapter", () => {
           if (result.kind !== "raster") {
             throw new Error("expected a raster result");
           }
-          expect(result.image.width).toBeGreaterThan(0);
-          expect(result.image.height).toBeGreaterThan(0);
+          // The fixture's mosaic is 64x48 (see fixtures/README.md) — allow
+          // ±2px either way, since LibRaw's demosaic can trim a border row
+          // or column depending on the CFA alignment it infers.
+          expect(result.image.width).toBeGreaterThanOrEqual(62);
+          expect(result.image.width).toBeLessThanOrEqual(66);
+          expect(result.image.height).toBeGreaterThanOrEqual(46);
+          expect(result.image.height).toBeLessThanOrEqual(50);
           expect(result.image.data.length).toBe(
             result.image.width * result.image.height * 4,
           );
@@ -159,6 +164,20 @@ describe("libraw adapter", () => {
           for (let i = 3; i < result.image.data.length; i += 4 * 997) {
             expect(result.image.data[i]).toBe(255);
           }
+
+          // The fixture's four CFA quadrants are distinct, saturated
+          // colours (see fixtures/README.md) — LibRaw's demosaic, white
+          // balance and colour matrix all shift exact values, so this
+          // checks which channel dominates near one quadrant's centre
+          // rather than exact RGB values. Top-left is the red quadrant.
+          const { width, data } = result.image;
+          const topLeftIndex = (12 * width + 16) * 4;
+          const r = data[topLeftIndex] ?? 0;
+          const g = data[topLeftIndex + 1] ?? 0;
+          const b = data[topLeftIndex + 2] ?? 0;
+          const margin = 20;
+          expect(r).toBeGreaterThan(g + margin);
+          expect(r).toBeGreaterThan(b + margin);
         },
         TIMEOUT,
       );

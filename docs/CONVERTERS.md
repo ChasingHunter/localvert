@@ -14,10 +14,13 @@ candidate — the router may pick a fallback at runtime, see
 
 ## Image
 
-Known gap: no HEIC fixture. HEIC's own license terms make it impractical to
-check a real `.heic` file into the repo, so `heic-to-jpg`/`heic-to-png` have
-no e2e coverage — they're covered by registry tests (pipeline resolution,
-options, defaults) only, not an actual decode through `heic-to`.
+HEIC and camera RAW (via `libraw`) are covered by real-file engine tests —
+`src/lib/engines/heic/adapter.browser.test.ts` and
+`src/lib/engines/libraw/adapter.browser.test.ts` decode synthetic, license-
+clean `.heic`/`.dng` fixtures (see each engine's `fixtures/README.md` for
+provenance) and assert plausible pixel output, not just pipeline resolution.
+Neither is in the e2e matrix yet — that coverage is at the engine adapter
+level, not through the full UI.
 
 | Slug | From | To | Engine | Batch | Notes |
 |---|---|---|---|---|---|

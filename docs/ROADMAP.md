@@ -115,7 +115,7 @@ Goal: the image matrix people actually search for, fast and batched.
 - [x] svg → png/jpg (resvg-wasm) (2026-09-25)
 - [ ] raster → svg trace (later)
 - [x] tiff (utif2), psd (@webtoon/psd) (2026-09-25)
-- [x] camera raw (libraw-wasm; glue loaded at runtime — no DNG fixture yet) (2026-09-25)
+- [x] camera raw (libraw-wasm; glue loaded at runtime; synthetic DNG fixture added) (2026-09-25)
 - [x] Compress with a **target size** (binary search on quality) (2026-09-25)
 - [x] Resize, rotate, strip EXIF (default on — privacy) (2026-09-25)
 - [x] Crop with interactive crop editor (2026-09-25)
