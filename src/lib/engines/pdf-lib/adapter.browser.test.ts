@@ -55,6 +55,29 @@ async function pageSizes(bytes: ArrayBuffer): Promise<[number, number][]> {
   });
 }
 
+async function pageRotations(bytes: ArrayBuffer): Promise<number[]> {
+  const doc = await PDFDocument.load(bytes);
+  return doc.getPages().map((p) => p.getRotation().angle);
+}
+
+/** Builds a real jpg/png image directly with OffscreenCanvas + convertToBlob
+ * — same approach as `canvas/adapter.browser.test.ts`'s `sourceImage` — so
+ * `images-to-pdf` embeds real, sniffable image bytes rather than a fixture
+ * file. */
+async function imageBytes(
+  width: number,
+  height: number,
+  type: "image/jpeg" | "image/png",
+): Promise<ArrayBuffer> {
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d context in test setup");
+  ctx.fillStyle = "#3366ff";
+  ctx.fillRect(0, 0, width, height);
+  const blob = await canvas.convertToBlob({ type });
+  return blob.arrayBuffer();
+}
+
 describe("pdf-lib adapter", () => {
   it("carries the metadata defineEngine validated", () => {
     expect(adapter.id).toBe("pdf-lib");
@@ -63,13 +86,28 @@ describe("pdf-lib adapter", () => {
   });
 
   describe("supports", () => {
-    it("accepts merge and split, pdf to pdf", () => {
+    it("accepts merge, split, rotate and extract, pdf to pdf", () => {
       expect(adapter.supports("merge", "pdf", "pdf")).toBe(true);
       expect(adapter.supports("split", "pdf", "pdf")).toBe(true);
+      expect(adapter.supports("rotate", "pdf", "pdf")).toBe(true);
+      expect(adapter.supports("extract", "pdf", "pdf")).toBe(true);
     });
 
-    it("rejects a non-pdf format on either side", () => {
-      expect(adapter.supports("merge", "png", "pdf")).toBe(false);
+    it("accepts merge from jpg/png, for images-to-pdf", () => {
+      expect(adapter.supports("merge", "jpg", "pdf")).toBe(true);
+      expect(adapter.supports("merge", "png", "pdf")).toBe(true);
+    });
+
+    it("rejects an image format for any op other than merge", () => {
+      expect(adapter.supports("rotate", "jpg", "pdf")).toBe(false);
+      expect(adapter.supports("split", "png", "pdf")).toBe(false);
+    });
+
+    it("rejects a non-pdf, non-image format on the input side", () => {
+      expect(adapter.supports("merge", "webp", "pdf")).toBe(false);
+    });
+
+    it("rejects a non-pdf format on the output side", () => {
       expect(adapter.supports("split", "pdf", "png")).toBe(false);
     });
 
@@ -296,6 +334,269 @@ describe("pdf-lib adapter", () => {
             op: "split",
             input: bytesInput(encrypted),
             options: { mode: "each" },
+          }),
+        ),
+      ).rejects.toSatisfy(
+        (e: unknown) => isEngineError(e) && e.code === "unsupported",
+      );
+    });
+  });
+
+  describe("run: rotate", () => {
+    it("rotates only the selected pages by the given angle", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([
+        [100, 100],
+        [150, 150],
+        [200, 200],
+      ]);
+
+      const result = await instance.run(
+        baseTask({
+          op: "rotate",
+          input: bytesInput(doc),
+          options: { pages: "2", angle: "90" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(await pageRotations(result.bytes)).toEqual([0, 90, 0]);
+    });
+
+    it('rotates every page when "pages" is blank', async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([
+        [100, 100],
+        [150, 150],
+      ]);
+
+      const result = await instance.run(
+        baseTask({
+          op: "rotate",
+          input: bytesInput(doc),
+          options: { pages: "", angle: "180" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(await pageRotations(result.bytes)).toEqual([180, 180]);
+    });
+
+    it("adds to a page's existing rotation rather than replacing it", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([[100, 100]]);
+
+      const once = await instance.run(
+        baseTask({
+          op: "rotate",
+          input: bytesInput(doc),
+          options: { pages: "", angle: "90" },
+        }),
+      );
+      if (once.kind !== "bytes") throw new Error("expected bytes result");
+
+      const twice = await instance.run(
+        baseTask({
+          op: "rotate",
+          input: bytesInput(once.bytes),
+          options: { pages: "", angle: "180" },
+        }),
+      );
+      if (twice.kind !== "bytes") throw new Error("expected bytes result");
+      expect(await pageRotations(twice.bytes)).toEqual([270]);
+    });
+
+    it("accepts a numeric angle too, not only the select's string form", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([[100, 100]]);
+
+      const result = await instance.run(
+        baseTask({
+          op: "rotate",
+          input: bytesInput(doc),
+          options: { pages: "", angle: 270 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(await pageRotations(result.bytes)).toEqual([270]);
+    });
+  });
+
+  describe("run: extract", () => {
+    it('mode "keep" outputs only the given pages, in the given order', async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([
+        [100, 100],
+        [150, 150],
+        [200, 200],
+      ]);
+
+      const result = await instance.run(
+        baseTask({
+          op: "extract",
+          input: bytesInput(doc),
+          options: { mode: "keep", pages: "3, 1" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(await pageSizes(result.bytes)).toEqual([
+        [200, 200],
+        [100, 100],
+      ]);
+    });
+
+    it('mode "remove" keeps every other page, in its original order', async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([
+        [100, 100],
+        [150, 150],
+        [200, 200],
+      ]);
+
+      const result = await instance.run(
+        baseTask({
+          op: "extract",
+          input: bytesInput(doc),
+          options: { mode: "remove", pages: "2" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(await pageSizes(result.bytes)).toEqual([
+        [100, 100],
+        [200, 200],
+      ]);
+    });
+
+    it('throws EngineError("internal") when "remove" would delete every page', async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([
+        [100, 100],
+        [150, 150],
+      ]);
+
+      await expect(
+        instance.run(
+          baseTask({
+            op: "extract",
+            input: bytesInput(doc),
+            options: { mode: "remove", pages: "1-2" },
+          }),
+        ),
+      ).rejects.toSatisfy(
+        (e: unknown) => isEngineError(e) && e.code === "internal",
+      );
+    });
+  });
+
+  describe("run: merge (images -> pdf)", () => {
+    it('pageSize "fit" sizes each page to its own image, 1px = 1pt', async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const jpg = await imageBytes(100, 50, "image/jpeg");
+      const png = await imageBytes(60, 80, "image/png");
+
+      const result = await instance.run(
+        baseTask({
+          op: "merge",
+          inputFormat: "jpg",
+          input: bytesInput(jpg),
+          inputs: [bytesInput(jpg), bytesInput(png)],
+          options: { pageSize: "fit" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(await pageSizes(result.bytes)).toEqual([
+        [100, 50],
+        [60, 80],
+      ]);
+    });
+
+    it('pageSize "a4" fixes every page to A4, oriented from the image', async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      // Wider than tall -> auto-orientation picks landscape.
+      const wide = await imageBytes(200, 100, "image/jpeg");
+      // Taller than wide -> portrait.
+      const tall = await imageBytes(100, 200, "image/png");
+
+      const result = await instance.run(
+        baseTask({
+          op: "merge",
+          inputFormat: "jpg",
+          input: bytesInput(wide),
+          inputs: [bytesInput(wide), bytesInput(tall)],
+          options: { pageSize: "a4", orientation: "auto", margin: 0 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      const sizes = await pageSizes(result.bytes);
+      const landscapePage = sizes[0];
+      const portraitPage = sizes[1];
+      if (!landscapePage || !portraitPage) throw new Error("expected 2 pages");
+      expect(landscapePage[0]).toBeGreaterThan(landscapePage[1]);
+      expect(portraitPage[1]).toBeGreaterThan(portraitPage[0]);
+    });
+
+    it("forces every page to a fixed orientation when asked", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const wide = await imageBytes(200, 100, "image/jpeg");
+
+      const result = await instance.run(
+        baseTask({
+          op: "merge",
+          inputFormat: "jpg",
+          input: bytesInput(wide),
+          inputs: [bytesInput(wide)],
+          options: { pageSize: "letter", orientation: "portrait", margin: 0 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      const [page] = await pageSizes(result.bytes);
+      if (!page) throw new Error("expected 1 page");
+      expect(page[1]).toBeGreaterThan(page[0]);
+    });
+
+    it("throws EngineError('unsupported') for a non-jpg/png input", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const garbage = new Uint8Array([1, 2, 3, 4, 5]).buffer;
+
+      await expect(
+        instance.run(
+          baseTask({
+            op: "merge",
+            inputFormat: "jpg",
+            input: bytesInput(garbage),
+            inputs: [bytesInput(garbage)],
+            options: { pageSize: "fit" },
           }),
         ),
       ).rejects.toSatisfy(

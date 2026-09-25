@@ -1,5 +1,5 @@
 import type { Operation, StepFormat } from "@/lib/registry";
-import { FORMATS, parsePageRange } from "@/lib/registry";
+import { FORMATS, parsePageRange, sniffFormat } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
 import type {
@@ -23,18 +23,25 @@ function supports(
   input: StepFormat,
   output: StepFormat,
 ): boolean {
-  if (input !== "pdf" || output !== "pdf") return false;
-  return op === "merge" || op === "split";
+  if (output !== "pdf") return false;
+  // images-to-pdf (ADR-0008 many-to-one): jpg/png pages embedded into a new
+  // document — the only non-pdf input this engine ever takes.
+  if (input === "jpg" || input === "png") return op === "merge";
+  if (input !== "pdf") return false;
+  return (
+    op === "merge" || op === "split" || op === "rotate" || op === "extract"
+  );
 }
 
 /**
- * ADR-0008: byte-level PDF structure edits, not a raster pipeline — `merge`
- * and `split` both go pdf -> pdf (or pdf -> many pdfs), never through a
- * `RasterImage` intermediate. `@cantoo/pdf-lib` is pure JS (no wasm, no
- * separate fetched assets), so — like `psd`/`tracer`/`utif`/`exif` — this
- * adapter's whole implementation ships inside its own lazily-imported worker
- * chunk; `load()` has nothing to initialise ahead of time, and the actual
- * `import("@cantoo/pdf-lib")` happens inside `run()`, once per call.
+ * ADR-0008: byte-level PDF structure edits, not a raster pipeline — every op
+ * here goes pdf -> pdf (or pdf -> many pdfs, or jpg/png -> pdf for
+ * images-to-pdf), never through a `RasterImage` intermediate.
+ * `@cantoo/pdf-lib` is pure JS (no wasm, no separate fetched assets), so —
+ * like `psd`/`tracer`/`utif`/`exif` — this adapter's whole implementation
+ * ships inside its own lazily-imported worker chunk; `load()` has nothing to
+ * initialise ahead of time, and the actual `import("@cantoo/pdf-lib")`
+ * happens inside `run()`, once per call.
  */
 async function load(_ctx: EngineLoadContext): Promise<EngineInstance> {
   return { run, dispose };
@@ -85,9 +92,19 @@ async function run(task: EngineTask): Promise<EngineResult> {
   try {
     switch (task.op) {
       case "merge":
-        return await runMerge(task);
+        // Same op, two shapes of input (ADR-0008's images-to-pdf reuses
+        // "merge" rather than inventing a second op for "combine N inputs
+        // into one output") — `inputFormat` (set by `supports`'s check
+        // above, from the tool's own declared/sniffed format) says which.
+        return task.inputFormat === "pdf"
+          ? await runMergePdfs(task)
+          : await runMergeImages(task);
       case "split":
         return await runSplit(task);
+      case "rotate":
+        return await runRotate(task);
+      case "extract":
+        return await runExtract(task);
       default:
         throw new EngineError(
           "unsupported",
@@ -135,12 +152,12 @@ async function loadPdf(
 }
 
 /**
- * merge: every input, in the user's own order (`task.inputs` — ADR-0008),
- * copied page-for-page into one new document. `task.input` (the first file
- * again) is unused here; `inputs` is the source of truth for a many-to-one
- * step.
+ * merge (pdf -> pdf): every input, in the user's own order (`task.inputs` —
+ * ADR-0008), copied page-for-page into one new document. `task.input` (the
+ * first file again) is unused here; `inputs` is the source of truth for a
+ * many-to-one step.
  */
-async function runMerge(task: EngineTask): Promise<EngineResult> {
+async function runMergePdfs(task: EngineTask): Promise<EngineResult> {
   const { inputs, signal, onProgress } = task;
   signal.throwIfAborted();
 
@@ -162,6 +179,101 @@ async function runMerge(task: EngineTask): Promise<EngineResult> {
     const srcDoc = await loadPdf(mod, bytes);
     const copied = await outDoc.copyPages(srcDoc, srcDoc.getPageIndices());
     for (const page of copied) outDoc.addPage(page);
+    onProgress?.((i + 1) / inputs.length);
+  }
+
+  const bytes = await outDoc.save();
+  return { kind: "bytes", bytes: bytes.slice().buffer, mime: FORMATS.pdf.mime };
+}
+
+type PageSizeOption = "fit" | "a4" | "letter";
+type OrientationOption = "auto" | "portrait" | "landscape";
+
+/**
+ * merge (jpg/png -> pdf, `images-to-pdf`): every input becomes its own page,
+ * in the user's own order — same `task.inputs` contract as `runMergePdfs`,
+ * just embedding an image instead of copying pages. Each input is sniffed by
+ * its own bytes (`sniffFormat`, never trusted from a filename or from the
+ * job's single aggregate `inputFormat`, which only reflects the *first*
+ * file) so a mixed drop of jpgs and pngs embeds each one correctly.
+ *
+ * `"fit"` sizes the page to the image's own pixel dimensions, 1 px = 1 pt —
+ * the same assumption `PDFImage.width`/`height` already make, so the image
+ * fills the page exactly with no scaling. `"a4"`/`"letter"` instead fix the
+ * page size and `scaleToFit` the image inside it, minus `margin` pt on every
+ * side, centred.
+ */
+async function runMergeImages(task: EngineTask): Promise<EngineResult> {
+  const { inputs, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  if (!inputs || inputs.length === 0) {
+    throw new EngineError("internal", "merge requires at least one input", {
+      engine: metadata.id,
+    });
+  }
+
+  const pageSize: PageSizeOption =
+    options.pageSize === "a4" || options.pageSize === "letter"
+      ? options.pageSize
+      : "fit";
+  const orientation: OrientationOption =
+    options.orientation === "portrait" || options.orientation === "landscape"
+      ? options.orientation
+      : "auto";
+  const margin = typeof options.margin === "number" ? options.margin : 0;
+
+  const mod = await import("@cantoo/pdf-lib");
+  const outDoc = await mod.PDFDocument.create();
+
+  for (let i = 0; i < inputs.length; i++) {
+    signal.throwIfAborted();
+    const current = inputs[i];
+    if (!current) continue; // unreachable: guarded by `i < inputs.length`
+    const bytes = await inputToArrayBuffer(current);
+    signal.throwIfAborted();
+
+    const format = sniffFormat(new Uint8Array(bytes));
+    if (format !== "jpg" && format !== "png") {
+      throw new EngineError(
+        "unsupported",
+        `images-to-pdf only accepts jpg/png, got "${format ?? "an unrecognized format"}"`,
+        { engine: metadata.id },
+      );
+    }
+    const image =
+      format === "png"
+        ? await outDoc.embedPng(bytes)
+        : await outDoc.embedJpg(bytes);
+
+    if (pageSize === "fit") {
+      const page = outDoc.addPage([image.width, image.height]);
+      page.drawImage(image, {
+        x: 0,
+        y: 0,
+        width: image.width,
+        height: image.height,
+      });
+    } else {
+      const [a, b] = mod.PageSizes[pageSize === "a4" ? "A4" : "Letter"];
+      const isLandscape =
+        orientation === "landscape" ||
+        (orientation === "auto" && image.width > image.height);
+      const pageWidth = isLandscape ? Math.max(a, b) : Math.min(a, b);
+      const pageHeight = isLandscape ? Math.min(a, b) : Math.max(a, b);
+      const page = outDoc.addPage([pageWidth, pageHeight]);
+
+      const scaled = image.scaleToFit(
+        Math.max(pageWidth - margin * 2, 1),
+        Math.max(pageHeight - margin * 2, 1),
+      );
+      page.drawImage(image, {
+        x: (pageWidth - scaled.width) / 2,
+        y: (pageHeight - scaled.height) / 2,
+        width: scaled.width,
+        height: scaled.height,
+      });
+    }
     onProgress?.((i + 1) / inputs.length);
   }
 
@@ -243,6 +355,110 @@ async function runSplit(task: EngineTask): Promise<EngineResult> {
   }
 
   return { kind: "files", files };
+}
+
+/**
+ * rotate (pdf -> pdf): adds `options.angle` degrees, clockwise, to whatever
+ * rotation each selected page already carries — never overwrites it, so a
+ * page rotated 90 that's rotated 90 again ends up at 180. `options.pages`
+ * (`""` = every page) is the shared page-range spec, same as `split`'s
+ * `ranges`. `angle` arrives as the string a `select` option field always
+ * produces (`describeFields` requires a real `z.enum(...)`, which can't
+ * `.transform()` into a number without breaking `defineTool`'s
+ * defaults-satisfy-options check) — coerced here the same way the `canvas`
+ * engine's own `runRotate` coerces its "rotate" option.
+ */
+async function runRotate(task: EngineTask): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  const bytes = await inputToArrayBuffer(input);
+  signal.throwIfAborted();
+
+  const mod = await import("@cantoo/pdf-lib");
+  const doc = await loadPdf(mod, bytes);
+
+  const pagesSpec = typeof options.pages === "string" ? options.pages : "";
+  const indices = parsePageRange(pagesSpec, doc.getPageCount());
+
+  const angleValue =
+    typeof options.angle === "string" ? Number(options.angle) : options.angle;
+  const delta: 0 | 90 | 180 | 270 =
+    angleValue === 90 || angleValue === 180 || angleValue === 270
+      ? angleValue
+      : 0;
+
+  const pages = doc.getPages();
+  for (const index of indices) {
+    signal.throwIfAborted();
+    const page = pages[index];
+    if (!page) continue; // unreachable: indices are validated against doc.getPageCount()
+    const current = page.getRotation().angle;
+    page.setRotation(mod.degrees((current + delta) % 360));
+  }
+  onProgress?.(1);
+
+  const outBytes = await doc.save();
+  return {
+    kind: "bytes",
+    bytes: outBytes.slice().buffer,
+    mime: FORMATS.pdf.mime,
+  };
+}
+
+/**
+ * extract (pdf -> pdf): one op behind two tools — `extract-pdf-pages`
+ * (`options.mode: "keep"`, `options.pages` names the pages to keep, in the
+ * given order) and `delete-pdf-pages` (`options.mode: "remove"`,
+ * `options.pages` names the pages to drop; the rest survive in their
+ * original order). Either way the result is a single new document, never
+ * `EngineResult`'s `"files"` kind — unlike `split`, this never produces more
+ * than one output.
+ */
+async function runExtract(task: EngineTask): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  const bytes = await inputToArrayBuffer(input);
+  signal.throwIfAborted();
+
+  const mod = await import("@cantoo/pdf-lib");
+  const srcDoc = await loadPdf(mod, bytes);
+  const pageCount = srcDoc.getPageCount();
+
+  const pagesSpec = typeof options.pages === "string" ? options.pages : "";
+  const specified = parsePageRange(pagesSpec, pageCount);
+  const mode = options.mode === "remove" ? "remove" : "keep";
+
+  let keepIndices: number[];
+  if (mode === "keep") {
+    keepIndices = specified;
+  } else {
+    const toRemove = new Set(specified);
+    keepIndices = srcDoc.getPageIndices().filter((i) => !toRemove.has(i));
+  }
+
+  if (keepIndices.length === 0) {
+    throw new EngineError(
+      "internal",
+      mode === "remove"
+        ? "cannot delete every page from a PDF"
+        : "no pages selected to keep",
+      { engine: metadata.id },
+    );
+  }
+
+  const outDoc = await mod.PDFDocument.create();
+  const copied = await outDoc.copyPages(srcDoc, keepIndices);
+  for (const page of copied) outDoc.addPage(page);
+  onProgress?.(1);
+
+  const outBytes = await outDoc.save();
+  return {
+    kind: "bytes",
+    bytes: outBytes.slice().buffer,
+    mime: FORMATS.pdf.mime,
+  };
 }
 
 function dispose(): void {
