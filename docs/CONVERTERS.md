@@ -24,6 +24,12 @@ candidate — the router may pick a fallback at runtime, see
 | `png-to-webp` | PNG | WebP | jsquash-png + jsquash-webp | Yes | Quality + lossless; transparency preserved |
 | `png-to-avif` | PNG | AVIF | jsquash-png + jsquash-avif | Yes | Quality + speed; transparency preserved |
 | `png-to-jxl` | PNG | JPEG XL | jsquash-png + jsquash-jxl | Yes | Quality + effort + lossless; transparency preserved |
+| `webp-to-jpg` | WebP | JPEG | jsquash-webp / jsquash-jpeg | Yes | Quality + background fill; strips EXIF (incl. GPS) |
+| `webp-to-png` | WebP | PNG | jsquash-webp / jsquash-png | Yes | Lossless re-encode; strips EXIF (incl. GPS) |
+| `avif-to-jpg` | AVIF | JPEG | jsquash-avif / jsquash-jpeg | Yes | Quality + background fill; strips EXIF (incl. GPS) |
+| `avif-to-png` | AVIF | PNG | jsquash-avif / jsquash-png | Yes | Lossless re-encode; strips EXIF (incl. GPS) |
+| `jxl-to-jpg` | JPEG XL | JPEG | jsquash-jxl / jsquash-jpeg | Yes | Quality + background fill; strips EXIF (incl. GPS) |
+| `jxl-to-png` | JPEG XL | PNG | jsquash-jxl / jsquash-png | Yes | Lossless re-encode; strips EXIF (incl. GPS) |
 | `strip-exif` | JPEG/PNG/WebP | same format | exif | Yes | Byte-level metadata strip, no re-encode; drops GPS/EXIF/XMP/IPTC, keeps ICC colour profile; optionally rebuilds a minimal orientation-only EXIF |
 
 ## PDF

@@ -2,12 +2,11 @@
 import type { ToolDefinition } from "@/lib/registry";
 
 export const TOOL_LOADERS = {
-  "jpg-to-avif": () => import("./image/jpg-to-avif"),
-  "jpg-to-jxl": () => import("./image/jpg-to-jxl"),
+  "avif-to-jpg": () => import("./image/avif-to-jpg"),
+  "avif-to-png": () => import("./image/avif-to-png"),
   "jpg-to-png": () => import("./image/jpg-to-png"),
-  "jpg-to-webp": () => import("./image/jpg-to-webp"),
-  "png-to-avif": () => import("./image/png-to-avif"),
-  "png-to-jpg": () => import("./image/png-to-jpg"),
-  "png-to-jxl": () => import("./image/png-to-jxl"),
-  "png-to-webp": () => import("./image/png-to-webp"),
+  "jxl-to-jpg": () => import("./image/jxl-to-jpg"),
+  "jxl-to-png": () => import("./image/jxl-to-png"),
+  "webp-to-jpg": () => import("./image/webp-to-jpg"),
+  "webp-to-png": () => import("./image/webp-to-png"),
 } satisfies Record<string, () => Promise<{ default: ToolDefinition }>>;
