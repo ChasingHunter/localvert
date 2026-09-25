@@ -38,6 +38,7 @@ as its codec preference table.
 | `psd` | psd | — | — | adapter ready |
 | `heic` | heic, heif | — | — | adapter ready |
 | `utif` | tiff | — | — | adapter ready |
+| `exif` | — | — | `strip`: jpg, png, webp | adapter ready |
 
 `canvas` also still runs the legacy single-step `transcode` op directly
 (bytes of one format straight to bytes of another) for a tool that predates
@@ -73,6 +74,13 @@ OffscreenCanvas the same way every other decode-only engine here does.
 `utif` decodes only the first page/frame of a TIFF, matching ADR-0007's
 general "first frame only" rule for any multi-frame source.
 
+`exif` doesn't fit the decode/encode/transform shape at all — its one op,
+`strip`, is byte-to-byte (format in, the same format out, no raster
+intermediate): it walks a JPEG/PNG/WebP's marker/chunk structure and drops
+the metadata segments (EXIF incl. GPS, XMP, IPTC, PNG text/time chunks),
+keeping the ICC colour profile and the image data itself untouched and
+unre-encoded. See `src/lib/engines/exif/strip.ts`.
+
 ---
 
 ## Delivery table
@@ -99,6 +107,7 @@ Size, placement, threading. Placement is enforced by `scripts/sync-engines.ts`:
 | `psd` | `@webtoon/psd` | 0.4.0 | MIT | 0 (bundled in JS) | bundled | no |
 | `heic` | `heic-to` | 1.5.2 | **LGPL-3.0** | 0 (bundled in JS) | bundled | no |
 | `utif` | `utif2` | 4.1.0 | MIT | 0 (bundled in JS) | bundled | no |
+| `exif` | _(our own code)_ | 1.0.0 | MIT | 0 | bundled | no |
 
 ### How engine assets ship
 

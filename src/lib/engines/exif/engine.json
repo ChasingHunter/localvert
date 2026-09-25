@@ -1,0 +1,9 @@
+{
+  "id": "exif",
+  "version": "1.0.0",
+  "license": "MIT",
+  "location": "bundled",
+  "needsIsolation": false,
+  "heavy": false,
+  "assets": []
+}

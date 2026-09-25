@@ -10,14 +10,5 @@ import type { EngineAdapter } from "./types";
 
 export const ENGINE_LOADERS = {
   canvas: () => import("./canvas/adapter"),
-  heic: () => import("./heic/adapter"),
-  "jsquash-avif": () => import("./jsquash-avif/adapter"),
-  "jsquash-jpeg": () => import("./jsquash-jpeg/adapter"),
-  "jsquash-jxl": () => import("./jsquash-jxl/adapter"),
-  "jsquash-png": () => import("./jsquash-png/adapter"),
-  "jsquash-resize": () => import("./jsquash-resize/adapter"),
-  "jsquash-webp": () => import("./jsquash-webp/adapter"),
-  psd: () => import("./psd/adapter"),
-  resvg: () => import("./resvg/adapter"),
-  utif: () => import("./utif/adapter"),
+  exif: () => import("./exif/adapter"),
 } satisfies Record<EngineId, () => Promise<{ default: EngineAdapter }>>;

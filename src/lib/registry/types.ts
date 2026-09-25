@@ -33,6 +33,7 @@ export type Operation =
   | "resize"
   | "rotate"
   | "crop"
+  | "strip"
   | "compress"
   | "merge"
   | "split"
