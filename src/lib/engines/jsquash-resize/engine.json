@@ -1,0 +1,21 @@
+{
+  "id": "jsquash-resize",
+  "version": "2.1.1",
+  "license": "Apache-2.0",
+  "location": "static",
+  "needsIsolation": false,
+  "heavy": false,
+  "package": "@jsquash/resize",
+  "files": [
+    {
+      "from": "lib/resize/pkg/squoosh_resize_bg.wasm",
+      "to": "squoosh_resize_bg.wasm"
+    }
+  ],
+  "assets": [
+    {
+      "path": "squoosh_resize_bg.wasm",
+      "bytes": 34545
+    }
+  ]
+}

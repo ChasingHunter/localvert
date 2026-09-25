@@ -2,6 +2,7 @@ import type { FormatId, Operation, StepFormat } from "@/lib/registry";
 import { FORMATS } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
+import { computeResizeDims, parseResizeOptions } from "../shared/resize-box";
 import type {
   EngineAdapter,
   EngineInput,
@@ -338,81 +339,9 @@ async function encodeCanvas(
   return { kind: "bytes", bytes, mime };
 }
 
-interface ResizeOptions {
-  width?: number;
-  height?: number;
-  fit: "contain" | "cover" | "fill";
-  allowUpscale: boolean;
-}
-
-function parseResizeOptions(
-  options: Readonly<Record<string, unknown>>,
-): ResizeOptions {
-  return {
-    width: typeof options.width === "number" ? options.width : undefined,
-    height: typeof options.height === "number" ? options.height : undefined,
-    fit:
-      options.fit === "cover" || options.fit === "fill"
-        ? options.fit
-        : "contain",
-    allowUpscale: options.allowUpscale === true,
-  };
-}
-
-/**
- * `fit: "fill"` stretches to the exact target on both axes independently.
- * `"contain"`/`"cover"` preserve aspect ratio around a single scale factor —
- * the smaller (contain) or larger (cover) of the two axis scales, so the
- * result fits entirely within the box or entirely covers it, respectively.
- * `allowUpscale: false` (the default) clamps that scale to at most 1, so the
- * image never grows past its source size. Missing one of `width`/`height`
- * degenerates to scaling by the one axis given, same math either way.
- */
-function computeResizeDims(
-  srcWidth: number,
-  srcHeight: number,
-  opts: ResizeOptions,
-): { width: number; height: number } {
-  const { width, height, fit, allowUpscale } = opts;
-
-  if (width === undefined && height === undefined) {
-    return { width: srcWidth, height: srcHeight };
-  }
-
-  if (fit === "fill" && width !== undefined && height !== undefined) {
-    const w = allowUpscale ? width : Math.min(width, srcWidth);
-    const h = allowUpscale ? height : Math.min(height, srcHeight);
-    return {
-      width: Math.max(1, Math.round(w)),
-      height: Math.max(1, Math.round(h)),
-    };
-  }
-
-  const scaleW = width !== undefined ? width / srcWidth : undefined;
-  const scaleH = height !== undefined ? height / srcHeight : undefined;
-
-  let scale: number;
-  if (scaleW !== undefined && scaleH !== undefined) {
-    scale =
-      fit === "cover" ? Math.max(scaleW, scaleH) : Math.min(scaleW, scaleH);
-  } else if (scaleW !== undefined) {
-    scale = scaleW;
-  } else if (scaleH !== undefined) {
-    scale = scaleH;
-  } else {
-    // Unreachable: the both-undefined case returned above.
-    scale = 1;
-  }
-
-  if (!allowUpscale) scale = Math.min(scale, 1);
-
-  return {
-    width: Math.max(1, Math.round(srcWidth * scale)),
-    height: Math.max(1, Math.round(srcHeight * scale)),
-  };
-}
-
-/** resize: `RasterImage` -> `RasterImage`, scaled per `computeResizeDims`. */
+/** resize: `RasterImage` -> `RasterImage`, scaled per `computeResizeDims`
+ * (`../shared/resize-box`, shared with `jsquash-resize` so both engines
+ * agree on the output size for the same options). */
 async function runResize(task: EngineTask): Promise<EngineResult> {
   const { input, options, signal, onProgress } = task;
   signal.throwIfAborted();
