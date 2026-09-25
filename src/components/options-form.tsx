@@ -41,7 +41,11 @@ export function OptionsForm<S extends z.ZodObject>({
   onChange,
   disabled = false,
 }: OptionsFormProps<S>) {
-  const fields = describeFields(schema);
+  // A "crop" field never gets a generic row here — `ToolRunner` renders a
+  // dedicated `CropEditor` for it instead (see crop-editor.tsx), and no
+  // sensible x/y/width/height control exists without the dropped image's
+  // own dimensions, which this form never has.
+  const fields = describeFields(schema).filter((f) => f.control !== "crop");
   const result = validateOptions(schema, value);
   const errors = result.ok ? {} : result.errors;
 
@@ -245,5 +249,10 @@ function FieldControl({
           aria-describedby={describedBy}
         />
       );
+    case "crop":
+      // Unreachable in practice — `OptionsForm` filters "crop" fields out
+      // above — kept only so this switch stays exhaustive over every
+      // `FieldSpec` control, matching every other case here.
+      return null;
   }
 }

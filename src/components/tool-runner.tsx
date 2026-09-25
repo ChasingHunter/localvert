@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
+import type { Rect } from "@/components/crop-geometry";
 import { Dropzone } from "@/components/dropzone";
 import type { AcceptedFile, RejectedFile } from "@/components/dropzone-logic";
 import { JobList } from "@/components/job-list";
@@ -22,6 +23,16 @@ import { TOOL_LOADERS } from "@/tools/loaders";
  */
 const OptionsForm = dynamic(
   () => import("@/components/options-form").then((mod) => mod.OptionsForm),
+  { ssr: false },
+);
+
+/**
+ * Same code-splitting reasoning as `OptionsForm` above, doubly so here: the
+ * crop editor's pointer/keyboard drag math and its extra UI never download
+ * for the vast majority of tool pages, which have no crop field at all.
+ */
+const CropEditor = dynamic(
+  () => import("@/components/crop-editor").then((mod) => mod.CropEditor),
   { ssr: false },
 );
 
@@ -74,7 +85,10 @@ function rejectionMessage(r: RejectedFile): string {
  * Owns: the dropzone, the options form (hidden when the tool has no
  * options), and the job list for this tool. Submission happens immediately
  * on drop, using whatever options are set at that moment — there is no
- * separate "convert" button.
+ * separate "convert" button. The one exception is a tool with a "crop"
+ * option field (see `hasCropField` below): a crop only makes sense chosen
+ * against the actual dropped image, so those tools show a `CropEditor`
+ * instead and submit only once its own "Crop" button is pressed.
  */
 export function ToolRunner({ slug }: ToolRunnerProps) {
   const [tool, setTool] = useState<ToolDefinition | null>(null);
@@ -83,6 +97,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   const [rejected, setRejected] = useState<RejectedFile[]>([]);
   const [zipping, setZipping] = useState(false);
   const [zipError, setZipError] = useState<string | null>(null);
+  const [cropTarget, setCropTarget] = useState<AcceptedFile | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,10 +124,29 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   const allJobs = jobStore(selectOrderedJobs);
   const jobs = tool ? allJobs.filter((j) => j.toolSlug === tool.slug) : [];
 
+  // Derived from the schema, not a per-tool flag: any tool whose options
+  // include a "crop" field (by convention every crop-*.ts tool names it
+  // exactly "crop" — see `cropField` in src/tools/_shared-options.ts) gets
+  // the crop-editor flow below instead of submitting on drop. Checked
+  // structurally (same as `hasOptions` below) rather than via
+  // `describeFields` (src/lib/options/fields.ts), so this file doesn't
+  // statically pull zod into every tool page's route bundle — that only
+  // ever loads lazily, inside the tool's own dynamically-imported chunk
+  // (`TOOL_LOADERS[slug]()` above).
+  const hasCropField = tool ? "crop" in tool.options.shape : false;
+
   const handleFiles = useCallback(
     async (accepted: AcceptedFile[], rejectedFiles: RejectedFile[]) => {
       setRejected(rejectedFiles);
       if (!tool || accepted.length === 0) return;
+      if (hasCropField) {
+        // Crop tools are never batch (`defineTool`'s `batch: false`), so
+        // the dropzone itself already restricts this to one file — only
+        // its first entry can exist.
+        const [first] = accepted;
+        if (first) setCropTarget(first);
+        return;
+      }
       const engine = await jobEngine();
       engine.submit(
         tool,
@@ -120,8 +154,26 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         options,
       );
     },
-    [tool, options],
+    [tool, options, hasCropField],
   );
+
+  const handleCropSubmit = useCallback(
+    async (crop: Rect) => {
+      if (!tool || !cropTarget) return;
+      const engine = await jobEngine();
+      engine.submit(
+        tool,
+        [{ file: cropTarget.file, format: cropTarget.format }],
+        { ...options, crop },
+      );
+      setCropTarget(null);
+    },
+    [tool, cropTarget, options],
+  );
+
+  const handleCropCancel = useCallback(() => {
+    setCropTarget(null);
+  }, []);
 
   const handleCancel = useCallback(async (id: string) => {
     const engine = await jobEngine();
@@ -186,11 +238,16 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      <Dropzone
-        accepts={tool.accepts}
-        multiple={tool.batch}
-        onFiles={handleFiles}
-      />
+      {/* Hidden mid-crop: a second drop would orphan the file already being
+          cropped, and `cropTarget` is the only file this tool page can edit
+          at once (crop tools are never batch). */}
+      {!(hasCropField && cropTarget) && (
+        <Dropzone
+          accepts={tool.accepts}
+          multiple={tool.batch}
+          onFiles={handleFiles}
+        />
+      )}
 
       {rejected.length > 0 && (
         <ul className="flex flex-col gap-1">
@@ -204,6 +261,14 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
             </li>
           ))}
         </ul>
+      )}
+
+      {hasCropField && cropTarget && (
+        <CropEditor
+          file={cropTarget.file}
+          onSubmit={handleCropSubmit}
+          onCancel={handleCropCancel}
+        />
       )}
 
       {hasOptions && (

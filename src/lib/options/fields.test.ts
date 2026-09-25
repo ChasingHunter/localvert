@@ -128,6 +128,23 @@ describe("describeFields", () => {
     ]);
   });
 
+  it("describes a crop control from an object field, optional and all", () => {
+    const schema = z.object({
+      crop: z
+        .object({
+          x: z.number().int().nonnegative(),
+          y: z.number().int().nonnegative(),
+          width: z.number().int().nonnegative(),
+          height: z.number().int().nonnegative(),
+        })
+        .meta({ label: "Crop", control: "crop" })
+        .optional(),
+    });
+    expect(describeFields(schema)).toEqual([
+      { key: "crop", label: "Crop", control: "crop" },
+    ]);
+  });
+
   it("carries help text through", () => {
     const schema = z.object({
       strip: z.boolean().meta({
@@ -236,6 +253,13 @@ describe("describeFields", () => {
       suffix: z.number().meta({ label: "Suffix", control: "text" }),
     });
     expect(() => describeFields(schema)).toThrow(/^\[options\] field suffix:/);
+  });
+
+  it("throws when control is crop but the field is not an object", () => {
+    const schema = z.object({
+      crop: z.number().meta({ label: "Crop", control: "crop" }),
+    });
+    expect(() => describeFields(schema)).toThrow(/^\[options\] field crop:/);
   });
 
   it("throws when a slider has no finite min", () => {

@@ -15,6 +15,7 @@ export type FieldSpec = {
   | { control: "select"; options: readonly { value: string; label: string }[] }
   | { control: "slider" | "number"; min: number; max: number; step: number }
   | { control: "text" }
+  | { control: "crop" }
 );
 
 type CoreField = z.core.$ZodType;
@@ -120,6 +121,18 @@ function describeField(key: string, rawField: CoreField): FieldSpec {
     case "text": {
       if (type !== "string") {
         fieldError(key, `control "text" needs a string field, got "${type}"`);
+      }
+      return { ...base, control };
+    }
+    case "crop": {
+      // The crop rectangle itself — {x,y,width,height} in source pixels
+      // (`src/tools/_shared-options.ts`'s `cropField`). No min/max/options to
+      // derive: `CropEditor` (`src/components/crop-editor.tsx`) reads the
+      // dropped image's own dimensions at runtime instead, and `OptionsForm`
+      // never renders this control — it's filtered out in favor of the
+      // dedicated editor (see options-form.tsx).
+      if (type !== "object") {
+        fieldError(key, `control "crop" needs an object field, got "${type}"`);
       }
       return { ...base, control };
     }
