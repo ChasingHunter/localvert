@@ -46,6 +46,10 @@ export type Operation =
   | "merge"
   | "split"
   | "extract"
+  | "reorder"
+  | "protect"
+  | "unlock"
+  | "render"
   | "ocr";
 
 /**
@@ -132,4 +136,30 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
   pipeline: readonly PipelineStep[];
   batch: boolean;
   outputName?: (inputName: string, opts: z.infer<S>) => string;
+  /**
+   * How many files this tool consumes and produces (ADR-0008). Defaults to
+   * `"one-to-one"` (one file in, one file out — every tool before Phase 2),
+   * so no existing tool needs this field at all.
+   *
+   * - `"one-to-one"`: unchanged. `batch: true` repeats it per dropped file
+   *   (N independent jobs), same as always.
+   * - `"many-to-one"`: N dropped files become **one** job that owns all N
+   *   inputs, in the order the user arranged them (`FileOrderList`), and
+   *   produces a single output (e.g. `merge-pdf`). Submission is explicit
+   *   (an `actionLabel` button), not on-drop — see `defineTool`'s check that
+   *   `batch` is `false` for this arity: "batch" (repeat per file) and
+   *   "many-to-one" (combine every file into one job) are mutually
+   *   exclusive readings of a multi-file drop.
+   * - `"one-to-many"`: one dropped file becomes one job that produces N
+   *   outputs (e.g. `split-pdf`), listed on its job card with per-file
+   *   downloads plus "Download all (.zip)". Submits on drop like
+   *   `"one-to-one"` — only one input file is ever involved.
+   */
+  arity?: "one-to-one" | "many-to-one" | "one-to-many";
+  /**
+   * Label for the explicit submit button a `"many-to-one"` tool shows
+   * instead of submitting on drop (e.g. "Merge PDFs") — meaningless, and
+   * unread, for any other arity.
+   */
+  actionLabel?: string;
 }

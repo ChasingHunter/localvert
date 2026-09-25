@@ -83,6 +83,12 @@ export type EngineInput =
 export interface EngineTask {
   op: Operation;
   input: EngineInput;
+  /**
+   * ADR-0008: set only on a many-to-one step (e.g. `merge`) — every input in
+   * the user's own order, `input` above being the first of them again. Every
+   * other op reads `input` alone and ignores this.
+   */
+  inputs?: readonly EngineInput[];
   inputFormat: StepFormat;
   outputFormat: StepFormat;
   options: Readonly<Record<string, unknown>>;
@@ -95,7 +101,18 @@ export type EngineResult =
   | { kind: "bytes"; bytes: ArrayBuffer; mime: string }
   | { kind: "stream"; stream: ReadableStream<Uint8Array>; mime: string }
   | { kind: "opfs"; path: string; mime: string; size: number }
-  | { kind: "raster"; image: RasterImage };
+  | { kind: "raster"; image: RasterImage }
+  /**
+   * ADR-0008: a one-to-many step's output (e.g. `split`) — every produced
+   * file, named by the engine (`job-engine.ts` uses these names as-is,
+   * de-duplicated by the existing zip-name logic). Every buffer here is
+   * transferred, never copied — see `transferablesOf` in
+   * `src/lib/workers/engine-host.ts`.
+   */
+  | {
+      kind: "files";
+      files: { name: string; bytes: ArrayBuffer; mime: string }[];
+    };
 
 export interface EngineInstance {
   run(task: EngineTask): Promise<EngineResult>;

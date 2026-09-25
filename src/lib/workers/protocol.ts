@@ -44,6 +44,10 @@ export interface RunStep {
 export interface RunRequest {
   jobId: string;
   input: EngineInput;
+  /** ADR-0008: passthrough to the first step's `EngineTask.inputs` — every
+   * input in the user's own order, for a many-to-one job. `undefined` for
+   * every other job, same as `EngineTask.inputs` itself. */
+  inputs?: readonly EngineInput[];
   steps: readonly RunStep[];
   options: Readonly<Record<string, unknown>>;
 }

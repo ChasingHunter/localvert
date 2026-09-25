@@ -65,6 +65,20 @@ export function defineTool<S extends z.ZodObject>(
     fail(`defaults do not satisfy options: ${parsed.error.message}`);
   }
 
+  const arity = def.arity ?? "one-to-one";
+  if (arity === "many-to-one") {
+    // "batch" (repeat this tool per dropped file) and "many-to-one" (combine
+    // every dropped file into one job) are mutually exclusive readings of a
+    // multi-file drop — a tool can't ask for both at once. See ADR-0008 and
+    // the `arity` doc comment on `ToolDefinition`.
+    if (def.batch) {
+      fail('arity "many-to-one" is incompatible with batch: true');
+    }
+    if (!def.actionLabel || def.actionLabel.trim() === "") {
+      fail('arity "many-to-one" requires a non-empty actionLabel');
+    }
+  }
+
   if (def.pipeline.length === 0) {
     fail("pipeline must have at least one step");
   }

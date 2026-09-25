@@ -103,8 +103,11 @@ export function createEngineHost(
    * Feeds one step's `EngineResult` into the next step as its `EngineInput`
    * — the raster intermediate stays a plain in-memory reference, never
    * transferred or cloned (ADR-0007: both steps run in this same worker). A
-   * `"stream"` result mid-pipeline has no `EngineInput` counterpart; only a
-   * final step may produce one.
+   * `"stream"` or `"files"` result mid-pipeline has no `EngineInput`
+   * counterpart; only a final step may produce one — every ADR-0008
+   * many-to-one/one-to-many tool today is a single-step pipeline, so this
+   * never actually fires for them, but a future multi-step one must fail
+   * loudly here rather than silently drop the extra output files.
    */
   function resultToInput(result: EngineResult, engine: EngineId): EngineInput {
     switch (result.kind) {
@@ -120,6 +123,12 @@ export function createEngineHost(
           "a stream result cannot feed the next pipeline step",
           { engine },
         );
+      case "files":
+        throw new EngineError(
+          "internal",
+          "a files result cannot feed the next pipeline step",
+          { engine },
+        );
     }
   }
 
@@ -127,7 +136,7 @@ export function createEngineHost(
     req: RunRequest,
     onProgress?: (fraction: number) => void,
   ): Promise<RunOutcome> {
-    const { jobId, input, steps, options } = req;
+    const { jobId, input, inputs, steps, options } = req;
 
     if (steps.length === 0) {
       return {
@@ -191,6 +200,11 @@ export function createEngineHost(
           result = await entry.instance.run({
             op: step.op,
             input: currentInput,
+            // Only the first step can be many-to-one (ADR-0008: a
+            // many-to-one tool's pipeline is a single `merge`-shaped step) —
+            // every later step's input is the previous step's own single
+            // `EngineResult`, converted by `resultToInput` above.
+            inputs: i === 0 ? inputs : undefined,
             inputFormat: step.inputFormat,
             outputFormat: step.outputFormat,
             options,
@@ -267,5 +281,8 @@ export function transferablesOf(outcome: RunOutcome): Transferable[] {
   if (!outcome.ok) return [];
   if (outcome.result.kind === "bytes") return [outcome.result.bytes];
   if (outcome.result.kind === "stream") return [outcome.result.stream];
+  if (outcome.result.kind === "files") {
+    return outcome.result.files.map((f) => f.bytes);
+  }
   return [];
 }
