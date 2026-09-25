@@ -29,6 +29,20 @@ export default defineConfig({
   },
   test: {
     include: ["src/**/*.browser.test.ts"],
+    // wasm engines (libraw, jsquash-avif/jxl/webp/..., golden's 8 encoders,
+    // the real worker pool in pipeline.browser.test.ts) never actually free
+    // their heap on `dispose()` — every adapter's own dispose comment says
+    // so; Emscripten only releases it when the worker/page hosting the
+    // module is torn down. `fileParallelism: false` pins `maxWorkers` to 1,
+    // which (combined with `isolate`'s default of `true`) makes Vitest run
+    // browser files one at a time on a fresh, disposable page instead of
+    // several heavy files loading their wasm modules into the same page at
+    // once. Without this, ~14 files' engines piled up in one page/process
+    // budget and Chromium's WebAssembly.Memory allocator gave up partway
+    // through the run ("could not allocate memory"), which then cascaded
+    // into "Browser connection was closed" for whatever ran after.
+    isolate: true,
+    fileParallelism: false,
     browser: {
       enabled: true,
       headless: true,
