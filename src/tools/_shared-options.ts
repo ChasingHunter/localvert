@@ -26,7 +26,7 @@ export const jpgOptions = z.object({
     .number()
     .min(0.1)
     .max(1)
-    .meta({ label: "Quality", control: "slider" }),
+    .meta({ label: "Quality", control: "slider", step: 0.01 }),
   background: z.string().meta({
     label: "Background for transparent areas",
     control: "text",
@@ -43,7 +43,7 @@ export const webpOptions = z.object({
     .number()
     .min(0)
     .max(1)
-    .meta({ label: "Quality", control: "slider" }),
+    .meta({ label: "Quality", control: "slider", step: 0.01 }),
   lossless: z.boolean().meta({ label: "Lossless", control: "switch" }),
 });
 export const webpDefaults: z.infer<typeof webpOptions> = {
@@ -56,7 +56,7 @@ export const avifOptions = z.object({
     .number()
     .min(0)
     .max(1)
-    .meta({ label: "Quality", control: "slider" }),
+    .meta({ label: "Quality", control: "slider", step: 0.01 }),
   speed: z.number().int().min(0).max(10).meta({
     label: "Speed",
     control: "number",
@@ -73,7 +73,7 @@ export const jxlOptions = z.object({
     .number()
     .min(0)
     .max(1)
-    .meta({ label: "Quality", control: "slider" }),
+    .meta({ label: "Quality", control: "slider", step: 0.01 }),
   effort: z
     .number()
     .int()

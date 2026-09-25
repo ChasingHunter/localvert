@@ -15,6 +15,14 @@ declare module "zod/v4/core" {
     control?: "switch" | "select" | "slider" | "number" | "text";
     unit?: string;
     help?: string;
+    /**
+     * UI-only step for a `slider`/`number` field, overriding
+     * `describeFields`'s derived `(max - min) / 100` — deliberately not
+     * zod's own `.step()`/`multipleOf` (`src/lib/options/fields.ts`), which
+     * would *reject* an in-between value the slider itself can produce, e.g.
+     * a quality slider with `step: 0.01` dragged to 0.853.
+     */
+    step?: number;
   }
 }
 

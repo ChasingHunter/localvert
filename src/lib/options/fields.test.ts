@@ -80,6 +80,33 @@ describe("describeFields", () => {
     ]);
   });
 
+  it("uses an explicit meta.step over the derived (max-min)/100", () => {
+    const schema = z.object({
+      quality: z
+        .number()
+        .min(0.1)
+        .max(1)
+        .meta({ label: "Quality", control: "slider", step: 0.01 }),
+    });
+    expect(describeFields(schema)).toMatchObject([
+      { min: 0.1, max: 1, step: 0.01 },
+    ]);
+  });
+
+  it("uses an explicit meta.step for an .int() slider too, overriding step 1", () => {
+    const schema = z.object({
+      effort: z
+        .number()
+        .int()
+        .min(1)
+        .max(9)
+        .meta({ label: "Effort", control: "slider", step: 2 }),
+    });
+    expect(describeFields(schema)).toMatchObject([
+      { min: 1, max: 9, step: 2 },
+    ]);
+  });
+
   it("describes a number control without requiring finite bounds", () => {
     const schema = z.object({
       seed: z.number().meta({ label: "Seed", control: "number" }),
