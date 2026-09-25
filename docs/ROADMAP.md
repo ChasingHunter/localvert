@@ -92,8 +92,8 @@ All `uses:` pinned to full commit SHAs. Top-level `permissions: {}`.
 
 ### 0.9 Ship
 - [x] Public repo ChasingHunter/localvert, first push (2026-09-25)
-- [ ] Branch ruleset on `main`: require CI jobs `check`, `build`, `browser`; block force-push and deletion,
-      do not require PRs **(owner)**
+- [x] Branch rulesets on `main`: force-push and deletion blocked for everyone; CI `Check`, `Build`,
+      `Browser and wasm integration` required, admins bypass so direct pushes work (2026-09-25)
 - [x] Cloudflare: R2 bucket `localvert-engines`, `production` environment with
       `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` secrets **(owner)** (2026-09-24)
 - [x] workers.dev subdomain registered (needed before the first CI deploy) **(owner)** (2026-09-25)
