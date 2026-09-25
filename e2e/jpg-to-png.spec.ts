@@ -179,8 +179,14 @@ test.describe("jpg-to-png", () => {
 
     await expect(page.getByText(/Detected as PNG/)).toBeVisible();
     // No job list heading ("N files") and no download link — nothing was
-    // ever submitted to the job engine for this rejected file.
-    await expect(page.getByRole("heading", { level: 2 })).toHaveCount(0);
+    // ever submitted to the job engine for this rejected file. Scoped to
+    // that heading's own text: the tool page's "Related tools" section (see
+    // src/app/tools/[slug]/page.tsx) also renders an <h2>, unconditionally,
+    // and would make a bare heading-count check fail regardless of whether
+    // a job was created.
+    await expect(
+      page.getByRole("heading", { level: 2, name: /\d+ files?/ }),
+    ).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Download" })).toHaveCount(0);
   });
 });
