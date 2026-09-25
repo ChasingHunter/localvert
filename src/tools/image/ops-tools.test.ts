@@ -41,10 +41,8 @@ describe("compress-jpg", () => {
 
   it("defaults parse, with quality set and targetSizeKB absent", () => {
     const parsed = compressJpg.options.safeParse(compressJpg.defaults);
-    expect(parsed).toMatchObject({
-      success: true,
-      data: { quality: 0.75, targetSizeKB: undefined },
-    });
+    expect(parsed).toMatchObject({ success: true, data: { quality: 0.75 } });
+    expect(parsed.success && "targetSizeKB" in parsed.data).toBe(false);
   });
 
   it("accepts a valid targetSizeKB alongside the quality default", () => {
@@ -90,14 +88,13 @@ describe("resize-image-jpg", () => {
     const parsed = resizeImageJpg.options.safeParse(resizeImageJpg.defaults);
     expect(parsed).toMatchObject({
       success: true,
-      data: {
-        fit: "contain",
-        allowUpscale: false,
-        quality: 0.75,
-        width: undefined,
-        height: undefined,
-      },
+      data: { fit: "contain", allowUpscale: false, quality: 0.75 },
     });
+    expect(
+      parsed.success &&
+        "width" in parsed.data === false &&
+        "height" in parsed.data === false,
+    ).toBe(true);
   });
 });
 
