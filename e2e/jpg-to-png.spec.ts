@@ -122,6 +122,22 @@ test.describe("jpg-to-png", () => {
   test("batch-converts three JPGs and zips them", async ({ page }) => {
     await page.goto("/tools/jpg-to-png");
 
+    // Reload once so the service worker installed by the first load is the
+    // one *controlling* this page for the rest of the test, instead of
+    // leaving that to timing — a SW-controlled page is exactly the
+    // condition that used to make the zip worker fail ~50% of the time (the
+    // precached Turbopack worker-bootstrap script's URL fragment was lost
+    // once it came back from the SW's cache; see src/sw-helpers.ts).
+    // `ready` resolves once an active worker exists for this scope, so the
+    // reload below lands on a navigation that worker is already eligible to
+    // control — without it, the reload can race the first install.
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    await page.reload();
+    const controlled = await page.evaluate(
+      () => !!navigator.serviceWorker.controller,
+    );
+    expect(controlled).toBe(true);
+
     const names = ["photo-small.jpg", "photo-medium.jpg", "photo-large.jpg"];
     await page
       .locator('input[type="file"]')
