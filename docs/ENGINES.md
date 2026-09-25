@@ -36,6 +36,8 @@ as its codec preference table.
 | `jsquash-jxl` | jxl | jxl | — | adapter ready |
 | `resvg` | svg | — | — | adapter ready |
 | `psd` | psd | — | — | adapter ready |
+| `heic` | heic, heif | — | — | adapter ready |
+| `utif` | tiff | — | — | adapter ready |
 
 `canvas` also still runs the legacy single-step `transcode` op directly
 (bytes of one format straight to bytes of another) for a tool that predates
@@ -62,7 +64,14 @@ still comes from a codec that can encode (jSquash, `canvas`, ...). `resvg`
 loads no system fonts (`font.loadSystemFonts: false` — a worker has none to
 load), so SVG text without an embedded font does not render; bundling a
 default font is future work. `psd` only decodes 8-bit, non-CMYK image data —
-the limits of `@webtoon/psd`'s own decoder.
+the limits of `@webtoon/psd`'s own decoder. `heic` and `utif` are
+decode-only too: `heic` wraps `heic-to`, LGPL — see ADR-0002 and the
+copyleft table in THIRD_PARTY_LICENSES.md — via its `heic-to/next`
+worker-safe build, hands back an `ImageBitmap` directly (`type: "bitmap"`,
+no lossy intermediate re-encode), then reads it down to raw pixels through
+OffscreenCanvas the same way every other decode-only engine here does.
+`utif` decodes only the first page/frame of a TIFF, matching ADR-0007's
+general "first frame only" rule for any multi-frame source.
 
 ---
 
@@ -88,6 +97,8 @@ Size, placement, threading. Placement is enforced by `scripts/sync-engines.ts`:
 | `jsquash-jxl` | `@jsquash/jxl` | 1.3.0 | Apache-2.0 | ~2.1 MiB (dec + enc wasm, single-threaded only) | static | no |
 | `resvg` | `@resvg/resvg-wasm` | 2.6.2 | MPL-2.0 | ~2.4 MiB | static | no |
 | `psd` | `@webtoon/psd` | 0.4.0 | MIT | 0 (bundled in JS) | bundled | no |
+| `heic` | `heic-to` | 1.5.2 | **LGPL-3.0** | 0 (bundled in JS) | bundled | no |
+| `utif` | `utif2` | 4.1.0 | MIT | 0 (bundled in JS) | bundled | no |
 
 ### How engine assets ship
 
@@ -128,8 +139,6 @@ first, then adapter, wiring, size budget, docs.
 
 | Engine | For | License | Approx size | Phase |
 |---|---|---|---|---|
-| `heic-to` | HEIC/HEIF from iPhones | **LGPL-3.0** (libheif) | ~3 MB | 1 |
-| `utif2` | TIFF | MIT | small | 1 |
 | `libraw-wasm` | Camera raw | LGPL-2.1 | ~2 MB | 1 |
 | `@cantoo/pdf-lib` | PDF manipulation | MIT | small | 2 |
 | `pdfjs-dist` | PDF render to image | Apache-2.0 | ~2 MB | 2 |

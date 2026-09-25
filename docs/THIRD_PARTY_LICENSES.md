@@ -37,6 +37,7 @@ requires its own ADR and we must publish the modified source.
 | `jsquash-jxl` (`@jsquash/jxl`, wraps libjxl) | 1.3.0 | Apache-2.0 (wrapper); libjxl itself is BSD-3-Clause | JPEG XL contributors; Jamie Sinclair (jSquash) | https://github.com/jamsinclair/jSquash |
 | `resvg` (`@resvg/resvg-wasm`) | 2.6.2 | MPL-2.0 (file-level copyleft — see below) | yisibl and resvg-js contributors | https://github.com/yisibl/resvg-js |
 | `psd` (`@webtoon/psd`) | 0.4.0 | MIT | NAVER WEBTOON | https://github.com/webtoon/psd |
+| `utif` (`utif2`) | 4.1.0 | MIT | photopea and UTIF.js contributors | https://github.com/photopea/UTIF.js |
 
 `jsquash-webp`'s underlying codec is libwebp, Copyright 2010 Google Inc.,
 BSD-3-Clause (`node_modules/@jsquash/webp/codec/LICENSE.codec.md` after
@@ -61,7 +62,7 @@ beyond attribution. Each is loaded at arms length as described above.
 
 | Engine | License | Obligation | How it is met |
 |---|---|---|---|
-| _none yet_ | | | |
+| `heic` (`heic-to`, wraps libheif) | LGPL-3.0 | Source offer for the LGPL library; users must be able to relink against a modified libheif | We ship `heic-to`'s published build unmodified, fetched from npm at build time and never vendored or patched (ADR-0002) — the link to https://github.com/hoppergee/heic-to above satisfies the source offer. `heic-to` itself wraps libheif compiled to asm.js/wasm, unmodified from upstream. |
 
 ## Build and development dependencies
 
