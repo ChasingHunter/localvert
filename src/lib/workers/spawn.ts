@@ -40,12 +40,18 @@ function workerFailure(worker: Worker, label: string): Promise<never> {
   const failure = new Promise<never>((_, reject) => {
     worker.addEventListener("error", (e) => {
       reject(
-        new EngineError("internal", `${label} failed to load: ${e.message || "worker error"}`),
+        new EngineError(
+          "internal",
+          `${label} failed to load: ${e.message || "worker error"}`,
+        ),
       );
     });
     worker.addEventListener("messageerror", () => {
       reject(
-        new EngineError("internal", `${label}: message could not be deserialized`),
+        new EngineError(
+          "internal",
+          `${label}: message could not be deserialized`,
+        ),
       );
     });
   });
