@@ -113,7 +113,7 @@ Goal: the image matrix people actually search for, fast and batched.
 - [x] Format matrix: jpg · png · webp · avif · jxl (jSquash, MT when isolated) (2026-09-25)
 - [x] heic/heif → jpg/png (heic-to; LGPL — record in THIRD_PARTY_LICENSES) (2026-09-25)
 - [x] svg → png/jpg (resvg-wasm) (2026-09-25)
-- [ ] raster → svg trace (later)
+- [x] raster → svg trace (@image-tracer-ts/core, MIT; png/jpg/webp → svg) (2026-09-25)
 - [x] tiff (utif2), psd (@webtoon/psd) (2026-09-25)
 - [x] camera raw (libraw-wasm; glue loaded at runtime; synthetic DNG fixture added) (2026-09-25)
 - [x] Compress with a **target size** (binary search on quality) (2026-09-25)
@@ -160,5 +160,4 @@ Goal: the image matrix people actually search for, fast and batched.
 ## Decisions still open
 
 - Custom domain (currently `localvert.<account>.workers.dev`)
-- Whether to trace raster → SVG at all, or link out
 - TypeScript 7 (tsgo) friction: if it bites, pin 5.9 and write an ADR
