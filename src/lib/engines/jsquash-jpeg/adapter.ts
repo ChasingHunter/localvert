@@ -91,8 +91,11 @@ function parseHexColor(color: unknown): readonly [number, number, number] {
   if (!match) return [255, 255, 255];
 
   const digits = match[1];
+  if (digits === undefined) return [255, 255, 255];
   if (digits.length === 3) {
-    const [r, g, b] = digits;
+    const r = digits.charAt(0);
+    const g = digits.charAt(1);
+    const b = digits.charAt(2);
     return [
       Number.parseInt(r + r, 16),
       Number.parseInt(g + g, 16),
@@ -123,10 +126,10 @@ function compositeOverBackground(
   const src = image.data;
   const out = new Uint8ClampedArray(src.length);
   for (let i = 0; i < src.length; i += 4) {
-    const alpha = src[i + 3] / 255;
-    out[i] = src[i] * alpha + bgR * (1 - alpha);
-    out[i + 1] = src[i + 1] * alpha + bgG * (1 - alpha);
-    out[i + 2] = src[i + 2] * alpha + bgB * (1 - alpha);
+    const alpha = (src[i + 3] ?? 0) / 255;
+    out[i] = (src[i] ?? 0) * alpha + bgR * (1 - alpha);
+    out[i + 1] = (src[i + 1] ?? 0) * alpha + bgG * (1 - alpha);
+    out[i + 2] = (src[i + 2] ?? 0) * alpha + bgB * (1 - alpha);
     out[i + 3] = 255;
   }
   return { width: image.width, height: image.height, data: out };

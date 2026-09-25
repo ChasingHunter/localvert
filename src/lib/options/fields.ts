@@ -114,8 +114,7 @@ function describeField(key: string, rawField: CoreField): FieldSpec {
       const min = minValue ?? Number.NEGATIVE_INFINITY;
       const max = maxValue ?? Number.POSITIVE_INFINITY;
       const step =
-        meta.step ??
-        (numberField.format === "safeint" ? 1 : (max - min) / 100);
+        meta.step ?? (numberField.format === "safeint" ? 1 : (max - min) / 100);
       return { ...base, control, min, max, step };
     }
     case "text": {

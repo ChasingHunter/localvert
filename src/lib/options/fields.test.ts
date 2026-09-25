@@ -102,9 +102,7 @@ describe("describeFields", () => {
         .max(9)
         .meta({ label: "Effort", control: "slider", step: 2 }),
     });
-    expect(describeFields(schema)).toMatchObject([
-      { min: 1, max: 9, step: 2 },
-    ]);
+    expect(describeFields(schema)).toMatchObject([{ min: 1, max: 9, step: 2 }]);
   });
 
   it("describes a number control without requiring finite bounds", () => {

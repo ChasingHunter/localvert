@@ -13,7 +13,10 @@ interface ToolCardProps {
  */
 export function ToolCard({ tool }: ToolCardProps) {
   const from = tool.accepts.map((format) => FORMATS[format].label).join("/");
-  const to = FORMATS[tool.produces].label;
+  // `produces: "same"` (e.g. strip-exif) has no fixed output format — see
+  // ToolDefinition.produces's doc comment in src/lib/registry/types.ts.
+  const to =
+    tool.produces === "same" ? "same format" : FORMATS[tool.produces].label;
 
   return (
     <Link
