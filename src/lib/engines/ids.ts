@@ -14,5 +14,6 @@ export type EngineId =
   | "pdfjs"
   | "psd"
   | "resvg"
+  | "tesseract"
   | "tracer"
   | "utif";

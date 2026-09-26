@@ -23,6 +23,7 @@ export const ENGINE_LOADERS = {
   pdfjs: () => import("./pdfjs/adapter"),
   psd: () => import("./psd/adapter"),
   resvg: () => import("./resvg/adapter"),
+  tesseract: () => import("./tesseract/adapter"),
   tracer: () => import("./tracer/adapter"),
   utif: () => import("./utif/adapter"),
 } satisfies Record<EngineId, () => Promise<{ default: EngineAdapter }>>;
