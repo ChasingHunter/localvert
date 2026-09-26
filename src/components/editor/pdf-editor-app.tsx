@@ -47,6 +47,7 @@ import {
   MousePointer2,
   PenLine,
   Redo2,
+  Signature,
   Square as SquareIcon,
   Strikethrough,
   Type,
@@ -59,6 +60,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dropzone } from "@/components/dropzone";
 import type { AcceptedFile } from "@/components/dropzone-logic";
+import { SignatureDialog } from "@/components/editor/signature-dialog";
 import { Button } from "@/components/ui/button";
 import { flattenExportedForms } from "@/lib/editor/flatten-forms";
 import { createPdfiumWorkerEngine } from "@/lib/editor/pdfium-engine";
@@ -339,6 +341,7 @@ function Editor({ documentId, fileName }: EditorProps) {
   const [fontSize, setFontSize] = useState(16);
   const [exporting, setExporting] = useState(false);
   const stampInputRef = useRef<HTMLInputElement | null>(null);
+  const [signOpen, setSignOpen] = useState(false);
 
   // E2a — form filling. Tracks which page indexes currently have at least
   // one fillable widget, reported up by each page's `FormLayer` once it
@@ -411,15 +414,25 @@ function Editor({ documentId, fileName }: EditorProps) {
     if (patch) provides.setToolDefaults(activeTool, patch);
   }, [activeTool, color, strokeWidth, fontSize, annotationCapability.provides]);
 
+  // Shared by both stamp-placement paths — the file-picker "Insert image"
+  // tool below, and `SignatureDialog`'s drawn/typed/uploaded PNG — so the
+  // actual `setActiveTool("stamp", ...)` call only lives in one place.
+  const placeStamp = useCallback(
+    (data: ArrayBuffer, mimeType: string) => {
+      annotation.provides?.setActiveTool("stamp", { data, mimeType });
+    },
+    [annotation.provides],
+  );
+
   const handleStampFile = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       e.target.value = "";
-      if (!file || !annotation.provides) return;
+      if (!file) return;
       const data = await file.arrayBuffer();
-      annotation.provides.setActiveTool("stamp", { data, mimeType: file.type });
+      placeStamp(data, file.type);
     },
-    [annotation.provides],
+    [placeStamp],
   );
 
   const handleUndo = useCallback(
@@ -589,6 +602,16 @@ function Editor({ documentId, fileName }: EditorProps) {
           </Button>
         ))}
 
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label="Sign"
+          onClick={() => setSignOpen(true)}
+        >
+          <Signature aria-hidden="true" />
+        </Button>
+
         <label className="flex items-center gap-1 text-xs text-ink-muted">
           Color
           <input
@@ -690,6 +713,15 @@ function Editor({ documentId, fileName }: EditorProps) {
         accept="image/*"
         className="hidden"
         onChange={handleStampFile}
+      />
+
+      <SignatureDialog
+        open={signOpen}
+        onClose={() => setSignOpen(false)}
+        onPlace={(data, mimeType) => {
+          setSignOpen(false);
+          placeStamp(data, mimeType);
+        }}
       />
 
       <div className="flex gap-3">
