@@ -50,6 +50,7 @@ import mergePdf from "@/tools/pdf/merge-pdf";
 import pdfEditor from "@/tools/pdf/pdf-editor";
 import pdfToJpg from "@/tools/pdf/pdf-to-jpg";
 import pdfToPng from "@/tools/pdf/pdf-to-png";
+import pdfToSearchablePdf from "@/tools/pdf/pdf-to-searchable-pdf";
 import protectPdf from "@/tools/pdf/protect-pdf";
 import reorderPdfPages from "@/tools/pdf/reorder-pdf-pages";
 import rotatePdf from "@/tools/pdf/rotate-pdf";
@@ -107,6 +108,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   pdfEditor,
   pdfToJpg,
   pdfToPng,
+  pdfToSearchablePdf,
   protectPdf,
   reorderPdfPages,
   rotatePdf,

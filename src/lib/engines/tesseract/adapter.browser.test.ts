@@ -1,4 +1,4 @@
-import { PDFDocument } from "@cantoo/pdf-lib";
+import { PDFDocument, rgb, StandardFonts } from "@cantoo/pdf-lib";
 import { describe, expect, it } from "vitest";
 import { ENGINE_MANIFEST } from "@/lib/engines/manifest";
 import { isEngineError } from "../errors";
@@ -59,6 +59,64 @@ async function renderTextPng(text: string): Promise<ArrayBuffer> {
   return blob.arrayBuffer();
 }
 
+/**
+ * A 2-page PDF built with `@cantoo/pdf-lib`, each page a large bold word of
+ * real vector text — no fixture file, same "generate the input, don't ship
+ * it" approach `renderTextPng` above and `pdfjs/adapter.browser.test.ts`'s
+ * `buildTestPdf` both use. `runOcrPdf` renders each page to a bitmap before
+ * OCR-ing it (this op never reads a PDF's vector text directly), so a big,
+ * high-contrast word is exactly as easy a target for `ocrPdf` as
+ * `renderTextPng`'s canvas text is for plain `ocr` above.
+ */
+async function buildScannedLikePdf(
+  words: readonly string[],
+): Promise<ArrayBuffer> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.HelveticaBold);
+  for (const word of words) {
+    const page = doc.addPage([400, 200]);
+    page.drawText(word, {
+      x: 30,
+      y: 80,
+      size: 48,
+      font,
+      color: rgb(0, 0, 0),
+    });
+  }
+  const bytes = await doc.save();
+  return bytes.slice().buffer;
+}
+
+/** Reads back the invisible OCR text layer `ocrPdf` embedded on each page,
+ * via `pdfjs-dist`'s own `getTextContent` — the same library `runOcrPdf`
+ * itself uses to render, imported here directly (a devDependency, not
+ * through the adapter) purely to verify the searchable PDF it produced,
+ * mirroring how this file already imports `@cantoo/pdf-lib` directly for
+ * the same reason. Its worker is pointed at the real, `pnpm sync-engines`-
+ * populated `pdfjs` asset (never a CDN), same origin rule every adapter
+ * test in this suite already follows. */
+async function extractPageTexts(pdfBytes: ArrayBuffer): Promise<string[]> {
+  const pdfjsLib = await import("pdfjs-dist");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `${ENGINE_MANIFEST.pdfjs.baseUrl}pdf.worker.mjs`;
+
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(pdfBytes) });
+  try {
+    const doc = await loadingTask.promise;
+    const texts: string[] = [];
+    for (let i = 1; i <= doc.numPages; i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      texts.push(
+        content.items.map((item) => ("str" in item ? item.str : "")).join(" "),
+      );
+      page.cleanup();
+    }
+    return texts;
+  } finally {
+    await loadingTask.destroy();
+  }
+}
+
 describe("tesseract adapter", () => {
   it("carries the metadata defineEngine validated", () => {
     expect(adapter.id).toBe("tesseract");
@@ -86,6 +144,12 @@ describe("tesseract adapter", () => {
 
     it("rejects an output that isn't txt or pdf", () => {
       expect(adapter.supports("ocr", "png", "png")).toBe(false);
+    });
+
+    it("accepts ocrPdf from pdf to pdf only", () => {
+      expect(adapter.supports("ocrPdf", "pdf", "pdf")).toBe(true);
+      expect(adapter.supports("ocrPdf", "png", "pdf")).toBe(false);
+      expect(adapter.supports("ocrPdf", "pdf", "png")).toBe(false);
     });
   });
 
@@ -205,6 +269,71 @@ describe("tesseract adapter", () => {
         expect(foreign).toEqual([]);
       },
       TIMEOUT,
+    );
+  });
+
+  describe("ocrPdf", () => {
+    // Render (pdfjs) + OCR (tesseract, per page) + merge (pdf-lib), all
+    // inside one call — comfortably the slowest single test in this file,
+    // hence a generous multiple of the single-page `TIMEOUT` above.
+    const OCR_PDF_TIMEOUT = TIMEOUT * 3;
+
+    it(
+      "OCRs every page of a multi-page PDF into one searchable PDF, in order",
+      async () => {
+        const instance = await adapter.load({
+          baseUrl: baseUrl(),
+          capabilities: {} as never,
+        });
+        const input = await buildScannedLikePdf(["APPLE", "BANANA"]);
+
+        const result = await instance.run(
+          baseTask({
+            op: "ocrPdf",
+            input: bytesInput(input),
+            inputFormat: "pdf",
+            outputFormat: "pdf",
+          }),
+        );
+        if (result.kind !== "bytes") throw new Error("expected bytes result");
+        expect(result.mime).toBe("application/pdf");
+
+        const doc = await PDFDocument.load(result.bytes);
+        expect(doc.getPageCount()).toBe(2);
+
+        const [page1Text, page2Text] = await extractPageTexts(result.bytes);
+        expect(page1Text?.toLowerCase()).toContain("apple");
+        expect(page2Text?.toLowerCase()).toContain("banana");
+      },
+      OCR_PDF_TIMEOUT,
+    );
+
+    it(
+      "honours an already-aborted signal",
+      async () => {
+        const instance = await adapter.load({
+          baseUrl: baseUrl(),
+          capabilities: {} as never,
+        });
+        const input = await buildScannedLikePdf(["X"]);
+        const controller = new AbortController();
+        controller.abort();
+
+        await expect(
+          instance.run(
+            baseTask({
+              op: "ocrPdf",
+              input: bytesInput(input),
+              inputFormat: "pdf",
+              outputFormat: "pdf",
+              signal: controller.signal,
+            }),
+          ),
+        ).rejects.toSatisfy(
+          (e: unknown) => isEngineError(e) && e.code === "aborted",
+        );
+      },
+      OCR_PDF_TIMEOUT,
     );
   });
 });

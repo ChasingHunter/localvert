@@ -86,11 +86,14 @@ function supports(
   input: StepFormat,
   output: StepFormat,
 ): boolean {
-  return (
-    op === "ocr" &&
-    OCR_INPUT_FORMATS.includes(input) &&
-    (output === "txt" || output === "pdf")
-  );
+  if (op === "ocr") {
+    return (
+      OCR_INPUT_FORMATS.includes(input) &&
+      (output === "txt" || output === "pdf")
+    );
+  }
+  if (op === "ocrPdf") return input === "pdf" && output === "pdf";
+  return false;
 }
 
 /** Reads `task.input` down to the `Blob` tesseract.js's `recognize` wants —
@@ -193,7 +196,7 @@ async function load(ctx: EngineLoadContext): Promise<EngineInstance> {
 
   return {
     run: (task) =>
-      run(task, worker, (fn) => {
+      run(task, worker, ctx, (fn) => {
         currentOnProgress = fn;
       }),
     dispose: () => {
@@ -209,12 +212,15 @@ async function load(ctx: EngineLoadContext): Promise<EngineInstance> {
 async function run(
   task: EngineTask,
   worker: TesseractNS.Worker,
+  ctx: EngineLoadContext,
   setOnProgress: (fn: (fraction: number) => void) => void,
 ): Promise<EngineResult> {
   try {
     switch (task.op) {
       case "ocr":
         return await runOcr(task, worker, setOnProgress);
+      case "ocrPdf":
+        return await runOcrPdf(task, worker, ctx, setOnProgress);
       default:
         throw new EngineError(
           "unsupported",
@@ -303,6 +309,193 @@ async function runOcr(
     bytes: new TextEncoder().encode(text).buffer,
     mime: FORMATS.txt.mime,
   };
+}
+
+/** Same cap `pdfjs`'s own `render` op applies to a page selection — see its
+ * `MAX_PAGES` doc comment. Applied here too since this op drives that same
+ * op internally, over every page (no page-range option on this tool). */
+const MAX_PAGES = 200;
+
+/**
+ * `render`'s own `dpi` option, picked so a standard Letter/A4 page's long
+ * edge (~11-11.7in) lands just under ~3000px — close to the OCR-quality
+ * "300 DPI" rule of thumb, while bounding the size of the per-page bitmap
+ * this op holds at any one time (`pdfjs`'s own `MAX_DIMENSION_PX` — 8192 —
+ * is a much looser backstop against a truly oversized page, not a memory
+ * budget). Fixed rather than computed from each page's actual size: this op
+ * has no cheap way to read page dimensions ahead of rendering (see this
+ * function's doc comment below).
+ */
+const OCR_RENDER_DPI = 270;
+
+/**
+ * ocrPdf (pdf -> pdf, ADR-0008 follow-up — see `image-to-searchable-pdf.ts`'s
+ * doc comment for why the original OCR tool stopped at single-page images):
+ * render every page, OCR each one into its own one-page searchable PDF, then
+ * merge them back into one document, in page order.
+ *
+ * This is a single composite op rather than a three-step pipeline
+ * (`render` -> `ocr` -> `merge`) because `engine-host.ts`'s pipeline runner
+ * only ever threads one `EngineResult` from a step into the next step's
+ * `EngineInput` (`resultToInput`) — and `render`'s own result for a
+ * multi-page document is `{kind: "files", files: [...]}`, one entry per
+ * page, which that function explicitly refuses to convert ("a files result
+ * cannot feed the next pipeline step"). Fanning N pages out to N `ocr` steps
+ * and back into one `merge` step isn't a shape the current step model
+ * expresses at all. Driving `pdfjs` and `pdf-lib`'s own adapters directly —
+ * dynamically imported here, exactly like every adapter's own lazy
+ * `import()` of its underlying library — sidesteps that gap without
+ * changing the pipeline runner's contract for every other tool.
+ *
+ * Pages are rendered and OCR'd one at a time — `pdfjs`'s own `render` op
+ * only ever returns a *whole* selection's pages together, so instead of
+ * calling it once for every page (paying pdf parse + doc-load overhead N
+ * times), this calls it once per page with `pages: String(pageNumber)`; each
+ * page's rendered PNG bytes are OCR'd and then go out of scope (nothing here
+ * holds more than one page's bitmap and one page's bytes at a time), and the
+ * per-page searchable-PDF bytes accumulate instead — smaller than a raw
+ * bitmap, and the only thing that must survive to the final merge.
+ */
+async function runOcrPdf(
+  task: EngineTask,
+  worker: TesseractNS.Worker,
+  ctx: EngineLoadContext,
+  setOnProgress: (fn: (fraction: number) => void) => void,
+): Promise<EngineResult> {
+  const { input, outputFormat, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  if (outputFormat !== "pdf") {
+    throw new EngineError(
+      "internal",
+      `tesseract ocrPdf requires a pdf output, got "${outputFormat}"`,
+      { engine: metadata.id },
+    );
+  }
+
+  const pdfjsMod = await import("../pdfjs/adapter");
+  const pdfjsInstance = await pdfjsMod.default.load({
+    baseUrl: ENGINE_MANIFEST.pdfjs.baseUrl,
+    capabilities: ctx.capabilities,
+  });
+
+  // Page count from parsing the document, not from rendering it: pdfjs's
+  // `render` has no count-only mode, and rendering every page just to count
+  // them would hold a whole document's bitmaps for nothing. pdf-lib is loaded
+  // for the merge below anyway.
+  if (input.kind !== "blob" && input.kind !== "bytes") {
+    throw new EngineError(
+      "unsupported",
+      `ocrPdf needs the PDF's bytes, got a "${input.kind}" input`,
+      { engine: metadata.id },
+    );
+  }
+  const sourceBytes =
+    input.kind === "blob" ? await input.blob.arrayBuffer() : input.bytes;
+  let pageCount: number;
+  try {
+    const { PDFDocument } = await import("@cantoo/pdf-lib");
+    const probe = await PDFDocument.load(sourceBytes.slice(0), {
+      ignoreEncryption: true,
+    });
+    pageCount = probe.getPageCount();
+  } catch (e) {
+    throw toEngineError(e, "pdf-lib");
+  }
+  if (pageCount === 0) {
+    throw new EngineError("internal", "ocrPdf found no pages to process", {
+      engine: metadata.id,
+    });
+  }
+  if (pageCount > MAX_PAGES) {
+    throw new EngineError(
+      "unsupported",
+      `ocrPdf is capped at ${MAX_PAGES} pages per job; this document has ${pageCount}`,
+      { engine: metadata.id },
+    );
+  }
+
+  const pagePdfs: ArrayBuffer[] = [];
+  for (let i = 0; i < pageCount; i++) {
+    signal.throwIfAborted();
+    const pageNumber = i + 1;
+
+    const rendered = await pdfjsInstance.run({
+      op: "render",
+      input,
+      inputFormat: "pdf",
+      outputFormat: "png",
+      options: { pages: String(pageNumber), dpi: OCR_RENDER_DPI },
+      signal,
+    });
+    if (rendered.kind !== "files" || rendered.files.length === 0) {
+      throw new EngineError("internal", `failed to render page ${pageNumber}`, {
+        engine: metadata.id,
+      });
+    }
+    const pageFile = rendered.files[0];
+    if (!pageFile) continue; // unreachable: guarded by the length check above
+    signal.throwIfAborted();
+
+    const pageResult = await runOcr(
+      {
+        op: "ocr",
+        input: { kind: "bytes", bytes: pageFile.bytes },
+        inputFormat: "png",
+        outputFormat: "pdf",
+        options: task.options,
+        signal,
+      },
+      worker,
+      setOnProgress,
+    );
+    if (pageResult.kind !== "bytes") {
+      throw new EngineError(
+        "internal",
+        `OCR of page ${pageNumber} produced no pdf bytes`,
+        { engine: metadata.id },
+      );
+    }
+    pagePdfs.push(pageResult.bytes);
+    onProgress?.((pageNumber / pageCount) * 0.9);
+  }
+
+  const pdfLibMod = await import("../pdf-lib/adapter");
+  const pdfLibInstance = await pdfLibMod.default.load({
+    baseUrl: ENGINE_MANIFEST["pdf-lib"].baseUrl,
+    capabilities: ctx.capabilities,
+  });
+  const mergeInputs: EngineInput[] = pagePdfs.map((bytes) => ({
+    kind: "bytes",
+    bytes,
+  }));
+  const first = mergeInputs[0];
+  if (!first) {
+    // Unreachable: `pageCount === 0` is rejected above, so the loop above
+    // always pushes at least one entry.
+    throw new EngineError("internal", "ocrPdf produced no pages to merge", {
+      engine: metadata.id,
+    });
+  }
+  const merged = await pdfLibInstance.run({
+    op: "merge",
+    input: first,
+    inputs: mergeInputs,
+    inputFormat: "pdf",
+    outputFormat: "pdf",
+    options: {},
+    signal,
+  });
+  pdfLibInstance.dispose();
+  pdfjsInstance.dispose();
+  if (merged.kind !== "bytes") {
+    throw new EngineError("internal", "merge produced no pdf bytes", {
+      engine: metadata.id,
+    });
+  }
+
+  onProgress?.(1);
+  return merged;
 }
 
 export default defineEngine({

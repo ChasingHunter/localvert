@@ -10,9 +10,11 @@ import { defineTool } from "@/lib/registry";
  * `images-to-pdf.ts` living there despite taking image input.
  *
  * Multi-page scanned-PDF -> searchable-PDF (rendering each PDF page with
- * `pdfjs` first, OCR-ing each, then merging) is out of scope here — see
- * docs/ROADMAP.md's OCR sub-item for that follow-up. This tool's input is
- * a single page image, not a PDF.
+ * `pdfjs` first, OCR-ing each, then merging) is `pdf-to-searchable-pdf.ts`,
+ * a separate tool built on a composite `ocrPdf` op (see that op's doc
+ * comment in `../../lib/registry/types.ts` and `runOcrPdf` in
+ * `tesseract/adapter.ts`). This tool's input stays a single page image, not
+ * a PDF.
  */
 export default defineTool({
   slug: "image-to-searchable-pdf",

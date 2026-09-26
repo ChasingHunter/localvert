@@ -97,7 +97,8 @@ apply to any of them, so that column reads their own **Arity** instead.
 | `flatten-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Bakes form field values into the page, removes the fields; no-op on a PDF with no form |
 | `pdf-to-jpg` | PDF | JPEG | pdfjs | one-to-many | One JPG per selected page (`pages`, `dpi`, `quality`); white background |
 | `pdf-to-png` | PDF | PNG | pdfjs | one-to-many | One PNG per selected page (`pages`, `dpi`); page transparency preserved |
-| `image-to-searchable-pdf` | JPEG/PNG/WebP/BMP | PDF | tesseract | one-to-one (batch) | Adds an invisible OCR text layer over the original page image; English only today (`language` select). Single-page input only — multi-page scanned-PDF → searchable-PDF is a follow-up (see docs/ROADMAP.md) |
+| `image-to-searchable-pdf` | JPEG/PNG/WebP/BMP | PDF | tesseract | one-to-one (batch) | Adds an invisible OCR text layer over the original page image; English only today (`language` select). Single-page input only — see `pdf-to-searchable-pdf` for multi-page |
+| `pdf-to-searchable-pdf` | PDF | PDF | tesseract (composite `ocrPdf` op, driving `pdfjs` render and `pdf-lib` merge internally) | one-to-one (batch) | Renders each page, OCRs it, and merges the searchable pages back into one PDF, in order; English only today (`language` select); capped at 200 pages per job |
 | `pdf-editor` | PDF | PDF | pdfium (session) | n/a — `kind: "app"` | Opens one PDF at a time; highlight, underline, strikethrough, freehand ink, rectangle, ellipse, line/arrow, free text and image-stamp annotations; undo/redo (Ctrl+Z / Ctrl+Shift+Z); exports `<name>-edited.pdf`. One page at a time (prev/next) — not the virtualised multi-page scroll + thumbnail rail ADR-0009 describes; see docs/ROADMAP.md's E1 note |
 
 ## Video

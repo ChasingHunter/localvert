@@ -89,7 +89,20 @@ export type Operation =
   | "unlock"
   | "flatten"
   | "render"
-  | "ocr";
+  | "ocr"
+  /**
+   * Composite op, `tesseract` only: pdf -> pdf, render each page (via a
+   * dynamically-imported `pdfjs` adapter instance), OCR each page (this
+   * adapter's own `ocr` machinery, reused in-process) and merge the
+   * per-page searchable PDFs back into one (via a dynamically-imported
+   * `pdf-lib` adapter instance) — all inside the same worker. See
+   * `tesseract/adapter.ts`'s `runOcrPdf` doc comment for why this is a
+   * single composite op rather than a multi-engine pipeline: the pipeline
+   * model (`engine-host.ts`) only ever threads one `EngineResult` from step
+   * to step, and a `"files"` (one-to-many) result — pdfjs `render`'s output
+   * for a multi-page document — has no such single-value handoff.
+   */
+  | "ocrPdf";
 
 /**
  * A pipeline step's input/output "format": either a real `FormatId` (bytes

@@ -52,6 +52,7 @@ export const TOOL_LOADERS = {
   "pdf-editor": () => import("./pdf/pdf-editor"),
   "pdf-to-jpg": () => import("./pdf/pdf-to-jpg"),
   "pdf-to-png": () => import("./pdf/pdf-to-png"),
+  "pdf-to-searchable-pdf": () => import("./pdf/pdf-to-searchable-pdf"),
   "protect-pdf": () => import("./pdf/protect-pdf"),
   "reorder-pdf-pages": () => import("./pdf/reorder-pdf-pages"),
   "rotate-pdf": () => import("./pdf/rotate-pdf"),
