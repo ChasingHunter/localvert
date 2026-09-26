@@ -70,7 +70,7 @@ One small commit per bullet — these are the contracts everything else hangs on
 - [x] `public/_headers` — COOP/COEP + the CSP that makes upload impossible (2026-09-24)
 - [x] Serwist SW (post-build injectManifest after CSP injection; precache shell, CacheFirst `/engines/*`) (2026-09-25)
 - [x] Offline page (/offline, shown only on real network failure) (2026-09-25)
-- [ ] Offline E2E: a used tool still converts with the network cut (with 0.5b e2e)
+- [x] Offline E2E: a used tool still converts with the network cut (`e2e/offline.spec.ts`, 2026-09-27)
 
 ### 0.7 Infrastructure
 - [x] `infra/wrangler.jsonc` — static assets from `out/`, R2 binding,
@@ -125,21 +125,21 @@ Goal: the image matrix people actually search for, fast and batched.
 ## Phase 2 — PDF
 
 - [x] merge, split, rotate, delete/extract pages (@cantoo/pdf-lib; ADR-0008
-      many-to-one/one-to-many tools) — reorder still pending (2026-09-26)
+      many-to-one/one-to-many tools) (2026-09-26); reorder (`reorder-pdf-pages`) 2026-09-27
 - [x] images → PDF (`images-to-pdf`, @cantoo/pdf-lib, many-to-one) — PDF →
       images is the "Render to image" item below (2026-09-26)
 - [x] Compress: ≥40% reduction on an image-heavy fixture (pdf-lib +
       OffscreenCanvas re-encode, not PDFium — ADR-0008's 2026-09-26 update;
       ~91% measured on the browser-test fixture) (2026-09-26)
 - [x] Protect / unlock (password, AES-256 via @cantoo/pdf-lib — both
-      directions genuinely supported, not just protect) — flatten forms
-      still pending (2026-09-26)
+      directions genuinely supported, not just protect) (2026-09-26); password
+      required before running, and flatten forms (`flatten-pdf`) 2026-09-27
 - [x] Render to image (pdfjs-dist, self-hosted worker + cmaps) (2026-09-26)
 - [x] OCR (tesseract.js; self-host traineddata — the default CDN fetch
       violates our CSP, which is the point) — image → text and image →
       searchable PDF (single page) (2026-09-26)
-  - [ ] Multi-page scanned-PDF → searchable-PDF (render each page with
-        pdfjs, OCR each, merge) — follow-up, not built yet
+  - [x] Multi-page scanned-PDF → searchable-PDF (`pdf-to-searchable-pdf`: pdfjs
+        render → tesseract per page → pdf-lib merge, one composite op) (2026-09-27)
 
 ## Phase 2.5 — PDF editor (ADR-0009)
 
@@ -171,7 +171,7 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
       plugin-driven annotations and history, export — on our own PDFium worker. Pages unchanged
       (tools ~156 KB gz, home ~134 KB). Eleven silent-failure gotchas found on the way are in
       `docs/editor/EMBEDPDF_NOTES.md` ("v2 manual plugin composition").
-- [ ] E2 Signatures (draw/type/upload; opt-in local-only saved signature) + form filling + flatten
+- [x] E2 Signatures (draw/type/upload; opt-in local-only saved signature) + form filling + flatten (2026-09-27)
 - [ ] E3 Page organizer: thumbnail grid — reorder, rotate, delete, insert blank, insert from PDF
 - [ ] E4 True redaction (verified by text/image extraction) + sanitize (metadata, JS, attachments)
 - [ ] E5 Edit existing text: remove original text objects, insert replacement (font substitution
