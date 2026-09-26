@@ -227,4 +227,33 @@ test.describe("pdf-editor signature dialog", () => {
 
     await expect.poll(hasSaved, { timeout: 10_000 }).toBe(false);
   });
+
+  test("uploads an image via the Insert image tool, places it, and exports a PDF with a Stamp annotation", async ({
+    page,
+  }) => {
+    await openEditor(page);
+
+    // Same stamp-placement path as a typed/drawn signature ("Insert image"
+    // is `applyActiveTool`'s other entry point into `placeStamp` — see its
+    // doc comment in `pdf-editor-app.tsx`) — this test exists because both
+    // paths shared the same bug: `placeStamp` used to hand the image bytes
+    // to `setActiveTool`'s unused `context` argument instead of
+    // `setToolDefaults`'s `imageSrc`, so neither an uploaded image nor a
+    // signature ever actually placed a stamp. Setting the file directly on
+    // the hidden `<input>` mirrors what clicking the toolbar's "Insert
+    // image" button, then picking a file, does.
+    await page
+      .locator('input[type="file"][accept="image/*"]')
+      .setInputFiles(fixturePath("not-a-jpg.png"));
+
+    const point = await pointOnPage(page, 0, 0.5, 0.5);
+    await page.mouse.click(point.x, point.y);
+
+    await expect
+      .poll(async () => annotSubtypes(await exportBytes(page)), {
+        message: "export should eventually contain a Stamp annotation",
+        timeout: 10_000,
+      })
+      .toContain("Stamp");
+  });
 });

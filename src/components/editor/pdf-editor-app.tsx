@@ -416,13 +416,39 @@ function Editor({ documentId, fileName }: EditorProps) {
 
   // Shared by both stamp-placement paths — the file-picker "Insert image"
   // tool below, and `SignatureDialog`'s drawn/typed/uploaded PNG — so the
-  // actual `setActiveTool("stamp", ...)` call only lives in one place.
+  // actual stamp-placement call only lives in one place.
+  //
+  // `setActiveTool`'s `context` argument is unused by the stamp tool's own
+  // handler (gotcha #8 in EMBEDPDF_NOTES.md): its `onHandlerActiveStart`
+  // reads `tool.defaults.imageSrc` and `fetch()`s it — a `{ data, mimeType }`
+  // context passed to `setActiveTool` is simply never read, so no stamp was
+  // ever placed. The image bytes must go through `setToolDefaults` instead,
+  // as a same-origin `blob:` URL (CSP's `connect-src` already allows
+  // `blob:`), *before* activating the tool.
+  const stampUrlRef = useRef<string | null>(null);
   const placeStamp = useCallback(
     (data: ArrayBuffer, mimeType: string) => {
-      annotation.provides?.setActiveTool("stamp", { data, mimeType });
+      const url = URL.createObjectURL(new Blob([data], { type: mimeType }));
+      const previous = stampUrlRef.current;
+      stampUrlRef.current = url;
+      annotationCapability.provides?.setToolDefaults("stamp", {
+        imageSrc: url,
+      });
+      annotation.provides?.setActiveTool("stamp");
+      // The stamp handler's `onHandlerActiveStart` fetches `imageSrc` only
+      // once the tool actually activates, so the PREVIOUS url (already
+      // fetched and cached, or never activated at all) is safe to revoke
+      // now — the new one just set above must not be revoked yet.
+      if (previous) URL.revokeObjectURL(previous);
     },
-    [annotation.provides],
+    [annotation.provides, annotationCapability.provides],
   );
+
+  useEffect(() => {
+    return () => {
+      if (stampUrlRef.current) URL.revokeObjectURL(stampUrlRef.current);
+    };
+  }, []);
 
   const handleStampFile = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
