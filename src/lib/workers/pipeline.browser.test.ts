@@ -67,13 +67,33 @@ describe("engine worker + zip worker (real browser)", () => {
         );
       }
 
-      // Cancellation: abort right after dispatch — the worker round-trip
-      // means this always lands well before a real conversion could finish.
+      // Cancellation: the canvas transcode op only has one checkpoint that
+      // a real, message-delivered cancel can land on — the
+      // `signal.throwIfAborted()` right after `createImageBitmap` decodes
+      // the source (see canvas/adapter.ts `runTranscode`). Every checkpoint
+      // after that runs back-to-back with no yield to the event loop until
+      // the final `convertToBlob` encode, which isn't itself preceded or
+      // followed by another check — so once decode has finished, this op
+      // cannot observe an abort at all (only the pool's cancel-grace
+      // timeout could still catch it, and that defaults to 2s, far longer
+      // than this op takes end to end). A tiny source image decodes fast
+      // enough that the abort — sent right after dispatch, itself a
+      // message round trip — can lose that race under load: the whole
+      // conversion finishes and resolves before cancellation lands. A
+      // decode with real work in it (a large image) keeps that one
+      // checkpoint open long enough for the cancel to always win.
+      const bigCanvas = new OffscreenCanvas(4000, 3000);
+      const bigCtx = bigCanvas.getContext("2d");
+      if (!bigCtx) throw new Error("no 2d context in test setup");
+      bigCtx.fillStyle = "#3366ff";
+      bigCtx.fillRect(0, 0, 4000, 3000);
+      const bigPngBlob = await bigCanvas.convertToBlob({ type: "image/png" });
+
       const controller = new AbortController();
       const cancelledRun = pool.run(
         {
           jobId: "pipeline-job-2",
-          input: { kind: "blob", blob: pngBlob },
+          input: { kind: "blob", blob: bigPngBlob },
           steps: [
             {
               engine: "canvas",
@@ -87,10 +107,26 @@ describe("engine worker + zip worker (real browser)", () => {
         },
         { signal: controller.signal },
       );
-      controller.abort();
-      await expect(cancelledRun).rejects.toSatisfy(
-        (e: unknown) => isEngineError(e) && e.code === "aborted",
+      // Attach a handler immediately (rather than only via the `expect`
+      // below, after `controller.abort()`) so a fast rejection can never be
+      // reported as an unhandled rejection.
+      const cancelledOutcome = cancelledRun.then(
+        () => ({ ok: true as const }),
+        (error: unknown) => ({ ok: false as const, error }),
       );
+      controller.abort();
+
+      const outcome = await cancelledOutcome;
+      if (outcome.ok) {
+        throw new Error(
+          "conversion completed before the abort landed — the test's " +
+            "source image needs to decode more slowly so cancellation has " +
+            "time to win",
+        );
+      }
+      expect(
+        isEngineError(outcome.error) && outcome.error.code === "aborted",
+      ).toBe(true);
 
       // Zipping: two blobs, through a real zip worker.
       const jpgBlob = new Blob([jpgBytes], { type: "image/jpeg" });
