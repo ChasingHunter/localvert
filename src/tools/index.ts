@@ -46,6 +46,7 @@ import extractPdfPages from "@/tools/pdf/extract-pdf-pages";
 import imageToSearchablePdf from "@/tools/pdf/image-to-searchable-pdf";
 import imagesToPdf from "@/tools/pdf/images-to-pdf";
 import mergePdf from "@/tools/pdf/merge-pdf";
+import pdfEditor from "@/tools/pdf/pdf-editor";
 import pdfToJpg from "@/tools/pdf/pdf-to-jpg";
 import pdfToPng from "@/tools/pdf/pdf-to-png";
 import protectPdf from "@/tools/pdf/protect-pdf";
@@ -100,6 +101,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   imageToSearchablePdf,
   imagesToPdf,
   mergePdf,
+  pdfEditor,
   pdfToJpg,
   pdfToPng,
   protectPdf,

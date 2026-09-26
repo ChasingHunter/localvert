@@ -48,6 +48,7 @@ export const TOOL_LOADERS = {
   "image-to-searchable-pdf": () => import("./pdf/image-to-searchable-pdf"),
   "images-to-pdf": () => import("./pdf/images-to-pdf"),
   "merge-pdf": () => import("./pdf/merge-pdf"),
+  "pdf-editor": () => import("./pdf/pdf-editor"),
   "pdf-to-jpg": () => import("./pdf/pdf-to-jpg"),
   "pdf-to-png": () => import("./pdf/pdf-to-png"),
   "protect-pdf": () => import("./pdf/protect-pdf"),

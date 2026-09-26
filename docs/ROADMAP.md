@@ -148,8 +148,12 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
 - [x] E0 Spike (go/no-go): EmbedPDF v2 self-hosted wasm, engine in worker, zero CSP
       violations / off-origin requests, open + annotate + export, redaction proven to remove text
       (2026-09-26, GO — see docs/editor/EMBEDPDF_NOTES.md's E0b section)
-- [ ] E1 Viewer + annotate: /tools/pdf-editor — zoom, scroll, thumbnails; highlight/underline/
-      strike, ink, shapes, free text, images/stamps; undo/redo; save
+- [x] E1 Viewer + annotate: /tools/pdf-editor — highlight/underline/strike, ink, shapes, free
+      text, images/stamps; undo/redo; save (2026-09-26). Scoped down from the original
+      zoom/scroll/thumbnails viewer: one page at a time (prev/next), built directly on the bare
+      `PdfEngine` API rather than `@embedpdf/core` + `plugin-*`, given the size/complexity of
+      wiring a virtualised multi-page viewport in this slice's timebox. Follow-up: multi-page
+      scroll + thumbnail rail, zoom.
 - [ ] E2 Signatures (draw/type/upload; opt-in local-only saved signature) + form filling + flatten
 - [ ] E3 Page organizer: thumbnail grid — reorder, rotate, delete, insert blank, insert from PDF
 - [ ] E4 True redaction (verified by text/image extraction) + sanitize (metadata, JS, attachments)

@@ -43,6 +43,8 @@ requires its own ADR and we must publish the modified source.
 | `pdfjs` (`pdfjs-dist`) | 6.3.289 | Apache-2.0 | Mozilla and pdf.js contributors | https://github.com/mozilla/pdf.js |
 | `tesseract` (`tesseract.js`, wraps the Tesseract OCR engine) | 7.0.0 | Apache-2.0 (`tesseract.js` and `tesseract.js-core`) | Jerome Wu, Kevin Kwok, Guillermo Webster and tesseract.js contributors; Google (Tesseract) | https://github.com/naptha/tesseract.js |
 | `tesseract`'s English language data (`@tesseract.js-data/eng`) | 1.0.0 | MIT | Balearica and tessdata contributors | https://github.com/naptha/tessdata |
+| `pdfium` (`@embedpdf/pdfium`, wraps PDFium/Chrome's PDF engine) | 2.15.1 | MIT (wrapper); PDFium itself is BSD-3-Clause / Apache-2.0 (dual, per file) | EmbedPDF contributors; Google (PDFium) | https://github.com/embedpdf/embed-pdf-viewer |
+| `@embedpdf/models`, `@embedpdf/engines` (the PDF editor's engine API and worker-side runner, `EngineRunner`/`WebWorkerEngine`/`PdfEngine`) | 2.15.1 | MIT | EmbedPDF contributors | https://github.com/embedpdf/embed-pdf-viewer |
 
 `jsquash-webp`'s underlying codec is libwebp, Copyright 2010 Google Inc.,
 BSD-3-Clause (`node_modules/@jsquash/webp/codec/LICENSE.codec.md` after

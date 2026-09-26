@@ -207,6 +207,14 @@ Size, placement, threading. Placement is enforced by `scripts/sync-engines.ts`:
 `crossOriginIsolated` is true. Our origin always is (COOP/COEP in
 `public/_headers`), but the router still probes so `next dev` keeps working.
 
+`pdfium` is a **session** engine (`engine.json`'s `"kind": "session"`, ADR-0009):
+a stateful engine an app-mode tool (`pdf-editor`) drives directly through its
+own worker, not a one-shot job the pipeline dispatches to. It has no
+`adapter.ts` and isn't in the capability table above (it doesn't fit the
+decode/transform/encode shape), but its asset is still synced and its version
+still derived the same zero-maintenance way every job engine's is — see
+`scripts/gen-registry.ts`'s `EngineSourceMeta.kind`.
+
 | Engine | Package | Version | License | Size | Placement | Isolation |
 |---|---|---|---|---|---|---|
 | `canvas` | _(native browser API)_ | — | — | 0 | native | no |
@@ -226,6 +234,7 @@ Size, placement, threading. Placement is enforced by `scripts/sync-engines.ts`:
 | `pdf-lib` | `@cantoo/pdf-lib` | 2.11.1 | MIT | 0 (bundled in JS) | bundled | no |
 | `pdfjs` | `pdfjs-dist` | 6.3.289 | Apache-2.0 | ~4.8 MiB (pdf.mjs + pdf.worker.mjs + cmaps + standard_fonts) | static | no |
 | `tesseract` | `tesseract.js` (+ `tesseract.js-core`, `@tesseract.js-data/eng`) | 7.0.0 | Apache-2.0 (data: MIT) | ~16 MiB (JS glue + worker + 2 wasm core tiers + English "best_int" model) | static | no |
+| `pdfium` | `@embedpdf/pdfium` | 2.15.1 | MIT | ~4.6 MiB (pdfium.wasm) | static | no |
 
 ### How engine assets ship
 

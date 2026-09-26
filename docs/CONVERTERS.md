@@ -96,6 +96,7 @@ apply to any of them, so that column reads their own **Arity** instead.
 | `pdf-to-jpg` | PDF | JPEG | pdfjs | one-to-many | One JPG per selected page (`pages`, `dpi`, `quality`); white background |
 | `pdf-to-png` | PDF | PNG | pdfjs | one-to-many | One PNG per selected page (`pages`, `dpi`); page transparency preserved |
 | `image-to-searchable-pdf` | JPEG/PNG/WebP/BMP | PDF | tesseract | one-to-one (batch) | Adds an invisible OCR text layer over the original page image; English only today (`language` select). Single-page input only — multi-page scanned-PDF → searchable-PDF is a follow-up (see docs/ROADMAP.md) |
+| `pdf-editor` | PDF | PDF | pdfium (session) | n/a — `kind: "app"` | Opens one PDF at a time; highlight, underline, strikethrough, freehand ink, rectangle, ellipse, line/arrow, free text and image-stamp annotations; undo/redo (Ctrl+Z / Ctrl+Shift+Z); exports `<name>-edited.pdf`. One page at a time (prev/next) — not the virtualised multi-page scroll + thumbnail rail ADR-0009 describes; see docs/ROADMAP.md's E1 note |
 
 ## Video
 

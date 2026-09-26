@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import dynamic from "next/dynamic";
 import { notFound } from "next/navigation";
+import { AppTool } from "@/components/app-tool";
 import { Breadcrumb } from "@/components/breadcrumb";
 import { PageShell } from "@/components/page-shell";
 import { ToolCard } from "@/components/tool-card";
@@ -10,18 +10,15 @@ import { TOOLS, TOOLS_BY_SLUG } from "@/tools";
 
 /**
  * A "kind: app" tool renders its own component instead of `ToolRunner`'s
- * job-pipeline dropzone/job-list. `next/dynamic` with `ssr: false` (this is a
- * static export anyway — nothing here is ever server-rendered, but this
- * still keeps the loader out of the *static* HTML/JS Next would otherwise try
- * to prerender) — the actual code-split boundary is `tool.app()` itself,
- * called lazily inside `AppTool` below, so an app tool's weight (e.g. the PDF
- * editor's `@embedpdf/*` packages) never lands in this page's own first-load
- * JS. See ADR-0009.
+ * job-pipeline dropzone/job-list. `AppTool` (a small client component, same
+ * as `ToolRunner` above) is imported directly, not via `next/dynamic` —
+ * `next/dynamic`'s `ssr: false` only works from a Client Component, and this
+ * page is a Server Component. The actual code-split boundary is
+ * `TOOL_LOADERS[slug]()` then `tool.app()`, both called lazily *inside*
+ * `AppTool`, so an app tool's weight (e.g. the PDF editor's `@embedpdf/*`
+ * packages) never lands in this page's own first-load JS regardless — see
+ * ADR-0009 and `app-tool.tsx`.
  */
-const AppTool = dynamic(
-  () => import("@/components/app-tool").then((mod) => mod.AppTool),
-  { ssr: false },
-);
 
 /** Same category as `tool`, excluding itself, capped for a tidy grid. */
 const MAX_RELATED_TOOLS = 6;
