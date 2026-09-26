@@ -1,59 +1,93 @@
-import { EngineRunner } from "@embedpdf/engines";
-import { createPdfiumEngine } from "@embedpdf/engines/pdfium-direct-engine";
+import type { ImageDataConverter } from "@embedpdf/engines";
+import { EngineRunner, PdfEngine, PdfiumNative } from "@embedpdf/engines";
+import { init } from "@embedpdf/pdfium";
+import { ENGINE_MANIFEST } from "@/lib/engines/manifest";
 
 /**
- * E0b spike: PDFium hosted inside OUR OWN module worker, spawned by
+ * E1: PDFium hosted inside OUR OWN module worker, spawned by
  * `pdfium-engine.ts` via `new Worker(new URL("./pdfium.worker.ts",
  * import.meta.url), { type: "module" })` — our own worker pattern (see
- * src/lib/workers/spawn.ts), not EmbedPDF's internal blob-worker path.
+ * src/lib/workers/spawn.ts), not EmbedPDF's internal blob-worker path (that
+ * path hung in E0 — see docs/editor/EMBEDPDF_NOTES.md).
  *
- * `@embedpdf/engines`'s `EngineRunner` is a plain class: it listens for
- * `postMessage`d `ExecuteRequest`s and dispatches them onto whatever
- * `PdfEngine` is assigned to its `.engine` field, replying over
- * `self.postMessage`. It has no opinion about how that worker was spawned —
- * this is the "host EmbedPDF's engine-side runner ourselves" half of the E0b
- * brief. The "PdfEngine" we assign it is `pdfium-direct-engine`'s
- * `createPdfiumEngine` — the *direct* (non-worker-spawning) build, proven in
- * E0's Node script to do true redaction — run here, inside our worker, so it
- * never touches the main thread (invariant 2), and it never spawns a second,
- * EmbedPDF-owned worker of its own (the thing that hung in E0).
+ * E0b got as far as `pdfium-direct-engine`'s `createPdfiumEngine` running
+ * inside this worker via `EngineRunner` — but that wrapper hardcodes its
+ * `imageConverter` to `browserImageDataToBlobConverter`, which calls
+ * `document.createElement("canvas")` unconditionally. There is no `document`
+ * in a worker, so every Blob-producing method (`renderPage`,
+ * `renderThumbnail`, `renderPageAnnotation`, …) rejected with
+ * `ImageConverterError: document is not available`, forcing the E0b spike
+ * onto `renderPageRaw`/main-thread-canvas only.
+ *
+ * This assembles the same pieces `pdfium-direct-engine`'s `createPdfiumEngine`
+ * does internally (confirmed by reading its built source,
+ * `direct-engine-C8xTbxym.js`) by hand instead of using that wrapper, so a
+ * worker-safe `imageConverter` can be substituted:
+ *
+ *   fetch(wasmUrl) -> init({ wasmBinary }) -> new PdfiumNative(module, opts)
+ *   -> new PdfEngine(native, { imageConverter })
+ *
+ * `imageConverter` here uses `OffscreenCanvas` (available in a module worker,
+ * unlike `document`), so `renderPage`/`renderThumbnail`/plugin-driven
+ * rendering all work unchanged through the worker — EmbedPDF's standard
+ * annotation/redaction/render APIs no longer need the raw+main-thread-canvas
+ * workaround.
  *
  * Typechecked by `tsconfig.worker.json` (WebWorker lib, no DOM) — see
  * ADR-0005.
  */
 
-// Same-origin static asset — see the note in pdfium-engine.ts about why this
-// is a hardcoded path rather than `ENGINE_MANIFEST` for this spike.
-const PDFIUM_WASM_URL = new URL(
-  "/engines/pdfium@2.15.1/pdfium.wasm",
-  self.location.origin,
-).toString();
+/** `ImageConversionTypes` PDFium can ask for. `OffscreenCanvas.convertToBlob`
+ * supports png/jpeg/webp directly; "image/bmp" isn't a convertToBlob type at
+ * all (browserImageDataToBlobConverter builds one by hand for that case) —
+ * nothing in this editor requests bmp output, so it's left unsupported here
+ * rather than duplicating that byte-level encoder. */
+const offscreenImageConverter: ImageDataConverter<Blob> = async (
+  getImageData,
+  imageType = "image/png",
+  quality,
+) => {
+  if (imageType === "image/bmp") {
+    throw new Error(
+      "offscreenImageConverter: image/bmp output is not supported",
+    );
+  }
+  const pdfImage = getImageData();
+  const imageData = new ImageData(
+    pdfImage.data,
+    pdfImage.width,
+    pdfImage.height,
+  );
+  const canvas = new OffscreenCanvas(imageData.width, imageData.height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("offscreenImageConverter: 2d context unavailable");
+  }
+  ctx.putImageData(imageData, 0, 0);
+  return canvas.convertToBlob({ type: imageType, quality });
+};
 
 async function main() {
-  const runner = new EngineRunner();
-  runner.engine = await createPdfiumEngine(PDFIUM_WASM_URL, {
+  const wasmUrl = new URL(
+    `${ENGINE_MANIFEST.pdfium.baseUrl}pdfium.wasm`,
+    self.location.origin,
+  ).toString();
+
+  const response = await fetch(wasmUrl);
+  const wasmBinary = await response.arrayBuffer();
+  const pdfiumModule = await init({ wasmBinary });
+
+  const native = new PdfiumNative(pdfiumModule, {
     // Disables PDFium's embedded-font-fallback CDN entirely — invariant 1.
     // See docs/editor/EMBEDPDF_NOTES.md, "Font fallback".
     fontFallback: null,
-    // `pdfium-direct-engine`'s `imageConverter` is hardcoded to
-    // `browserImageDataToBlobConverter` (confirmed by reading
-    // direct-engine-C8xTbxym.js) — it always calls
-    // `document.createElement("canvas")`, with no worker-pool option at all
-    // (that option only exists on the *other* `createPdfiumEngine`, from
-    // `pdfium-worker-engine`, which spawns EmbedPDF's own blob worker — the
-    // thing that hung in E0). So any `PdfEngine` method that produces a
-    // `Blob` (`renderPage`, `renderThumbnail`, ...) throws "document is not
-    // available" when this engine runs inside a worker, as it does here.
-    // `renderPageRaw`/`renderPageRectRaw` sidestep `imageConverter`
-    // entirely — they hand back raw `ImageDataLike` pixels with no canvas
-    // encoding step — so the labs page uses those and draws to a `<canvas>`
-    // on the MAIN thread (invariant 2: DOM stays there). See
-    // docs/editor/EMBEDPDF_NOTES.md for the full writeup and what a real
-    // editor would need instead (a hand-built worker-side `PdfEngine` using
-    // the lower-level `PdfiumEngine`/`init()` classes, replicating what
-    // `pdfium-worker-engine`'s internal, never-imported worker does).
-    encoderPoolSize: 0,
   });
+  const engine = new PdfEngine(native, {
+    imageConverter: offscreenImageConverter,
+  });
+
+  const runner = new EngineRunner();
+  runner.engine = engine;
   runner.ready();
 }
 
