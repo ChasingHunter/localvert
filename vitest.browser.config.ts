@@ -21,6 +21,12 @@ export default defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
+  // Pre-bundled up front: otherwise Vite discovers them mid-run (via the PDF
+  // editor's browser tests), re-optimizes and reloads the page, which on a
+  // cold cache — every CI run — can kill whichever test file is loading.
+  optimizeDeps: {
+    include: ["@embedpdf/engines", "@embedpdf/pdfium"],
+  },
   server: {
     headers: {
       "Cross-Origin-Opener-Policy": "same-origin",
