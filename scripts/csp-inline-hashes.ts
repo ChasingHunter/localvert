@@ -70,7 +70,14 @@ export function injectMetaCsp(html: string, hashes: string[]): string {
     "'wasm-unsafe-eval'",
     ...uniqueHashes.map((hash) => `'${hash}'`),
   ];
-  const meta = `<meta ${META_MARKER} http-equiv="Content-Security-Policy" content="script-src ${sources.join(" ")}">`;
+  // worker-src must be set explicitly here, matching (never widening) the
+  // header layer's `worker-src 'self' blob:'` (public/_headers,
+  // docs/adr/0006). Per the CSP spec, an absent worker-src falls back to
+  // this SAME policy's script-src — which is hash-strict with no 'blob:'
+  // source — so without this, the meta layer's fallback silently vetoes any
+  // blob: Worker the header layer explicitly allows.
+  const content = `script-src ${sources.join(" ")}; worker-src 'self' blob:`;
+  const meta = `<meta ${META_MARKER} http-equiv="Content-Security-Policy" content="${content}">`;
 
   const withoutExistingMeta = html.replace(
     new RegExp(`\\s*<meta[^>]*${META_MARKER}[^>]*>`, "i"),

@@ -57,6 +57,9 @@ describe("injectMetaCsp", () => {
     expect(injected).toContain(
       "script-src 'self' 'wasm-unsafe-eval' 'sha256-AAA='",
     );
+    // worker-src must match, not fall back to, the header layer's policy —
+    // see docs/adr/0006 and the comment on injectMetaCsp.
+    expect(injected).toContain("worker-src 'self' blob:");
   });
 
   it("is idempotent: re-injecting replaces rather than duplicates the meta", () => {
