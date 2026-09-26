@@ -8,6 +8,13 @@ import { defineTool } from "@/lib/registry";
  * `ToolDefinition` but never dispatched to for an app-mode tool; the single
  * placeholder step below exists only to satisfy `defineTool`'s "at least one
  * step, unconditional last candidate" check.
+ *
+ * `app: "pdf-editor"` names the component by id rather than importing it —
+ * this file is reachable from every server-rendered page through the
+ * `src/tools/index.ts` barrel, so an `import()` of the (client) editor
+ * component here would register it as a client reference for every page,
+ * not just this tool's own. See `ToolDefinition.app`'s doc comment and
+ * `src/components/app-registry.tsx`, the one module allowed to import it.
  */
 export default defineTool({
   slug: "pdf-editor",
@@ -36,8 +43,5 @@ export default defineTool({
   batch: false,
 
   kind: "app",
-  app: () =>
-    import("@/components/editor/pdf-editor-app").then((mod) => ({
-      default: mod.PdfEditorApp,
-    })),
+  app: "pdf-editor",
 });

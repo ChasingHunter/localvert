@@ -155,17 +155,21 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
       wiring a virtualised multi-page viewport in this slice's timebox. Follow-up: multi-page
       scroll + thumbnail rail, zoom.
 - [x] E1b Unit 1 (2026-09-26): fixed a core-bundle leak — every `/tools/*` page was shipping the
-      full EmbedPDF/PDFium runtime (up to 299 KB gz, at the 300 KB budget ceiling) regardless of
-      slug, because `AppTool` resolved an app-mode tool's component generically at render time
-      (`TOOL_LOADERS[slug]().then(tool => tool.app())`). Fixed by giving the PDF editor its own
-      module-scope `next/dynamic()` const in `app-tool.tsx`, referenced directly in JSX (the same
-      pattern `ToolRunner` already uses for `OptionsForm`/`CropEditor`) — the heavy
-      `@embedpdf/pdfium`/wasm/CDN-font-fallback code is now confirmed absent from every page's
-      first load; `scripts/check-sizes.ts` gained a second forbidden-substring check (`@embedpdf`)
-      to guard the regression. **E1b Unit 2 (the EmbedPDF-plugin-based multi-page viewer this scope-down
-      caveat calls for) was NOT attempted in this slice** — see the note left in
-      `docs/editor/EMBEDPDF_NOTES.md`'s "E1b Unit 1 findings" section on a deeper, still-open
-      Turbopack/Next static-export chunking question worth resolving first.
+      full EmbedPDF/PDFium runtime regardless of slug because `AppTool` resolved an app-mode tool's
+      component generically at render time. The `app-tool.tsx` rework in this unit's first pass got
+      tool pages to 299 KB gz (under the 300 KB ceiling) but did not close the leak: the real cause
+      was `src/tools/pdf/pdf-editor.ts` (a tool *definition*, reachable from every server component
+      via the `src/tools/index.ts` barrel) containing `app: () => import("@/components/editor/
+      pdf-editor-app")`, which makes Next register that client component for every page the barrel
+      reaches — not just `/tools/pdf-editor`. Fixed for real (2026-09-26, same day) by making
+      `ToolDefinition.app` a plain string id (`AppId`) instead of a loader: a tool definition never
+      imports UI, and the id resolves to a real component only inside the new client-only
+      `src/components/app-registry.tsx`. Tool pages now measure ~156 KB gz, the home page ~134 KB
+      gz; `src/tools/registry.test.ts` scans every tool file for a stray `import(` of
+      `@/components/...` to guard the regression. `docs/editor/EMBEDPDF_NOTES.md`'s "E1b Unit 1
+      findings" section has a correction note — its original diagnosis (a Turbopack chunking quirk)
+      was wrong. **E1b Unit 2** (the EmbedPDF-plugin-based multi-page viewer the E1 scope-down
+      caveat calls for) still not attempted.
 - [ ] E2 Signatures (draw/type/upload; opt-in local-only saved signature) + form filling + flatten
 - [ ] E3 Page organizer: thumbnail grid — reorder, rotate, delete, insert blank, insert from PDF
 - [ ] E4 True redaction (verified by text/image extraction) + sanitize (metadata, JS, attachments)

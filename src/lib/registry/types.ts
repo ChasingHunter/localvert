@@ -1,5 +1,5 @@
-import type { ComponentType } from "react";
 import type { z } from "zod";
+import type { AppId } from "./apps";
 import type { Category } from "./categories";
 import type { FormatId } from "./formats";
 
@@ -190,12 +190,24 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
    */
   kind?: "job" | "app";
   /**
-   * Required iff `kind` is "app": lazily loads the tool's own component,
-   * rendered via `next/dynamic` with `ssr: false` (see `[slug]/page.tsx`) so
-   * its weight never lands in the tool page's first-load JS. Takes no props
-   * — an app-mode tool owns its entire UI, including its own dropzone.
+   * Required iff `kind` is "app": the id of this tool's own component,
+   * resolved to an actual (lazily-loaded, `ssr: false`) component only by
+   * `APP_COMPONENTS` in `src/components/app-registry.tsx` — a CLIENT module.
+   *
+   * A tool definition must never import UI directly. `src/tools/**` is
+   * imported by the `src/tools/index.ts` barrel, which server components
+   * (home, category and tool pages) import for their static listings; a tool
+   * file containing so much as an `import()` of a "use client" component
+   * makes Next register that component as a client reference for every page
+   * that reaches this file through the barrel — not just the one page that
+   * renders it — bundling the app's entire UI (here, `@embedpdf`/PDFium)
+   * into every tool page's first load regardless of slug. Naming the app by
+   * this string id instead keeps `src/tools/**` free of any `@/components`
+   * reference, so nothing pulls the component in transitively. See
+   * `defineTool`'s check that `app` is a known `AppId`, and
+   * `src/tools/registry.test.ts`'s scan for stray `import(`s.
    */
-  app?: () => Promise<{ default: ComponentType }>;
+  app?: AppId;
   outputName?: (inputName: string, opts: z.infer<S>) => string;
   /**
    * How many files this tool consumes and produces (ADR-0008). Defaults to

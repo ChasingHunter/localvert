@@ -1,9 +1,10 @@
 "use client";
 
-import dynamicImport from "next/dynamic";
+import { APP_COMPONENTS } from "@/components/app-registry";
+import type { AppId } from "@/lib/registry";
 
 interface AppToolProps {
-  slug: string;
+  appId: AppId;
 }
 
 /**
@@ -12,45 +13,14 @@ interface AppToolProps {
  * options form here — an app-mode tool owns its entire UI. See ADR-0009 and
  * `ToolDefinition.kind`.
  *
- * `PdfEditorApp` below is a module-scope `next/dynamic()` const referenced
- * directly in JSX — the exact same pattern as `ToolRunner`'s
- * `OptionsForm`/`CropEditor` (confirmed there to code-split correctly: their
- * chunks are absent from every page that doesn't render them). This file
- * originally resolved the component generically, through
- * `TOOL_LOADERS[slug]().then(tool => tool.app())` inside a per-render
- * `dynamic()` call keyed by a `Record` lookup — that measured as landing in
- * EVERY page's first load regardless of slug (up to 299 KB gz of the 300 KB
- * budget on a plain image-conversion page that never touches the editor,
- * confirmed again even after moving the `dynamic()` call to module scope
- * behind a `Record<string, ComponentType>` map). Next's dynamic-import
- * analysis needs the component referenced as a directly-named JSX tag bound
- * to its own `const X = dynamic(...)`, not resolved through a computed
- * lookup — otherwise it falls back to bundling the chunk into the
- * app-wide-shared bundle instead of splitting it per page. See
- * `docs/editor/EMBEDPDF_NOTES.md` and the `@embedpdf`/`localvert-engine:`
- * checks in `scripts/check-sizes.ts`, which fail the build if this
- * regresses.
- *
- * Adding a second `kind: "app"` tool needs its own `const X = dynamic(...)`
- * here, referenced the same direct way — there's no codegen for app-mode
- * tools yet (ADR-0009 calls that kind's tooling still-evolving), so this
- * stays a small hand-written `if`/`else if` chain rather than a generic
- * slug -> component map.
+ * Takes the tool's `appId` as a prop (the server page already has the tool
+ * loaded via `TOOLS_BY_SLUG`, so it passes `tool.app` straight through)
+ * rather than re-resolving a slug itself — the actual component lookup lives
+ * in `src/components/app-registry.tsx`, the only client module allowed to
+ * import an app-mode tool's UI. See that file's doc comment for why a tool
+ * definition names its app by id instead of importing the component.
  */
-const PdfEditorApp = dynamicImport(
-  () =>
-    import("@/components/editor/pdf-editor-app").then((mod) => ({
-      default: mod.PdfEditorApp,
-    })),
-  {
-    ssr: false,
-    loading: () => <p className="text-sm text-ink-muted">Loading editor…</p>,
-  },
-);
-
-export function AppTool({ slug }: AppToolProps) {
-  if (slug === "pdf-editor") {
-    return <PdfEditorApp />;
-  }
-  return <p className="text-sm text-danger">Unknown tool "{slug}".</p>;
+export function AppTool({ appId }: AppToolProps) {
+  const Component = APP_COMPONENTS[appId];
+  return <Component />;
 }

@@ -13,11 +13,12 @@ import { TOOLS, TOOLS_BY_SLUG } from "@/tools";
  * job-pipeline dropzone/job-list. `AppTool` (a small client component, same
  * as `ToolRunner` above) is imported directly, not via `next/dynamic` —
  * `next/dynamic`'s `ssr: false` only works from a Client Component, and this
- * page is a Server Component. The actual code-split boundary is
- * `TOOL_LOADERS[slug]()` then `tool.app()`, both called lazily *inside*
- * `AppTool`, so an app tool's weight (e.g. the PDF editor's `@embedpdf/*`
- * packages) never lands in this page's own first-load JS regardless — see
- * ADR-0009 and `app-tool.tsx`.
+ * page is a Server Component. This page passes `tool.app` (a string id) as a
+ * prop; the actual code-split boundary — `next/dynamic(..., {ssr: false})`
+ * on the tool's real component — lives in `src/components/app-registry.tsx`,
+ * a client-only module `AppTool` reads from, so an app tool's weight (e.g.
+ * the PDF editor's `@embedpdf/*` packages) never lands in this page's own
+ * first-load JS, nor in any other page's — see ADR-0009 and `app-tool.tsx`.
  */
 
 /** Same category as `tool`, excluding itself, capped for a tidy grid. */
@@ -86,8 +87,8 @@ export default async function ToolPage({ params }: PageProps) {
           <p className="text-ink-muted">{tool.description}</p>
         </div>
 
-        {tool.kind === "app" ? (
-          <AppTool slug={tool.slug} />
+        {tool.kind === "app" && tool.app ? (
+          <AppTool appId={tool.app} />
         ) : (
           <ToolRunner slug={tool.slug} />
         )}

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { APP_IDS } from "./apps";
 import { FORMATS } from "./formats";
 import type { ToolDefinition } from "./types";
 
@@ -66,8 +67,12 @@ export function defineTool<S extends z.ZodObject>(
   }
 
   const kind = def.kind ?? "job";
-  if (kind === "app" && !def.app) {
-    fail('kind "app" requires an "app" loader');
+  if (kind === "app") {
+    if (!def.app) {
+      fail('kind "app" requires an "app" id');
+    } else if (!(APP_IDS as readonly string[]).includes(def.app)) {
+      fail(`app "${def.app}" is not a known APP_IDS entry`);
+    }
   }
   if (kind === "job" && def.app) {
     fail('"app" is only allowed when kind is "app"');

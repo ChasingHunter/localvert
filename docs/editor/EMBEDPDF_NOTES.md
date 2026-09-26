@@ -580,6 +580,38 @@ also affects `CropEditor` already (its chunk is present on `crop-jpg.html` AND
 priced into the budget by coincidence rather than by design, not something
 this slice introduced.
 
+**Correction (2026-09-26): the diagnosis above was wrong.** The leak was
+never a Turbopack chunk-splitting quirk, and `app-tool.tsx`'s module-scope
+`next/dynamic()` const didn't fix it — it only got the page-observed number
+under budget by coincidence, on the same build where the real cause still
+existed. The actual root cause: `src/tools/pdf/pdf-editor.ts` (a tool
+*definition*, imported by every server component through the
+`src/tools/index.ts` barrel — home, category and tool pages all read it for
+their static listings) contained `app: () =>
+import("@/components/editor/pdf-editor-app")...`. A server component that
+statically reaches a module containing an `import()` of a "use client"
+component makes Next register that client component as a client reference
+for **every page that reaches the module**, not just the one page that
+renders it — regardless of `next/dynamic`, `useEffect`, `useMemo`, or JSX
+shape, which is why none of the five experiments above moved the number: all
+of them left `pdf-editor.ts`'s own `import()` in place, still reachable from
+the barrel every page imports. The fifth experiment (removing "EVERY
+statically-present `import()` targeting `@embedpdf`-heavy modules", including
+`pdf-editor.ts`'s) is what actually worked — this doc just filed it under
+"still open Turbopack question" instead of identifying it as the fix.
+
+The real fix (see `docs/adr/0009-pdf-editor.md` and the
+`fix(editor): tool definitions name their app instead of importing its ui`
+commit): a tool definition never imports UI. `ToolDefinition.app` is a plain
+string id (`AppId`, from `src/lib/registry/apps.ts`) instead of a loader
+function; the id resolves to a real, lazily-loaded component only inside
+`src/components/app-registry.tsx`, a client-only module `src/tools/**` never
+touches. `src/tools/registry.test.ts` now scans every tool file for a stray
+`import(` of `@/components/...` so this can't regress silently. With that in
+place, tool pages measure at ~156 KB gz (not the ~299 KB this doc's Unit 1
+claimed as fixed) — there was no "right at the edge, less headroom than
+baseline" situation; that was the leak, not fully closed.
+
 **Why Unit 2 (the `@embedpdf/core` + `plugin-*` viewer rewrite) wasn't
 attempted.** `@embedpdf/core` and its plugins reference `@embedpdf/models`
 value exports (`Task`, error codes, annotation enums) throughout their normal

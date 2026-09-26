@@ -1,3 +1,5 @@
+export type { AppId } from "./apps";
+export { APP_IDS } from "./apps";
 export type { Category, CategoryMeta } from "./categories";
 export { CATEGORIES, CATEGORY_META } from "./categories";
 export { defineTool } from "./define-tool";
