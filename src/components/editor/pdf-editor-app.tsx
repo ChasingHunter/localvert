@@ -6,6 +6,7 @@ import {
   type PluginBatchRegistrations,
   useRegistry,
 } from "@embedpdf/core/react";
+import type { PdfWidgetAnnoObject } from "@embedpdf/models";
 import { AnnotationPluginPackage } from "@embedpdf/plugin-annotation";
 import {
   AnnotationLayer,
@@ -59,7 +60,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dropzone } from "@/components/dropzone";
 import type { AcceptedFile } from "@/components/dropzone-logic";
 import { Button } from "@/components/ui/button";
+import { flattenExportedForms } from "@/lib/editor/flatten-forms";
 import { createPdfiumWorkerEngine } from "@/lib/editor/pdfium-engine";
+import { FormLayer, isFillableWidget } from "./form-layer";
 
 /**
  * The PDF editor's app-mode UI (ADR-0009), built on `@embedpdf/core`'s
@@ -325,6 +328,7 @@ function Editor({ documentId, fileName }: EditorProps) {
   const { provides: exportProvides } = useExport(documentId);
   const zoom = useZoom(documentId);
   const scroll = useScroll(documentId);
+  const { registry } = useRegistry();
 
   // The toolbar's pressed state now reflects the plugin's own activeToolId
   // (`annotation.state`), not a locally-tracked mirror -- so it can never
@@ -335,6 +339,30 @@ function Editor({ documentId, fileName }: EditorProps) {
   const [fontSize, setFontSize] = useState(16);
   const [exporting, setExporting] = useState(false);
   const stampInputRef = useRef<HTMLInputElement | null>(null);
+
+  // E2a — form filling. Tracks which page indexes currently have at least
+  // one fillable widget, reported up by each page's `FormLayer` once it
+  // loads (see that component's `onWidgetsLoaded`). The "Flatten forms"
+  // export checkbox only ever appears when this is non-empty — a document
+  // with no form fields never shows it.
+  const [pagesWithFields, setPagesWithFields] = useState<Set<number>>(
+    () => new Set(),
+  );
+  const handleWidgetsLoaded = useCallback(
+    (pageIndex: number, widgets: PdfWidgetAnnoObject[]) => {
+      const has = widgets.some(isFillableWidget);
+      setPagesWithFields((prev) => {
+        if (has === prev.has(pageIndex)) return prev;
+        const next = new Set(prev);
+        if (has) next.add(pageIndex);
+        else next.delete(pageIndex);
+        return next;
+      });
+    },
+    [],
+  );
+  const hasFormFields = pagesWithFields.size > 0;
+  const [flattenForms, setFlattenForms] = useState(false);
 
   // `history.provides.canUndo()`/`canRedo()` are plain methods, not reactive
   // state -- calling them doesn't subscribe this component to anything, so
@@ -441,7 +469,15 @@ function Editor({ documentId, fileName }: EditorProps) {
     if (!exportProvides) return;
     setExporting(true);
     try {
-      const bytes = await exportProvides.saveAsCopy().toPromise();
+      let bytes = await exportProvides.saveAsCopy().toPromise();
+      // Flattening runs on a SECOND, temporary document opened from these
+      // exported bytes (see flattenExportedForms's doc comment) — the
+      // user's open document, still on screen and still editable, is never
+      // touched by this.
+      const engine = registry?.getEngine();
+      if (flattenForms && engine) {
+        bytes = await flattenExportedForms(engine, bytes);
+      }
       const blob = new Blob([bytes], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const base = fileName.replace(/\.pdf$/i, "");
@@ -455,7 +491,7 @@ function Editor({ documentId, fileName }: EditorProps) {
     } finally {
       setExporting(false);
     }
-  }, [exportProvides, fileName]);
+  }, [exportProvides, fileName, flattenForms, registry]);
 
   const onWheel = useCallback(
     (e: React.WheelEvent<HTMLDivElement>) => {
@@ -510,10 +546,16 @@ function Editor({ documentId, fileName }: EditorProps) {
             documentId={documentId}
             pageIndex={layout.pageIndex}
           />
+          <FormLayer
+            documentId={documentId}
+            pageIndex={layout.pageIndex}
+            toolActive={activeTool !== null}
+            onWidgetsLoaded={handleWidgetsLoaded}
+          />
         </PagePointerProvider>
       </div>
     ),
-    [documentId],
+    [documentId, activeTool, handleWidgetsLoaded],
   );
 
   return (
@@ -626,6 +668,16 @@ function Editor({ documentId, fileName }: EditorProps) {
           >
             <Redo2 aria-hidden="true" />
           </Button>
+          {hasFormFields && (
+            <label className="flex items-center gap-1 text-xs text-ink-muted">
+              <input
+                type="checkbox"
+                checked={flattenForms}
+                onChange={(e) => setFlattenForms(e.target.checked)}
+              />
+              Flatten forms
+            </label>
+          )}
           <Button type="button" onClick={handleExport} disabled={exporting}>
             {exporting ? "Exporting…" : "Export PDF"}
           </Button>
