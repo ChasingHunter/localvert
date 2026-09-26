@@ -140,6 +140,29 @@ export function FormLayer({
     [engine, doc, page],
   );
 
+  // Radio buttons in the same group are separate widgets/controls, but only
+  // one may be checked at a time — that exclusivity has to be coordinated
+  // here, one level above each control's own local state (see
+  // `FormControl`'s doc comment for why local state exists at all). Keyed by
+  // `field.name` (the group), valued by the selected widget's id. Seeded
+  // from each group's already-checked widget once widgets load; a group
+  // with no widget checked yet is simply absent from the map.
+  const [radioSelection, setRadioSelection] = useState<Record<string, string>>(
+    {},
+  );
+  useEffect(() => {
+    const initial: Record<string, string> = {};
+    for (const widget of widgets) {
+      if (
+        widget.field.type === PDF_FORM_FIELD_TYPE.RADIOBUTTON &&
+        isWidgetChecked(widget)
+      ) {
+        initial[widget.field.name] = widget.id;
+      }
+    }
+    setRadioSelection(initial);
+  }, [widgets]);
+
   if (toolActive || widgets.length === 0) return null;
 
   return (
@@ -153,6 +176,13 @@ export function FormLayer({
           widget={widget}
           box={rectToCssBox(widget.rect, scale)}
           onCommit={(value) => commit(widget, value)}
+          radioSelected={radioSelection[widget.field.name] === widget.id}
+          onRadioSelect={() =>
+            setRadioSelection((prev) => ({
+              ...prev,
+              [widget.field.name]: widget.id,
+            }))
+          }
         />
       ))}
     </div>
@@ -163,13 +193,38 @@ interface FormControlProps {
   widget: PdfWidgetAnnoObject;
   box: { left: number; top: number; width: number; height: number };
   onCommit: (value: FormFieldValue) => void;
+  /** Whether this radio widget is the one selected in its group — lifted to
+   * `FormLayer` (see its doc comment) since selecting one must visibly
+   * uncheck its siblings, which no single control can do to another on its
+   * own. Ignored for every other field type. */
+  radioSelected: boolean;
+  onRadioSelect: () => void;
 }
 
 /** Renders the one control matching `widget.field.type`. Accessible label
  * text falls back to the field's alternate (tooltip) name, then its raw
  * name, since a name like "topmostSubform[0].field[3]" is what most
- * generated forms actually store. */
-function FormControl({ widget, box, onCommit }: FormControlProps) {
+ * generated forms actually store.
+ *
+ * Every control below keeps its OWN local state (`textDraft`,
+ * `checked`, `selectedIndex`), seeded from the widget's field state and
+ * updated immediately on user input, rather than rendering `field.value`/
+ * `isWidgetChecked(widget)`/`field.options` straight from props on every
+ * render. `FormLayer` only re-fetches the widget list once per document+
+ * page (see its own doc comment) — `engine.setFormFieldValue` mutates
+ * PDFium's live state, not the `widgets` array this component was handed,
+ * so a control mirroring that stale prop directly would visually snap back
+ * to its old value the instant React re-rendered it (exactly what broke
+ * `getByLabel("agree").check()` in the forms e2e spec: PDFium accepted the
+ * click, but the checkbox's own next render read the same never-updated
+ * `isWidgetChecked(widget)` and un-checked it again). */
+function FormControl({
+  widget,
+  box,
+  onCommit,
+  radioSelected,
+  onRadioSelect,
+}: FormControlProps) {
   const field = widget.field;
   const label = field.alternateName || field.name;
   const style: React.CSSProperties = {
@@ -242,14 +297,11 @@ function FormControl({ widget, box, onCommit }: FormControlProps) {
 
   if (field.type === PDF_FORM_FIELD_TYPE.CHECKBOX) {
     return (
-      <input
-        type="checkbox"
-        aria-label={label}
-        checked={isWidgetChecked(widget)}
+      <CheckboxControl
+        widget={widget}
+        label={label}
         style={style}
-        onChange={(e) =>
-          onCommit({ kind: "checked", checked: e.target.checked })
-        }
+        onCommit={onCommit}
       />
     );
   }
@@ -260,10 +312,13 @@ function FormControl({ widget, box, onCommit }: FormControlProps) {
         type="radio"
         name={field.name}
         aria-label={label}
-        checked={isWidgetChecked(widget)}
+        checked={radioSelected}
         style={style}
         onChange={(e) => {
-          if (e.target.checked) onCommit({ kind: "checked", checked: true });
+          if (e.target.checked) {
+            onRadioSelect();
+            onCommit({ kind: "checked", checked: true });
+          }
         }}
       />
     );
@@ -273,31 +328,106 @@ function FormControl({ widget, box, onCommit }: FormControlProps) {
     field.type === PDF_FORM_FIELD_TYPE.COMBOBOX ||
     field.type === PDF_FORM_FIELD_TYPE.LISTBOX
   ) {
-    const selectedIndex = field.options.findIndex((o) => o.isSelected);
     return (
-      <select
-        aria-label={label}
+      <SelectControl
+        widget={widget}
+        field={field}
+        label={label}
         multiple={field.type === PDF_FORM_FIELD_TYPE.LISTBOX}
-        value={selectedIndex >= 0 ? String(selectedIndex) : ""}
-        className="rounded-sm border border-border bg-surface/90 text-ink outline-none focus-visible:ring-1 focus-visible:ring-accent"
         style={style}
-        onChange={(e) => {
-          const index = Number(e.target.value);
-          onCommit({ kind: "selection", index, isSelected: true });
-        }}
-      >
-        <option value="" disabled hidden>
-          {" "}
-        </option>
-        {field.options.map((option, index) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: an option's index IS its identity here — `FormFieldValue`'s `selection` variant addresses options by index, and PDF form option lists don't reorder at runtime.
-          <option key={index} value={index}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        onCommit={onCommit}
+      />
     );
   }
 
   return null;
+}
+
+/** Split out from `FormControl` only so its own local `checked` state has a
+ * component to live in — see `FormControl`'s doc comment on why every
+ * control keeps one. */
+function CheckboxControl({
+  widget,
+  label,
+  style,
+  onCommit,
+}: {
+  widget: PdfWidgetAnnoObject;
+  label: string;
+  style: React.CSSProperties;
+  onCommit: (value: FormFieldValue) => void;
+}) {
+  const [checked, setChecked] = useState(() => isWidgetChecked(widget));
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resets only when the widget identity changes, same as `textDraft` above.
+  useEffect(() => {
+    setChecked(isWidgetChecked(widget));
+  }, [widget.id]);
+
+  return (
+    <input
+      type="checkbox"
+      aria-label={label}
+      checked={checked}
+      style={style}
+      onChange={(e) => {
+        setChecked(e.target.checked);
+        onCommit({ kind: "checked", checked: e.target.checked });
+      }}
+    />
+  );
+}
+
+/** Split out from `FormControl` for the same reason as `CheckboxControl`. */
+function SelectControl({
+  widget,
+  field,
+  label,
+  multiple,
+  style,
+  onCommit,
+}: {
+  widget: PdfWidgetAnnoObject;
+  field: Extract<
+    PdfWidgetAnnoObject["field"],
+    { type: PDF_FORM_FIELD_TYPE.COMBOBOX | PDF_FORM_FIELD_TYPE.LISTBOX }
+  >;
+  label: string;
+  multiple: boolean;
+  style: React.CSSProperties;
+  onCommit: (value: FormFieldValue) => void;
+}) {
+  const [selectedIndex, setSelectedIndex] = useState(() =>
+    field.options.findIndex((o) => o.isSelected),
+  );
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resets only when the widget identity changes, same as `textDraft` above.
+  useEffect(() => {
+    setSelectedIndex(field.options.findIndex((o) => o.isSelected));
+  }, [widget.id]);
+
+  return (
+    <select
+      aria-label={label}
+      multiple={multiple}
+      value={selectedIndex >= 0 ? String(selectedIndex) : ""}
+      className="rounded-sm border border-border bg-surface/90 text-ink outline-none focus-visible:ring-1 focus-visible:ring-accent"
+      style={style}
+      onChange={(e) => {
+        const index = Number(e.target.value);
+        setSelectedIndex(index);
+        onCommit({ kind: "selection", index, isSelected: true });
+      }}
+    >
+      <option value="" disabled hidden>
+        {" "}
+      </option>
+      {field.options.map((option, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: an option's index IS its identity here — `FormFieldValue`'s `selection` variant addresses options by index, and PDF form option lists don't reorder at runtime.
+        <option key={index} value={index}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
 }
