@@ -9,6 +9,7 @@ import cropPng from "@/tools/image/crop-png";
 import cropWebp from "@/tools/image/crop-webp";
 import heicToJpg from "@/tools/image/heic-to-jpg";
 import heicToPng from "@/tools/image/heic-to-png";
+import imageToText from "@/tools/image/image-to-text";
 import jpgToAvif from "@/tools/image/jpg-to-avif";
 import jpgToJxl from "@/tools/image/jpg-to-jxl";
 import jpgToPng from "@/tools/image/jpg-to-png";
@@ -42,6 +43,7 @@ import webpToSvg from "@/tools/image/webp-to-svg";
 import compressPdf from "@/tools/pdf/compress-pdf";
 import deletePdfPages from "@/tools/pdf/delete-pdf-pages";
 import extractPdfPages from "@/tools/pdf/extract-pdf-pages";
+import imageToSearchablePdf from "@/tools/pdf/image-to-searchable-pdf";
 import imagesToPdf from "@/tools/pdf/images-to-pdf";
 import mergePdf from "@/tools/pdf/merge-pdf";
 import pdfToJpg from "@/tools/pdf/pdf-to-jpg";
@@ -61,6 +63,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   cropWebp,
   heicToJpg,
   heicToPng,
+  imageToText,
   jpgToAvif,
   jpgToJxl,
   jpgToPng,
@@ -94,6 +97,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   compressPdf,
   deletePdfPages,
   extractPdfPages,
+  imageToSearchablePdf,
   imagesToPdf,
   mergePdf,
   pdfToJpg,
