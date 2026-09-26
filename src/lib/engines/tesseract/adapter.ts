@@ -422,7 +422,9 @@ async function runOcrPdf(
 
     const rendered = await pdfjsInstance.run({
       op: "render",
-      input,
+      // A fresh copy per page: pdfjs transfers the buffer it is given to its
+      // own worker, detaching it, so the next page's render would fail.
+      input: { kind: "bytes", bytes: sourceBytes.slice(0) },
       inputFormat: "pdf",
       outputFormat: "png",
       options: { pages: String(pageNumber), dpi: OCR_RENDER_DPI },
