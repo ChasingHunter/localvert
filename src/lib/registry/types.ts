@@ -102,7 +102,20 @@ export type Operation =
    * to step, and a `"files"` (one-to-many) result — pdfjs `render`'s output
    * for a multi-page document — has no such single-value handoff.
    */
-  | "ocrPdf";
+  | "ocrPdf"
+  /**
+   * pdf-lib only, `pdf-lib/adapter.ts`'s `runReplacePagesWithImages`. Never
+   * wired into a tool's `pipeline` (no `defineTool` uses it) -- it's called
+   * directly via `pool.run`, the same internal-only pattern
+   * `src/lib/editor/flatten-forms.ts`'s `flattenExportedForms` already uses
+   * for the PDF editor's own export step. Slice E4a (redaction): after
+   * `redactTextInRects`/`applyAllRedactions` remove a redacted page's text,
+   * this op replaces that page's content with a single rendered raster image
+   * (rendered in `pdfium.worker.ts`, never on the main thread) so hidden
+   * images/vector graphics under a marked box are gone too, not just the
+   * text.
+   */
+  | "replacePagesWithImages";
 
 /**
  * A pipeline step's input/output "format": either a real `FormatId` (bytes

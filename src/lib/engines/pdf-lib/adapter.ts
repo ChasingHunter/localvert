@@ -53,7 +53,12 @@ function supports(
     op === "protect" ||
     op === "unlock" ||
     op === "compress" ||
-    op === "flatten"
+    op === "flatten" ||
+    // E4a redaction flatten-to-images step -- see `Operation`'s doc comment
+    // on this op. Not reachable from any `defineTool` pipeline; listed here
+    // only so a direct `pool.run` call (like `flattenExportedForms`'s) can
+    // route to this adapter the same way every other op does.
+    op === "replacePagesWithImages"
   );
 }
 
@@ -142,6 +147,8 @@ async function run(task: EngineTask): Promise<EngineResult> {
         return await runCompress(task);
       case "flatten":
         return await runFlatten(task);
+      case "replacePagesWithImages":
+        return await runReplacePagesWithImages(task);
       default:
         throw new EngineError(
           "unsupported",
@@ -913,6 +920,147 @@ async function runFlatten(task: EngineTask): Promise<EngineResult> {
 
   doc.getForm().flatten();
   onProgress?.(1);
+
+  const outBytes = await doc.save();
+  return {
+    kind: "bytes",
+    bytes: outBytes.slice().buffer,
+    mime: FORMATS.pdf.mime,
+  };
+}
+
+/** One page's worth of `replacePagesWithImages` input: the page it replaces,
+ * and a rendered PNG (plus the pixel dimensions it was rendered at, used only
+ * to sanity-check the entry -- the page's own existing PDF-point size is what
+ * actually sizes the output page, so a redacted page keeps its original
+ * paper size regardless of render DPI). */
+export interface ReplacePageImage {
+  pageIndex: number;
+  /** PNG bytes -- `embedPng` below requires a real PNG, never raw pixels. */
+  bytes: ArrayBuffer;
+  width: number;
+  height: number;
+}
+
+/** Validates `options.images` before touching pdf-lib at all, so a caller
+ * mistake (bad shape, out-of-range index) surfaces as a clear `EngineError`
+ * rather than an opaque pdf-lib exception three calls deep. Exported for unit
+ * testing -- see `adapter.test.ts`. */
+export function parseReplacePageImages(
+  options: Readonly<Record<string, unknown>>,
+): ReplacePageImage[] {
+  const raw = options.images;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new EngineError(
+      "internal",
+      "replacePagesWithImages requires a non-empty `images` array",
+      { engine: metadata.id },
+    );
+  }
+  return raw.map((entry, i) => {
+    if (typeof entry !== "object" || entry === null) {
+      throw new EngineError(
+        "internal",
+        `replacePagesWithImages: images[${i}] is not an object`,
+        { engine: metadata.id },
+      );
+    }
+    const { pageIndex, bytes, width, height } = entry as Record<
+      string,
+      unknown
+    >;
+    if (
+      typeof pageIndex !== "number" ||
+      !Number.isInteger(pageIndex) ||
+      pageIndex < 0
+    ) {
+      throw new EngineError(
+        "internal",
+        `replacePagesWithImages: images[${i}].pageIndex must be a non-negative integer`,
+        { engine: metadata.id },
+      );
+    }
+    if (!(bytes instanceof ArrayBuffer) || bytes.byteLength === 0) {
+      throw new EngineError(
+        "internal",
+        `replacePagesWithImages: images[${i}].bytes must be a non-empty ArrayBuffer`,
+        { engine: metadata.id },
+      );
+    }
+    if (typeof width !== "number" || width <= 0) {
+      throw new EngineError(
+        "internal",
+        `replacePagesWithImages: images[${i}].width must be a positive number`,
+        { engine: metadata.id },
+      );
+    }
+    if (typeof height !== "number" || height <= 0) {
+      throw new EngineError(
+        "internal",
+        `replacePagesWithImages: images[${i}].height must be a positive number`,
+        { engine: metadata.id },
+      );
+    }
+    return { pageIndex, bytes, width, height };
+  });
+}
+
+/**
+ * replacePagesWithImages (pdf -> pdf, internal-only -- see `Operation`'s doc
+ * comment): bakes each named page down to a single full-page PNG, discarding
+ * that page's own content stream (and every annotation/vector/image object
+ * only it referenced) entirely. Used by the PDF editor's redaction "Apply"
+ * step (`src/lib/editor/flatten-redacted-pages.ts`) to remove content
+ * PDFium's text-only `redactTextInRects` can't reach -- images and vector
+ * graphics under a marked box. Each replaced page keeps its ORIGINAL
+ * PDF-point size (read off the page being replaced, before removal) --
+ * `images[].width`/`height` are the render's pixel dimensions, only used to
+ * validate the entry isn't empty, never to size the output page.
+ */
+async function runReplacePagesWithImages(
+  task: EngineTask,
+): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  const images = parseReplacePageImages(options);
+
+  const bytes = await inputToArrayBuffer(input);
+  signal.throwIfAborted();
+
+  const mod = await import("@cantoo/pdf-lib");
+  const doc = await loadPdf(mod, bytes);
+  const pageCount = doc.getPageCount();
+
+  for (const image of images) {
+    if (image.pageIndex >= pageCount) {
+      throw new EngineError(
+        "internal",
+        `replacePagesWithImages: pageIndex ${image.pageIndex} is out of range for a ${pageCount}-page document`,
+        { engine: metadata.id },
+      );
+    }
+  }
+
+  for (let i = 0; i < images.length; i++) {
+    signal.throwIfAborted();
+    const image = images[i];
+    if (!image) continue; // unreachable: guarded by `i < images.length`
+
+    const original = doc.getPage(image.pageIndex);
+    const { width: pageWidth, height: pageHeight } = original.getSize();
+    const png = await doc.embedPng(image.bytes);
+
+    doc.removePage(image.pageIndex);
+    const newPage = doc.insertPage(image.pageIndex, [pageWidth, pageHeight]);
+    newPage.drawImage(png, {
+      x: 0,
+      y: 0,
+      width: pageWidth,
+      height: pageHeight,
+    });
+    onProgress?.((i + 1) / images.length);
+  }
 
   const outBytes = await doc.save();
   return {

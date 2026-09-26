@@ -4,9 +4,10 @@ import { createPluginRegistration } from "@embedpdf/core";
 import {
   EmbedPDF,
   type PluginBatchRegistrations,
+  useDocumentState,
   useRegistry,
 } from "@embedpdf/core/react";
-import type { PdfWidgetAnnoObject } from "@embedpdf/models";
+import type { PdfWidgetAnnoObject, Rect } from "@embedpdf/models";
 import { AnnotationPluginPackage } from "@embedpdf/plugin-annotation";
 import {
   AnnotationLayer,
@@ -40,6 +41,7 @@ import { Viewport } from "@embedpdf/plugin-viewport/react";
 import { ZoomMode, ZoomPluginPackage } from "@embedpdf/plugin-zoom";
 import { useZoom } from "@embedpdf/plugin-zoom/react";
 import {
+  Eraser,
   Highlighter,
   ImagePlus,
   type LucideIcon,
@@ -63,8 +65,11 @@ import type { AcceptedFile } from "@/components/dropzone-logic";
 import { SignatureDialog } from "@/components/editor/signature-dialog";
 import { Button } from "@/components/ui/button";
 import { flattenExportedForms } from "@/lib/editor/flatten-forms";
+import { flattenRedactedPagesToImages } from "@/lib/editor/flatten-redacted-pages";
 import { createPdfiumWorkerEngine } from "@/lib/editor/pdfium-engine";
+import type { ReplacePageImage } from "@/lib/engines/pdf-lib/adapter";
 import { FormLayer, isFillableWidget } from "./form-layer";
+import { RedactionLayer, type RedactionMark } from "./redaction-layer";
 
 /**
  * The PDF editor's app-mode UI (ADR-0009), built on `@embedpdf/core`'s
@@ -330,6 +335,17 @@ function Editor({ documentId, fileName }: EditorProps) {
   const { provides: exportProvides } = useExport(documentId);
   const zoom = useZoom(documentId);
   const scroll = useScroll(documentId);
+  const documentManager = useDocumentManagerCapability();
+
+  // E4a -- true redaction. `registry.getEngine()` is the same bare `PdfEngine`
+  // `FormLayer` already reads this way (see that file's doc comment) --
+  // `redactTextInRects`/`applyAllRedactions`/`searchAllPages`/`renderPage`
+  // have no `@embedpdf/plugin-*` wrapper, so this talks to the engine
+  // directly, same as forms.
+  const { registry } = useRegistry();
+  const engine = registry?.getEngine() ?? null;
+  const documentState = useDocumentState(documentId);
+  const doc = documentState?.document ?? null;
 
   // The toolbar's pressed state now reflects the plugin's own activeToolId
   // (`annotation.state`), not a locally-tracked mirror -- so it can never
@@ -366,6 +382,140 @@ function Editor({ documentId, fileName }: EditorProps) {
   const hasFormFields = pagesWithFields.size > 0;
   const [flattenForms, setFlattenForms] = useState(false);
 
+  // E4a -- redaction marking. Keyed by page index; `Editor` (not
+  // `RedactionLayer`) owns this because "Apply redactions" needs every
+  // page's marks at once, and "Find & mark" adds marks with no per-page
+  // drag gesture at all. Ids are only ever compared for React's `key` /
+  // remove-by-id, so a monotonic counter (never reused, even across pages)
+  // is enough -- no uuid dependency needed.
+  const [redactMode, setRedactMode] = useState(false);
+  const [marks, setMarks] = useState<Record<number, RedactionMark[]>>({});
+  const nextMarkId = useRef(0);
+  const addMark = useCallback((pageIndex: number, rect: Rect) => {
+    const id = `mark-${nextMarkId.current++}`;
+    setMarks((prev) => ({
+      ...prev,
+      [pageIndex]: [...(prev[pageIndex] ?? []), { id, rect }],
+    }));
+  }, []);
+  const removeMark = useCallback((pageIndex: number, id: string) => {
+    setMarks((prev) => {
+      const existing = prev[pageIndex];
+      if (!existing) return prev;
+      return { ...prev, [pageIndex]: existing.filter((m) => m.id !== id) };
+    });
+  }, []);
+  const markCount = useMemo(
+    () => Object.values(marks).reduce((sum, list) => sum + list.length, 0),
+    [marks],
+  );
+
+  const [findText, setFindText] = useState("");
+  const [finding, setFinding] = useState(false);
+  const handleFindAndMark = useCallback(async () => {
+    if (!engine || !doc || findText.trim() === "") return;
+    setFinding(true);
+    try {
+      const { results } = await engine
+        .searchAllPages(doc, findText)
+        .toPromise();
+      for (const result of results) {
+        for (const rect of result.rects) {
+          addMark(result.pageIndex, rect);
+        }
+      }
+    } finally {
+      setFinding(false);
+    }
+  }, [engine, doc, findText, addMark]);
+
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [flattenRedactedToImages, setFlattenRedactedToImages] = useState(true);
+  const [applyingRedactions, setApplyingRedactions] = useState(false);
+  const applyRedactions = useCallback(async () => {
+    if (!engine || !doc || !exportProvides) return;
+    setApplyingRedactions(true);
+    try {
+      const pageIndices = Object.keys(marks)
+        .map(Number)
+        .filter((i) => (marks[i]?.length ?? 0) > 0);
+
+      for (const pageIndex of pageIndices) {
+        const page = doc.pages[pageIndex];
+        const rects = marks[pageIndex]?.map((m) => m.rect) ?? [];
+        if (!page || rects.length === 0) continue;
+        await engine
+          .redactTextInRects(doc, page, rects, { drawBlackBoxes: true })
+          .toPromise();
+        await engine.applyAllRedactions(doc, page).toPromise();
+      }
+
+      let bytes = await exportProvides.saveAsCopy().toPromise();
+
+      // Text-only: `redactTextInRects` removes TEXT under a marked box, but
+      // leaves an image or vector graphic underneath untouched. Rendering the
+      // (already text-redacted) page to a flat PNG and replacing the page's
+      // whole content with it removes those too -- at the cost of the page's
+      // text no longer being selectable. Rendered here via the SAME PDFium
+      // worker (`engine.renderPage`, `pdfium.worker.ts`'s
+      // `offscreenImageConverter`) that does every other engine call --
+      // never on the main thread (invariant 2).
+      if (flattenRedactedToImages && pageIndices.length > 0) {
+        const images: ReplacePageImage[] = [];
+        const DPI_SCALE = 200 / 72;
+        for (const pageIndex of pageIndices) {
+          const page = doc.pages[pageIndex];
+          if (!page) continue;
+          const blob = await engine
+            .renderPage(doc, page, {
+              scaleFactor: DPI_SCALE,
+              imageType: "image/png",
+            })
+            .toPromise();
+          const imageBytes = await blob.arrayBuffer();
+          images.push({
+            pageIndex,
+            bytes: imageBytes,
+            width: Math.round(page.size.width * DPI_SCALE),
+            height: Math.round(page.size.height * DPI_SCALE),
+          });
+        }
+        if (images.length > 0) {
+          bytes = await flattenRedactedPagesToImages(bytes, images);
+        }
+      }
+
+      setMarks({});
+      setConfirmOpen(false);
+
+      // No render-refresh API exists on the render plugin (checked --
+      // see docs/editor/EMBEDPDF_NOTES.md) to force the on-screen page to
+      // reflect content PDFium just changed underneath it. Re-opening the
+      // just-exported bytes as a fresh document is the documented fallback:
+      // `DocumentManagerCapability.openDocumentBuffer` (the same call
+      // `EditorShell` uses for the user's original file) replaces the active
+      // document, so every plugin (render, thumbnails, history) picks up the
+      // new content on its next render.
+      const provides = documentManager.provides;
+      if (provides) {
+        const { task } = await provides
+          .openDocumentBuffer({ buffer: bytes, name: fileName })
+          .toPromise();
+        await task.toPromise();
+      }
+    } finally {
+      setApplyingRedactions(false);
+    }
+  }, [
+    engine,
+    doc,
+    exportProvides,
+    marks,
+    flattenRedactedToImages,
+    documentManager.provides,
+    fileName,
+  ]);
+
   // `history.provides.canUndo()`/`canRedo()` are plain methods, not reactive
   // state -- calling them doesn't subscribe this component to anything, so
   // the Undo/Redo buttons would never re-render after an undo/redo/register
@@ -388,6 +538,11 @@ function Editor({ documentId, fileName }: EditorProps) {
         stampInputRef.current?.click();
         return;
       }
+      // Picking any annotation tool (or Select) leaves redact mode, the same
+      // way `RedactionLayer`'s own doc comment says the Redact button leaves
+      // every annotation tool -- the two gesture layers must never both want
+      // pointer events over the page at once.
+      setRedactMode(false);
       // No style context passed here: the style-defaults effect below fires
       // right after `activeTool` changes and pushes the current picker values
       // onto the tool via `setToolDefaults` — the mechanism that actually
@@ -396,6 +551,11 @@ function Editor({ documentId, fileName }: EditorProps) {
     },
     [annotation.provides],
   );
+
+  const enterRedactMode = useCallback(() => {
+    annotation.provides?.setActiveTool(null);
+    setRedactMode(true);
+  }, [annotation.provides]);
 
   // Pushes the style pickers onto the active tool's *defaults* whenever they
   // change, so the NEXT annotation created picks up the new color/stroke/font
@@ -586,13 +746,29 @@ function Editor({ documentId, fileName }: EditorProps) {
           <FormLayer
             documentId={documentId}
             pageIndex={layout.pageIndex}
-            toolActive={activeTool !== null}
+            toolActive={activeTool !== null || redactMode}
             onWidgetsLoaded={handleWidgetsLoaded}
+          />
+          <RedactionLayer
+            documentId={documentId}
+            pageIndex={layout.pageIndex}
+            active={redactMode}
+            marks={marks[layout.pageIndex] ?? []}
+            onAddMark={addMark}
+            onRemoveMark={removeMark}
           />
         </PagePointerProvider>
       </div>
     ),
-    [documentId, activeTool, handleWidgetsLoaded],
+    [
+      documentId,
+      activeTool,
+      redactMode,
+      marks,
+      handleWidgetsLoaded,
+      addMark,
+      removeMark,
+    ],
   );
 
   return (
@@ -625,6 +801,17 @@ function Editor({ documentId, fileName }: EditorProps) {
             <t.icon aria-hidden="true" />
           </Button>
         ))}
+
+        <Button
+          type="button"
+          variant={redactMode ? "default" : "outline"}
+          size="icon"
+          aria-label="Redact"
+          aria-pressed={redactMode}
+          onClick={enterRedactMode}
+        >
+          <Eraser aria-hidden="true" />
+        </Button>
 
         <Button
           type="button"
@@ -731,6 +918,52 @@ function Editor({ documentId, fileName }: EditorProps) {
         </div>
       </div>
 
+      {redactMode && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface p-2">
+          <label className="flex items-center gap-1 text-xs text-ink-muted">
+            Find &amp; mark
+            <input
+              type="text"
+              aria-label="Text to find and mark for redaction"
+              value={findText}
+              onChange={(e) => setFindText(e.target.value)}
+              className="w-40 rounded border border-border bg-canvas px-1 py-0.5 text-ink"
+            />
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleFindAndMark}
+            disabled={finding || findText.trim() === ""}
+          >
+            {finding ? "Searching…" : "Find & mark"}
+          </Button>
+          <span className="text-xs text-ink-muted">
+            {markCount} area{markCount === 1 ? "" : "s"} marked
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            className="ml-auto"
+            disabled={markCount === 0}
+            onClick={() => setConfirmOpen(true)}
+          >
+            Apply redactions
+          </Button>
+        </div>
+      )}
+
+      <ApplyRedactionsDialog
+        open={confirmOpen}
+        markCount={markCount}
+        flattenToImages={flattenRedactedToImages}
+        onFlattenToImagesChange={setFlattenRedactedToImages}
+        applying={applyingRedactions}
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={applyRedactions}
+      />
+
       <input
         ref={stampInputRef}
         type="file"
@@ -815,5 +1048,79 @@ function Editor({ documentId, fileName }: EditorProps) {
         </Viewport>
       </div>
     </div>
+  );
+}
+
+interface ApplyRedactionsDialogProps {
+  open: boolean;
+  markCount: number;
+  flattenToImages: boolean;
+  onFlattenToImagesChange: (value: boolean) => void;
+  applying: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+/** Confirms the permanent, undo-proof "Apply redactions" action -- a native
+ * `<dialog>`, same choice as `SignatureDialog` (no dialog primitive exists
+ * yet under `src/components/ui/`). */
+function ApplyRedactionsDialog({
+  open,
+  markCount,
+  flattenToImages,
+  onFlattenToImagesChange,
+  applying,
+  onCancel,
+  onConfirm,
+}: ApplyRedactionsDialogProps) {
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    else if (!open && dialog.open) dialog.close();
+  }, [open]);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className="rounded-md border border-border bg-surface p-4 text-ink backdrop:bg-black/50"
+      onCancel={(e) => {
+        e.preventDefault();
+        if (!applying) onCancel();
+      }}
+    >
+      <div className="flex max-w-sm flex-col gap-3">
+        <p className="text-sm font-medium">
+          Apply {markCount} redaction{markCount === 1 ? "" : "s"}?
+        </p>
+        <p className="text-sm text-ink-muted">
+          This permanently removes the marked content. It can&apos;t be undone.
+        </p>
+        <label className="flex items-start gap-2 text-sm text-ink-muted">
+          <input
+            type="checkbox"
+            checked={flattenToImages}
+            onChange={(e) => onFlattenToImagesChange(e.target.checked)}
+          />
+          Also flatten redacted pages to images (removes hidden images and
+          graphics under the boxes; text on those pages is no longer selectable)
+        </label>
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={applying}
+          >
+            Cancel
+          </Button>
+          <Button type="button" onClick={onConfirm} disabled={applying}>
+            {applying ? "Applying…" : "Apply redactions"}
+          </Button>
+        </div>
+      </div>
+    </dialog>
   );
 }
