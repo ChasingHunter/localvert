@@ -141,6 +141,21 @@ Goal: the image matrix people actually search for, fast and batched.
   - [ ] Multi-page scanned-PDF → searchable-PDF (render each page with
         pdfjs, OCR each, merge) — follow-up, not built yet
 
+## Phase 2.5 — PDF editor (ADR-0009)
+
+Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugins only).
+
+- [ ] E0 Spike (go/no-go): EmbedPDF v2 self-hosted wasm, engine in worker, zero CSP
+      violations / off-origin requests, open + annotate + export, redaction proven to remove text
+- [ ] E1 Viewer + annotate: /tools/pdf-editor — zoom, scroll, thumbnails; highlight/underline/
+      strike, ink, shapes, free text, images/stamps; undo/redo; save
+- [ ] E2 Signatures (draw/type/upload; opt-in local-only saved signature) + form filling + flatten
+- [ ] E3 Page organizer: thumbnail grid — reorder, rotate, delete, insert blank, insert from PDF
+- [ ] E4 True redaction (verified by text/image extraction) + sanitize (metadata, JS, attachments)
+- [ ] E5 Edit existing text: remove original text objects, insert replacement (font substitution
+      where glyphs missing; no reflow)
+- [ ] E6 Polish: search, select/copy, shortcuts, touch, print, local draft autosave
+
 ## Phase 3 — Video and audio
 
 - [ ] mediabunny (WebCodecs) as the primary path — mp4/webm/mov, audio extract,
