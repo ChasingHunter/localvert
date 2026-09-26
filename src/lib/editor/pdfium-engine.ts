@@ -27,6 +27,22 @@ import type { PdfEngine } from "@embedpdf/models";
  */
 export function createPdfiumWorkerEngine(): {
   engine: PdfEngine;
+  /**
+   * Resolves once `pdfium.worker.ts` has actually finished fetching +
+   * initializing wasm and called `EngineRunner.ready()` — the point where
+   * the worker's `self.onmessage` is first installed (see that file's
+   * `listen()`/`ready()`, called together). `WebWorkerEngine` proxies every
+   * method call (`openDocumentBuffer` included) as a bare `postMessage` with
+   * NO wait for readiness on the caller's side; a message sent before the
+   * worker installs its listener is simply never received (there is no
+   * built-in queueing), and the caller then waits forever for a response
+   * that will never come — no error, no rejection, just a permanent hang.
+   * Under normal use the worker's fetch is fast enough that nothing ever
+   * calls into the engine inside that window, but the window only shrinks,
+   * it never closes — anything that opens a document (or otherwise calls
+   * the engine) MUST await this first. See the wait in `pdf-editor-app.tsx`.
+   */
+  ready: Promise<void>;
   terminate(): void;
 } {
   const worker = new Worker(new URL("./pdfium.worker.ts", import.meta.url), {
@@ -44,6 +60,7 @@ export function createPdfiumWorkerEngine(): {
   const engine = new WebWorkerEngine(worker);
   return {
     engine,
+    ready: engine.readyTask.toPromise().then(() => undefined),
     terminate() {
       worker.terminate();
     },

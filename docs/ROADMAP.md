@@ -149,11 +149,8 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
       violations / off-origin requests, open + annotate + export, redaction proven to remove text
       (2026-09-26, GO — see docs/editor/EMBEDPDF_NOTES.md's E0b section)
 - [x] E1 Viewer + annotate: /tools/pdf-editor — highlight/underline/strike, ink, shapes, free
-      text, images/stamps; undo/redo; save (2026-09-26). Scoped down from the original
-      zoom/scroll/thumbnails viewer: one page at a time (prev/next), built directly on the bare
-      `PdfEngine` API rather than `@embedpdf/core` + `plugin-*`, given the size/complexity of
-      wiring a virtualised multi-page viewport in this slice's timebox. Follow-up: multi-page
-      scroll + thumbnail rail, zoom.
+      text, images/stamps; undo/redo; save (2026-09-26). First cut was one page at a time on the
+      bare `PdfEngine` API; replaced by E1b Unit 2 below.
 - [x] E1b Unit 1 (2026-09-26): fixed a core-bundle leak — every `/tools/*` page was shipping the
       full EmbedPDF/PDFium runtime regardless of slug because `AppTool` resolved an app-mode tool's
       component generically at render time. The `app-tool.tsx` rework in this unit's first pass got
@@ -168,8 +165,12 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
       gz; `src/tools/registry.test.ts` scans every tool file for a stray `import(` of
       `@/components/...` to guard the regression. `docs/editor/EMBEDPDF_NOTES.md`'s "E1b Unit 1
       findings" section has a correction note — its original diagnosis (a Turbopack chunking quirk)
-      was wrong. **E1b Unit 2** (the EmbedPDF-plugin-based multi-page viewer the E1 scope-down
-      caveat calls for) still not attempted.
+      was wrong.
+- [x] E1b Unit 2 (2026-09-27): the editor runs on `@embedpdf/core` + MIT plugins — virtualised
+      multi-page scroll, zoom (fit-width, +/−, Ctrl+wheel), thumbnail rail, text selection,
+      plugin-driven annotations and history, export — on our own PDFium worker. Pages unchanged
+      (tools ~156 KB gz, home ~134 KB). Eleven silent-failure gotchas found on the way are in
+      `docs/editor/EMBEDPDF_NOTES.md` ("v2 manual plugin composition").
 - [ ] E2 Signatures (draw/type/upload; opt-in local-only saved signature) + form filling + flatten
 - [ ] E3 Page organizer: thumbnail grid — reorder, rotate, delete, insert blank, insert from PDF
 - [ ] E4 True redaction (verified by text/image extraction) + sanitize (metadata, JS, attachments)

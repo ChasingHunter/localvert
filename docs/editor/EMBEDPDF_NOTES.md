@@ -626,3 +626,37 @@ committing to the plugin rewrite, and the root cause of the shared-chunk
 behavior above is worth understanding first — it may be a Turbopack
 version/config issue fixable at the framework-config level rather than
 something every future app-mode tool has to route around by hand.
+
+## v2 manual plugin composition — gotchas (E1b Unit 2, 2026-09-27)
+
+Composing `@embedpdf/core` + plugins by hand (no `@embedpdf/snippet`) works, but every one of
+these failed silently — no error, no rejection — and each cost a debugging round:
+
+1. **`<Viewport>` sets inline `height: 100%`.** An inline style beats a Tailwind class, and with
+   no definite-height parent the viewport collapses to 0. Pass `style={{ height }}` directly.
+2. **Zoom gates rendering on a non-zero viewport.** The zoom plugin's initial fit-width returns
+   early while `clientWidth/clientHeight` is 0, so no page ever mounts (a symptom of #1).
+3. **Thumbnail `<img>`s precede page `<img>`s in the DOM.** Select pages by a
+   `data-page-index` hook, never `img.first()`.
+4. **Playwright clicks outside the browser window are silently lost.** Scroll the target into
+   view and assert the point is inside `page.viewportSize()`.
+5. **`history.canUndo()` isn't reactive.** Subscribe to `onHistoryChange` to re-render.
+6. **`editAfterCreate` leaves focus in the FreeText editor.** A global Ctrl+Z handler must ignore
+   input/textarea/contenteditable targets.
+7. **`useAnnotation(id).provides` is a new object every render** (`forDocument(id)`). Never put
+   it in effect deps.
+8. **`setActiveTool` mid-drag ends the interaction handler**, whose `reset()` clears the text
+   selection's `dragStarted`, so text-markup never commits. Style pickers use
+   `setToolDefaults(toolId, patch)` instead; `setActiveTool`'s context argument is unused.
+9. **The rendered page `<img>` is natively draggable.** A highlight drag becomes an HTML5
+   drag: no `pointerup`, so `onEndSelection` never fires. `draggable={false}` on `RenderLayer`.
+10. **`WebWorkerEngine` calls hang if the worker isn't listening yet.** Our worker installs its
+    listener only after fetching + initialising wasm; await `engine.readyTask` before opening.
+11. **`<EmbedPDF>` remounts its whole subtree when plugins become ready** (it wraps children in
+    `<AutoMount>`, a different element type). A file input inside it can lose a file set at that
+    moment, along with any ref-held queue. Keep the Dropzone and the chosen file *above*
+    `<EmbedPDF>` and let the inner shell open it once `pluginsReady && engineReady`.
+
+Also: `next dev` can't load the PDFium worker (Turbopack's dev worker chunking breaks the
+Emscripten glue) and it appends a `nextjs-agent-rules` block to `CLAUDE.md`. Test the editor
+against a real `pnpm build` + `wrangler dev` only.

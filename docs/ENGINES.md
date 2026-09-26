@@ -215,6 +215,18 @@ decode/transform/encode shape), but its asset is still synced and its version
 still derived the same zero-maintenance way every job engine's is — see
 `scripts/gen-registry.ts`'s `EngineSourceMeta.kind`.
 
+The editor's UI (E1b Unit 2) is built on `@embedpdf/core` + a set of MIT
+plugin packages (`plugin-document-manager`, `plugin-viewport`,
+`plugin-scroll`, `plugin-render`, `plugin-zoom`, `plugin-thumbnail`,
+`plugin-selection`, `plugin-interaction-manager`, `plugin-annotation`,
+`plugin-history`, `plugin-export`, all pinned to `2.15.1`) rather than the
+bare `PdfEngine` calls E1 made directly. They're state/UI plugins around the
+same `pdfium` session engine above, not separate engines of their own — no
+new row per plugin. `@embedpdf/plugin-form` (no license field) and
+`@embedpdf/snippet`/`@embedpdf/react-pdf-viewer` (the batteries-included
+viewer, which depends on `plugin-form` transitively) are never installed —
+see `scripts/embedpdf-deps.test.ts`'s guard and ADR-0009.
+
 | Engine | Package | Version | License | Size | Placement | Isolation |
 |---|---|---|---|---|---|---|
 | `canvas` | _(native browser API)_ | — | — | 0 | native | no |

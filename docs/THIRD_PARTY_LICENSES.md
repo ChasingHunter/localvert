@@ -45,6 +45,7 @@ requires its own ADR and we must publish the modified source.
 | `tesseract`'s English language data (`@tesseract.js-data/eng`) | 1.0.0 | MIT | Balearica and tessdata contributors | https://github.com/naptha/tessdata |
 | `pdfium` (`@embedpdf/pdfium`, wraps PDFium/Chrome's PDF engine) | 2.15.1 | MIT (wrapper); PDFium itself is BSD-3-Clause / Apache-2.0 (dual, per file) | EmbedPDF contributors; Google (PDFium) | https://github.com/embedpdf/embed-pdf-viewer |
 | `@embedpdf/models`, `@embedpdf/engines` (the PDF editor's engine API and worker-side runner, `EngineRunner`/`WebWorkerEngine`/`PdfEngine`) | 2.15.1 | MIT | EmbedPDF contributors | https://github.com/embedpdf/embed-pdf-viewer |
+| `@embedpdf/core` + `plugin-document-manager`, `plugin-viewport`, `plugin-scroll`, `plugin-render`, `plugin-zoom`, `plugin-thumbnail`, `plugin-selection`, `plugin-interaction-manager`, `plugin-annotation`, `plugin-history`, `plugin-export` (the PDF editor's viewer UI) | 2.15.1 | MIT | EmbedPDF contributors | https://github.com/embedpdf/embed-pdf-viewer |
 
 `jsquash-webp`'s underlying codec is libwebp, Copyright 2010 Google Inc.,
 BSD-3-Clause (`node_modules/@jsquash/webp/codec/LICENSE.codec.md` after
