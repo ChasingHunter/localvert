@@ -80,7 +80,18 @@ test.describe("pdf-editor form filling (E2a)", () => {
 
     await page.getByLabel("name").fill("Ada");
     await page.getByLabel("agree").check();
-    await page.getByLabel("color").selectOption({ index: 2 });
+    // `exact: true`: the toolbar also has an "Annotation color" input and an
+    // "Ink color" select, both of which substring-match a plain
+    // `getByLabel("color")` (Playwright's default) once the form's own
+    // checkbox and dropdown actually render — this dropdown's own
+    // `aria-label` is exactly "color".
+    // By label, not `{ index: 2 }`: `SelectControl` (`form-layer.tsx`) renders
+    // a leading disabled/hidden placeholder `<option>` before the three real
+    // ones, so the DOM-order index of "Blue" is 3, not 2 — `{ index: 2 }`
+    // silently selected "Green" instead.
+    await page
+      .getByLabel("color", { exact: true })
+      .selectOption({ label: "Blue" });
 
     // The text field commits on a 250ms debounce (see FormLayer) or on
     // blur — `.fill()` leaves focus in the input, and clicking the next

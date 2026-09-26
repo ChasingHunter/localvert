@@ -330,7 +330,6 @@ function Editor({ documentId, fileName }: EditorProps) {
   const { provides: exportProvides } = useExport(documentId);
   const zoom = useZoom(documentId);
   const scroll = useScroll(documentId);
-  const { registry } = useRegistry();
 
   // The toolbar's pressed state now reflects the plugin's own activeToolId
   // (`annotation.state`), not a locally-tracked mirror -- so it can never
@@ -509,13 +508,12 @@ function Editor({ documentId, fileName }: EditorProps) {
     setExporting(true);
     try {
       let bytes = await exportProvides.saveAsCopy().toPromise();
-      // Flattening runs on a SECOND, temporary document opened from these
-      // exported bytes (see flattenExportedForms's doc comment) — the
+      // Runs pdf-lib's `flatten` op on these exported bytes in a fresh
+      // engine worker (see flattenExportedForms's doc comment) — the
       // user's open document, still on screen and still editable, is never
       // touched by this.
-      const engine = registry?.getEngine();
-      if (flattenForms && engine) {
-        bytes = await flattenExportedForms(engine, bytes);
+      if (flattenForms) {
+        bytes = await flattenExportedForms(bytes);
       }
       const blob = new Blob([bytes], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
@@ -530,7 +528,7 @@ function Editor({ documentId, fileName }: EditorProps) {
     } finally {
       setExporting(false);
     }
-  }, [exportProvides, fileName, flattenForms, registry]);
+  }, [exportProvides, fileName, flattenForms]);
 
   const onWheel = useCallback(
     (e: React.WheelEvent<HTMLDivElement>) => {
