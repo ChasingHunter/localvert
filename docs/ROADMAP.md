@@ -145,8 +145,9 @@ Goal: the image matrix people actually search for, fast and batched.
 
 Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugins only).
 
-- [ ] E0 Spike (go/no-go): EmbedPDF v2 self-hosted wasm, engine in worker, zero CSP
+- [x] E0 Spike (go/no-go): EmbedPDF v2 self-hosted wasm, engine in worker, zero CSP
       violations / off-origin requests, open + annotate + export, redaction proven to remove text
+      (2026-09-26, GO — see docs/editor/EMBEDPDF_NOTES.md's E0b section)
 - [ ] E1 Viewer + annotate: /tools/pdf-editor — zoom, scroll, thumbnails; highlight/underline/
       strike, ink, shapes, free text, images/stamps; undo/redo; save
 - [ ] E2 Signatures (draw/type/upload; opt-in local-only saved signature) + form filling + flatten

@@ -1,6 +1,11 @@
-# EmbedPDF v2 spike notes (ADR-0009, slice E0)
+# EmbedPDF v2 spike notes (ADR-0009, slices E0 + E0b)
 
-**Status: NO-GO within this timebox — one unresolved runtime blocker.**
+**E0b status (follow-up, same day): GO.** The blocker below was found and
+fixed. See "E0b — the fix and what's proven now" at the end of this file for
+the working setup; the rest of this file is E0's original writeup, left
+intact because the API notes and redaction proof are still exactly right.
+
+## E0 (original spike): NO-GO within this timebox — one unresolved runtime blocker.
 Everything about EmbedPDF v2's *design* checks out (self-hosted wasm, PDFium
 running only in a worker by construction, true content-level redaction, a
 clean build). But the one live, in-browser, real-worker run that was
@@ -344,3 +349,180 @@ with `pnpm remove`. `git status` should show only this file as new.
 - Confirm the `applyAllRedactions`-returns-`false` semantics against
   EmbedPDF's own source/docs before building a "mark then apply" redaction
   UI on top of it.
+
+## E0b — the fix and what's proven now
+
+The CSP gap (Unit 1 of the E0b brief) is fixed for real this time, as its own
+commit: `scripts/csp-inline-hashes.ts`'s `injectMetaCsp` now emits `worker-src
+'self' blob:` in the generated meta policy, matching the header layer. Tests
+updated in `scripts/csp-inline-hashes.test.ts`.
+
+**The real blocker was never the CSP gap** — it was which `createPdfiumEngine`
+E0 was calling. `@embedpdf/engines` ships **two** functions with that exact
+name, at different subpaths, that behave completely differently:
+
+- `@embedpdf/engines/pdfium-worker-engine` — spawns its **own** internal
+  `blob:` Worker (the big embedded-program-as-a-string trick E0 documented).
+  This is the one E0 tried, and it never got past "worker created, script
+  loaded" — likely something about *that specific* worker bootstrapping
+  (its own message-based `wasmInit` handshake), never fully diagnosed
+  because E0b took the other path instead once it was found. Not recommended
+  now that a working alternative exists.
+- `@embedpdf/engines/pdfium-direct-engine` — runs PDFium **wherever you call
+  it from**, with no worker of its own. E0 only ever called this one from
+  Node (bypassing browser worker semantics entirely) or, in its aborted
+  in-browser attempt, would have run it on the main thread — never inside a
+  worker WE control. E0b's fix: call it *from inside our own worker file*
+  instead. Nothing about the function cares who's calling it.
+
+**The generic proxy that makes this work, on both sides:**
+
+- `@embedpdf/engines`'s main barrel exports `EngineRunner` — a plain class,
+  not tied to any specific engine or worker-spawning mechanism. Construct it,
+  assign any `PdfEngine` instance to its `.engine` field, call `.ready()`; it
+  wires up `self.onmessage`/`postMessage` handling on whatever global scope
+  it's constructed in. It doesn't create the worker itself — it just *is* the
+  worker-side half of the protocol.
+- `@embedpdf/engines`'s `./worker` subpath exports `WebWorkerEngine` — the
+  main-thread half: a generic `PdfEngine` implementation that proxies every
+  call over `postMessage` to **any** `Worker` instance handed to its
+  constructor. Its own doc comment says exactly this: "this worker needs to
+  contain the running instance of EngineRunner" — no requirement about how
+  that worker was spawned.
+
+So the working wiring is: **our own worker, our own wasm fetch, EmbedPDF's
+`EngineRunner` + the *direct* `createPdfiumEngine` inside it, EmbedPDF's
+`WebWorkerEngine` wrapping our worker on the main thread.** No EmbedPDF-spawned
+worker anywhere; invariant 2 holds because PDFium runs in `pdfium.worker.ts`,
+never on the main thread.
+
+```
+main thread                          our worker (pdfium.worker.ts)
+──────────────                       ──────────────────────────────
+new Worker(new URL(                  const runner = new EngineRunner();
+  "./pdfium.worker.ts", ...))        runner.engine = await createPdfiumEngine(
+        │                              wasmUrl, { fontFallback: null, encoderPoolSize: 0 });
+        ▼                            runner.ready();
+new WebWorkerEngine(worker)                 (postMessage/self.onmessage,
+  → a PdfEngine you call directly           entirely internal to EngineRunner
+                                             and WebWorkerEngine)
+```
+
+**Second real finding, not in E0's Node script because it never ran inside a
+worker: the *direct* engine's image conversion needs `document`.**
+`pdfium-direct-engine`'s `imageConverter` is hardcoded (read straight out of
+its bundle, `direct-engine-C8xTbxym.js`) to `browserImageDataToBlobConverter`,
+which does `document.createElement("canvas")` unconditionally — there is no
+worker-pool option on this function at all (that option only exists on the
+*other* `createPdfiumEngine`, the one that spawns its own worker). Inside a
+Worker, `document` does not exist, so **every `Blob`-producing method**
+(`renderPage`, `renderThumbnail`, `renderPageAnnotation`, …) rejects with
+`ImageConverterError: document is not available`. `renderPageRaw` /
+`renderPageRectRaw` sidestep this entirely — they return raw `ImageDataLike`
+pixels with no encoding step — so the spike page uses those and draws to a
+`<canvas>` on the main thread (still invariant-2-clean: that's DOM work, not
+decode/encode work). **Open question for whoever builds the real editor**:
+either keep using the raw+main-thread-canvas path for on-screen rendering, or
+write a small worker-side image encoder (a `document`-free `OffscreenCanvas`
+one, a few lines) and pass it as this engine's `imageConverter` — nothing
+public exposes a way to override `pdfium-direct-engine`'s hardcoded one today,
+so that would mean not using `pdfium-direct-engine`'s `createPdfiumEngine`
+wrapper directly and instead assembling the same lower-level pieces
+(`PdfiumEngine` orchestrator + `init()`) by hand, the way E0's Node script did.
+
+**Per-criterion, from a real build + a real `wrangler dev` + a real headless
+Chromium run (`pnpm build`, `pnpm exec wrangler dev --config
+infra/wrangler.jsonc --port 8795 --local`, a throwaway Playwright script —
+not committed, per the brief):**
+
+(a) **Worker initialises, page 1 renders — GO.** Exactly one Worker created
+(the Turbopack-bundled `pdfium.worker.ts` chunk; no second, EmbedPDF-spawned
+worker). Screenshot confirmed non-blank: the rendered page shows both
+"public information" and "SECRET-4711" (pre-redaction render, as intended —
+the redaction happens after this render step in the flow).
+
+(b) **Zero `securitypolicyviolation` events — GO**, with the Unit 1 fix
+applied. (Re-confirmed: this is exactly the fix E0 had validated only by
+hand-patching built HTML; it is now real, in `scripts/csp-inline-hashes.ts`
+itself.)
+
+(c) **Zero requests to any origin other than `localhost:8795` — GO.**
+Checked via Playwright's `request` event on every navigation/fetch;
+`pdfium.wasm` is fetched from `/engines/pdfium@2.15.1/pdfium.wasm`,
+same-origin.
+
+(d) **Exported PDF opens in `@cantoo/pdf-lib` and has a `/Highlight` annot —
+GO.** Verified in a separate Node script against the downloaded export:
+`PDFDocument.load()` succeeds, and walking `page.node.Annots()` finds one
+annotation with `/Subtype /Highlight`.
+
+(e) **Redaction through the worker path — GO, and now confirmed live, closing
+the one gap E0's Node-only proof left open.** Fixture built client-side with
+"public information" and "SECRET-4711" as two separate text runs;
+`getPageTextRects` (through the worker) locates "SECRET-4711"'s rect;
+`redactTextInRects` + `saveAsCopy` (both through the worker) produce an export
+where the string is absent from **both** `pdfjs-dist`'s `getTextContent()`
+(returns only `"public information"`) **and** the raw exported bytes
+(latin1-decoded, searched directly — true content removal, not a black box
+over extractable text).
+
+**Build health, re-confirmed with the full spike page wired in:** `pnpm
+build` (`sync-engines && next build && csp-inline-hashes && build-sw`)
+completed in **68–82 seconds**, well under the brief's 3-minute ceiling, no
+Turbopack hang, across three separate rebuilds while iterating on the
+`encoderPoolSize`/`renderPageRaw` fix above. `pnpm check-sizes` passes:
+`/labs/pdf-editor.html` is 271.6 KB gz (91% of the 300 KB per-page budget) —
+tight, and only that tight because `@cantoo/pdf-lib` (fixture-building, spike
+-only) and `@embedpdf/models`'s enum import are dynamically imported inside
+the effect rather than at module scope. A static import of either pushed this
+one page to 518 KB gz. **A real editor tool will need the same lazy-import
+discipline the job pipeline already uses for engines** — this is a genuine
+budget-shaped constraint on the "app-mode" tool kind's design, not a spike
+artifact to shrug off.
+
+**What did NOT get engine.json / adapter.ts / registry wiring, and why:**
+`scripts/gen-registry.ts` requires `engine.json` and `adapter.ts` to be added
+together for any engine directory under `src/lib/engines/` — one without the
+other is a hard error. The PDFium session here doesn't fit the job-pipeline
+`EngineAdapter` contract (`supports(op, input, output)` / one-shot
+`run(task)`) at all — ADR-0009 already calls this out as the undesigned
+"app-mode tool kind." Writing a placeholder `adapter.ts` that's never called
+by the job pipeline, just to satisfy the generator, would have added a fake
+entry to the generated `EngineId` union for no benefit. Instead, this spike:
+hand-copied `pdfium.wasm` from `node_modules/@embedpdf/pdfium/dist/` straight
+into `public/engines/pdfium@2.15.1/` (bypassing `sync-engines`, which never
+touches a directory it doesn't have an `engine.json` for — confirmed: it
+survived three straight rebuilds untouched), and referenced that same-origin
+path as a hardcoded string constant in `pdfium.worker.ts`. **Left for E1 (or
+whoever designs the app-mode tool kind):** decide whether that kind gets its
+own `engine.json`/`adapter.ts`-shaped contract (a "stateful engine" variant
+the generator recognises), or whether PDFium's asset simply stays
+hand-managed outside that system entirely. Either way, the hand-copied wasm
+in `public/engines/` should be replaced with something `pnpm sync-engines`
+manages before this ships past spike/labs status — it currently has no
+version-bump story at all.
+
+**What's committed from E0b, alongside this file:**
+`src/lib/editor/pdfium.worker.ts` (the worker: `EngineRunner` +
+`pdfium-direct-engine`'s `createPdfiumEngine`), `src/lib/editor/
+pdfium-engine.ts` (main-thread `WebWorkerEngine` wrapper + `new Worker(new
+URL(...))` spawn), `src/app/labs/pdf-editor/page.tsx` (the proof-it-works
+page — not a registered tool, not linked from the app, safe to delete or
+promote whole once E1 designs the real editor), and `tsconfig.worker.json`
+gained `src/lib/editor/**/*.worker.ts` in its `include`. The four
+`@embedpdf/*` packages (`core`, `models`, `engines`, `pdfium`) are real
+`dependencies` now, not removed this time — GO, not NO-GO.
+
+**What's left, updated for E1:**
+
+- Design the app-mode tool kind (still open — see above).
+- Decide the `imageConverter`/`document`-in-a-worker question above before
+  building real on-screen rendering (raw+canvas is proven but means the main
+  thread does the RGBA→screen step every frame; fine for a static preview,
+  worth reconsidering for an interactive viewport).
+- Get `pdfium.wasm` under real asset management (`sync-engines`-driven or a
+  hand-rolled equivalent), not a hand-copied file.
+- Everything else E0 already left open (font-fallback story, `@embedpdf/core`
+  + `plugin-*` vs. bare-`PdfEngine` UI decision, the
+  `applyAllRedactions`-returns-`false` semantics) is unchanged by E0b and
+  still open.
