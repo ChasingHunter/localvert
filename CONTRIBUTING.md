@@ -58,6 +58,20 @@ GPL/LGPL — see [ADR-0002](docs/adr/0002-mit-license-gpl-isolation.md) for how
 that's kept separate from this repo's MIT code. An engine that fails the
 license check doesn't get integrated, however good the demo looks.
 
+## Dependency updates are automatic
+
+An engine or library bump needs no manual edits. `engine.json` never
+hand-writes a version or an asset size for a package we install — `pnpm gen`
+derives both from whatever's actually installed, so a Dependabot PR that
+bumps, say, `@jsquash/webp` changes nothing by hand: `pnpm sync-engines` picks
+up the new version on its own, `manifest.ts` (gitignored, regenerated on every
+install and build) reflects it, and CI's "generated files are up to date"
+check only fires on an actual forgotten registration, never a routine bump.
+Patch and minor dependency PRs auto-merge once required checks pass; a major
+bump is left open for a human to read the changelog first.
+
+Details in [docs/ENGINES.md](docs/ENGINES.md), "How engine assets ship".
+
 ## Invariants
 
 These hold for every change, not just new tools — see CLAUDE.md for the full

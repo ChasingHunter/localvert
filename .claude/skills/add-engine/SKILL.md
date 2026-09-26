@@ -50,11 +50,23 @@ Create `src/lib/engines/<name>/adapter.ts` implementing `EngineAdapter` from
 
 ## 4. Asset placement
 
-Set `location` to `"static"` or `"r2"` in the engine's `engine.json`, and add
-the two fields that go with it: `package` (the npm package the assets come
-from) and `files` (each one's `{from, to}` — `from` relative to that
-package's directory, `to` the filename it ships as). `version` must equal the
-installed package's version. Both fields are forbidden for `"native"`.
+**Never write `version` or `assets` by hand in `engine.json`** — both are
+derived so a later Dependabot bump of this engine's package needs zero manual
+edits. See docs/ENGINES.md, "How engine assets ship", for the full contract;
+in short:
+
+- `"static"`/`"r2"` — add `package` (the npm package the assets come from)
+  and `files` (each one's `{from, to}` — `from` relative to that package's
+  directory, `to` the filename it ships as). No `version` field: it's always
+  the installed `package`'s own version, and `pnpm gen` rejects one if
+  present.
+- `"bundled"` wrapping one npm package (not our own code) — add
+  `versionFrom: "<npm package>"` instead of `package`/`files`; the version is
+  derived from that package the same way.
+- `"native"`, or `"bundled"` for our own code with no dependency to track —
+  a hand-written `version` is required (there's nothing to derive it from).
+- Never add `assets` — `pnpm gen` computes each file's real size by `stat`ing
+  it in the source package directly.
 
 Then run `pnpm sync-engines` — no per-engine code to write, it reads
 `engine.json` and does the rest:
@@ -67,11 +79,18 @@ Then run `pnpm sync-engines` — no per-engine code to write, it reads
   file over the limit fails the command outright; an "r2" engine whose files
   are all comfortably under it gets a warning to reconsider "static".
 
-`sync-engines` also rewrites `engine.json`'s `assets` field to the real
-`{path, bytes}` list and runs `pnpm gen` — commit the result. `pnpm build`
-runs `sync-engines` automatically; a fresh "r2" engine still needs
-`pnpm upload-r2` (CI's deploy job does this) before its assets exist in the
-bucket.
+`sync-engines` chains into `pnpm gen`, which rebuilds `manifest.ts` (the
+generated `ENGINE_MANIFEST`, gitignored — never commit it) with the derived
+version and real asset sizes. Nothing to commit here beyond the `engine.json`
+you hand-wrote and the adapter. `pnpm build` runs `sync-engines`
+automatically; a fresh "r2" engine still needs `pnpm upload-r2` (CI's deploy
+job does this) before its assets exist in the bucket.
+
+If your adapter needs its own resolved `version` at runtime (any engine whose
+version is derived — i.e. not `"native"` and not a hand-written `"bundled"`),
+read it from `ENGINE_MANIFEST` (`import { ENGINE_MANIFEST } from "../manifest"`),
+not from `engine.json`'s cast — see any jsquash/heic/etc. adapter's `metadata`
+constant for the pattern.
 
 Both paths stay same-origin, so CSP and COEP are unaffected. Never load an
 engine from a third-party CDN.
