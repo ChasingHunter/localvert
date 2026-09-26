@@ -3,9 +3,13 @@
  * that owns them and into place for the build: `public/engines/<id>@<
  * version>/` for a "static" engine, `.engines-r2/xl/<id>@<version>/` (a
  * staging area, uploaded later by `scripts/upload-r2.ts`) for an "r2" one.
- * Then rewrites that engine's `engine.json` `assets` field to the real
- * `{path, bytes}` list, so `pnpm gen` (chained after this script by the
- * `sync-engines` npm script) can build an accurate `manifest.ts`.
+ * `<version>` is the installed `package`'s own version — never read from
+ * `engine.json`, which may not declare one for a "static"/"r2" engine (see
+ * `scripts/gen-registry.ts`) — so a Dependabot bump of an engine package
+ * changes nothing here but the destination path; no engine.json edit, no
+ * manual step. `pnpm gen` (chained after this script by the `sync-engines`
+ * npm script) computes the same version, plus each asset's real size, for
+ * `manifest.ts`.
  *
  * Placement is enforced mechanically (ADR-0003,
  * docs/adr/0003-workers-static-assets-over-pages.md): a "static" file over
@@ -15,7 +19,7 @@
  * Reads only `src/lib/engines/<id>/engine.json` — never `adapter.ts` — so,
  * like `scripts/gen-registry.ts`, this script never imports or executes our
  * own code. Unlike `gen-registry.ts` it does *not* validate the full
- * engine.json contract (id-matches-dirname, semver, asset shape, ...); that
+ * engine.json contract (id-matches-dirname, asset shape, ...); that
  * is `gen-registry.ts`'s job, and `pnpm sync-engines` always runs `pnpm gen`
  * right after, so a malformed engine.json still fails the same command. This
  * script only reads the handful of fields it actually needs.
@@ -39,7 +43,6 @@ import {
   readFileSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -82,10 +85,16 @@ export interface SourceFile {
   package?: string;
 }
 
-/** The handful of `engine.json` fields this script reads. Not the full contract — see the module doc comment. */
+/**
+ * The handful of `engine.json` fields this script reads. Not the full
+ * contract — see the module doc comment. No `version` field: for the
+ * "static"/"r2" engines this script actually processes, the version is
+ * always derived from the installed `package` (see `resolveVersion`), never
+ * read from `engine.json` — that's the whole point (a Dependabot bump of the
+ * package changes nothing here).
+ */
 export interface EngineSource {
   id: string;
-  version: string;
   location: "native" | "static" | "r2" | "bundled";
   package?: string;
   files?: readonly SourceFile[];
@@ -106,8 +115,6 @@ export interface SyncedEngine {
 
 export interface SyncResult {
   engines: readonly SyncedEngine[];
-  /** `engine.json` paths whose "assets" field was rewritten because it had changed. */
-  rewrittenEngineJson: readonly string[];
   /** `public/engines/<id>@<oldVersion>` directories removed as stale. */
   removedStaleDirs: readonly string[];
   warnings: readonly string[];
@@ -136,9 +143,6 @@ function readEngineSource(dir: string, id: string): EngineSource {
   }
   const j = parsed as Record<string, unknown>;
 
-  if (typeof j.version !== "string" || j.version === "") {
-    fail(`"version" must be a non-empty string`);
-  }
   if (
     j.location !== "native" &&
     j.location !== "static" &&
@@ -151,7 +155,7 @@ function readEngineSource(dir: string, id: string): EngineSource {
 
   // Neither ships assets of its own — nothing for this script to copy.
   if (location === "native" || location === "bundled") {
-    return { id, version: j.version as string, location };
+    return { id, location };
   }
 
   if (typeof j.package !== "string" || j.package === "") {
@@ -179,7 +183,6 @@ function readEngineSource(dir: string, id: string): EngineSource {
 
   return {
     id,
-    version: j.version as string,
     location,
     package: j.package as string,
     files,
@@ -242,9 +245,15 @@ function fail(message: string): never {
   throw new Error(`[sync-engines] ${message}`);
 }
 
-/** Where one engine's synced files land, by location. */
-function destRoot(rootDir: string, source: EngineSource): string {
-  const dirName = `${source.id}@${source.version}`;
+/** Where one engine's synced files land, by location. `version` is the
+ * installed package's own version (see `syncEngines`), never read from
+ * `engine.json`. */
+function destRoot(
+  rootDir: string,
+  source: EngineSource,
+  version: string,
+): string {
+  const dirName = `${source.id}@${version}`;
   return source.location === "static"
     ? join(rootDir, "public", "engines", dirName)
     : join(rootDir, ".engines-r2", "xl", dirName);
@@ -352,42 +361,23 @@ function copyEngineFiles(
 }
 
 /**
- * Rewrites `src/lib/engines/<id>/engine.json`'s `assets` field to `files`,
- * preserving every other field and its position (re-stringifying a parsed
- * object keeps existing keys in place; only `assets`'s value changes).
- * Writes only if the content actually changed, and returns whether it did —
- * an unconditional rewrite would touch mtimes and diff noisily on every run
- * even when nothing moved.
- */
-function rewriteAssets(
-  rootDir: string,
-  id: string,
-  files: readonly SyncedFile[],
-): boolean {
-  const enginePath = join(rootDir, "src", "lib", "engines", id, "engine.json");
-  const raw = readFileSync(enginePath, "utf8");
-  const parsed = JSON.parse(raw) as Record<string, unknown>;
-  parsed.assets = files.map((f) => ({ path: f.path, bytes: f.bytes }));
-  const next = `${JSON.stringify(parsed, null, 2)}\n`;
-  if (next === raw) return false;
-  writeFileSync(enginePath, next);
-  return true;
-}
-
-/**
  * Removes `public/engines/<id>@<oldVersion>` directories for every "static"
- * engine we own whose current version has moved on — otherwise a version
- * bump leaves the old build artifact behind forever, since nothing else ever
- * deletes it.
+ * engine we own whose current (installed) version has moved on — otherwise
+ * a version bump leaves the old build artifact behind forever, since nothing
+ * else ever deletes it. `versions` maps each source's `id` to its resolved
+ * version (see `syncEngines`).
  */
 function cleanStaleStaticDirs(
   rootDir: string,
   staticSources: readonly EngineSource[],
+  versions: ReadonlyMap<string, string>,
 ): string[] {
   const publicEnginesDir = join(rootDir, "public", "engines");
   if (!existsSync(publicEnginesDir)) return [];
 
-  const keep = new Set(staticSources.map((s) => `${s.id}@${s.version}`));
+  const keep = new Set(
+    staticSources.map((s) => `${s.id}@${versions.get(s.id)}`),
+  );
   const ownedIds = new Set(staticSources.map((s) => s.id));
   const removed: string[] = [];
 
@@ -423,20 +413,19 @@ export function syncEngines(
   );
 
   const engines: SyncedEngine[] = [];
-  const rewrittenEngineJson: string[] = [];
   const warnings: string[] = [];
+  const versions = new Map<string, string>();
 
   for (const source of sources) {
-    // `package` is guaranteed by `readEngineSource` for a static/r2 engine.
+    // `package` is guaranteed by `readEngineSource` for a static/r2 engine —
+    // its installed version *is* this engine's version, full stop. Nothing
+    // in engine.json to compare it against, so a dependency bump changes
+    // nothing here but this one lookup.
     const packageDir = resolvePackageDir(source.package as string, rootDir);
-    const installedVersion = readInstalledVersion(packageDir);
-    if (installedVersion !== source.version) {
-      fail(
-        `engine "${source.id}": engine.json version "${source.version}" does not match installed "${source.package}" version "${installedVersion}" — bump engine.json's "version" to match.`,
-      );
-    }
+    const version = readInstalledVersion(packageDir);
+    versions.set(source.id, version);
 
-    const dest = destRoot(rootDir, source);
+    const dest = destRoot(rootDir, source, version);
     const files = copyEngineFiles(
       rootDir,
       packageDir,
@@ -456,23 +445,19 @@ export function syncEngines(
 
     engines.push({
       id: source.id,
-      version: source.version,
+      version,
       location: source.location,
       files,
     });
-    if (rewriteAssets(rootDir, source.id, files)) {
-      rewrittenEngineJson.push(
-        join("src", "lib", "engines", source.id, "engine.json"),
-      );
-    }
   }
 
   const removedStaleDirs = cleanStaleStaticDirs(
     rootDir,
     sources.filter((s) => s.location === "static"),
+    versions,
   );
 
-  return { engines, rewrittenEngineJson, removedStaleDirs, warnings };
+  return { engines, removedStaleDirs, warnings };
 }
 
 // ---------------------------------------------------------------------------
@@ -509,10 +494,6 @@ function main(): void {
     );
   }
 
-  for (const path of result.rewrittenEngineJson) {
-    // biome-ignore lint/suspicious/noConsole: this is the script's own completion summary.
-    console.log(`sync-engines: updated ${path}'s "assets".`);
-  }
   for (const dir of result.removedStaleDirs) {
     // biome-ignore lint/suspicious/noConsole: this is the script's own completion summary.
     console.log(`sync-engines: removed stale public/engines/${dir}.`);

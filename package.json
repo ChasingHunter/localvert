@@ -21,11 +21,12 @@
     "test:browser": "pnpm sync-engines && vitest run --config vitest.browser.config.ts",
     "e2e": "playwright test",
     "gen": "node scripts/gen-registry.ts",
+    "postinstall": "pnpm gen",
     "sync-engines": "node scripts/sync-engines.ts && pnpm gen",
     "upload-r2": "node scripts/upload-r2.ts",
     "preview": "pnpm build && wrangler dev --config infra/wrangler.jsonc --port 8788",
     "check-sizes": "node scripts/check-sizes.ts",
-    "check": "pnpm typecheck && pnpm lint && pnpm test",
+    "check": "pnpm gen && pnpm typecheck && pnpm lint && pnpm test",
     "verify": "pnpm check && pnpm build && pnpm check-sizes"
   },
   "pnpm": {

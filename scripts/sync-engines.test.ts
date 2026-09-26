@@ -63,7 +63,13 @@ function writePackage(
   }
 }
 
-/** Writes a minimal `src/lib/engines/<id>/engine.json` (+ a stub `adapter.ts`, though this script never reads it). */
+/**
+ * Writes a minimal `src/lib/engines/<id>/engine.json` (+ a stub
+ * `adapter.ts`, though this script never reads it). No `version`/`assets` —
+ * this script (like the real engine.json contract for a "static"/"r2"
+ * engine) derives the version from the installed `package` and never reads
+ * or writes asset sizes.
+ */
 function writeEngine(
   rootDir: string,
   id: string,
@@ -75,12 +81,10 @@ function writeEngine(
     `${JSON.stringify(
       {
         id,
-        version: "1.0.0",
         license: "MIT",
         location: "static",
         needsIsolation: false,
         heavy: false,
-        assets: [],
         ...overrides,
       },
       null,
@@ -108,7 +112,6 @@ describe("syncEngines", () => {
 
     expect(result).toEqual({
       engines: [],
-      rewrittenEngineJson: [],
       removedStaleDirs: [],
       warnings: [],
     });
@@ -120,13 +123,12 @@ describe("syncEngines", () => {
     expect(syncEngines(dir).engines).toEqual([]);
   });
 
-  it("copies a static engine's files to public/engines/<id>@<version>/ and rewrites assets", () => {
+  it("copies a static engine's files to public/engines/<id>@<installedVersion>/", () => {
     const dir = makeTempDir();
     writePackage(dir, "@acme/foo", "1.2.3", {
       "codec/foo.wasm": "0123456789", // 10 bytes
     });
     writeEngine(dir, "foo", {
-      version: "1.2.3",
       package: "@acme/foo",
       files: [{ from: "codec/foo.wasm", to: "foo.wasm" }],
     });
@@ -144,14 +146,26 @@ describe("syncEngines", () => {
     expect(readFile(dir, "public/engines/foo@1.2.3/foo.wasm")).toBe(
       "0123456789",
     );
+  });
 
-    const rewritten = JSON.parse(
-      readFile(dir, "src/lib/engines/foo/engine.json"),
-    );
-    expect(rewritten.assets).toEqual([{ path: "foo.wasm", bytes: 10 }]);
-    expect(result.rewrittenEngineJson).toEqual([
-      join("src", "lib", "engines", "foo", "engine.json"),
-    ]);
+  it("a bump of the installed package's version alone moves the destination path — no engine.json edit", () => {
+    const dir = makeTempDir();
+    writePackage(dir, "@acme/foo", "1.2.3", { "foo.wasm": "old" });
+    writeEngine(dir, "foo", {
+      package: "@acme/foo",
+      files: [{ from: "foo.wasm", to: "foo.wasm" }],
+    });
+    syncEngines(dir);
+    expect(existsSync(join(dir, "public", "engines", "foo@1.2.3"))).toBe(true);
+
+    // Simulate a Dependabot bump: only node_modules changes.
+    writePackage(dir, "@acme/foo", "1.3.0", { "foo.wasm": "new" });
+    const result = syncEngines(dir);
+
+    expect(result.engines[0]?.version).toBe("1.3.0");
+    expect(readFile(dir, "public/engines/foo@1.3.0/foo.wasm")).toBe("new");
+    // The stale old-version dir is cleaned up too (existing behavior).
+    expect(existsSync(join(dir, "public", "engines", "foo@1.2.3"))).toBe(false);
   });
 
   it("a file entry's own \"package\" borrows from a different npm package than the engine's own", () => {
@@ -163,7 +177,6 @@ describe("syncEngines", () => {
       "data/foo.dat": "hello", // 5 bytes
     });
     writeEngine(dir, "foo", {
-      version: "1.2.3",
       package: "@acme/foo",
       files: [
         { from: "codec/foo.wasm", to: "foo.wasm" },
@@ -192,9 +205,8 @@ describe("syncEngines", () => {
       "0123456789",
     );
     expect(readFile(dir, "public/engines/foo@1.2.3/foo.dat")).toBe("hello");
-    // The version check only ever applies to the engine's own "package" —
-    // "@acme/foo-data" here is never version-checked against anything in
-    // engine.json, which has no field to check it against.
+    // The engine's own version comes from "@acme/foo" alone — "@acme/foo-data"
+    // (9.9.9) never factors into it.
   });
 
   it("copies an r2 engine's files to .engines-r2/xl/<id>@<version>/", () => {
@@ -203,7 +215,6 @@ describe("syncEngines", () => {
       "core/bar.wasm": "x".repeat(50),
     });
     writeEngine(dir, "bar", {
-      version: "0.9.0",
       location: "r2",
       package: "@acme/bar",
       files: [{ from: "core/bar.wasm", to: "bar.wasm" }],
@@ -276,20 +287,6 @@ describe("syncEngines", () => {
     );
   });
 
-  it("fails when the installed package version doesn't match engine.json's version", () => {
-    const dir = makeTempDir();
-    writePackage(dir, "@acme/foo", "2.0.0", { "foo.wasm": "abc" });
-    writeEngine(dir, "foo", {
-      version: "1.0.0",
-      package: "@acme/foo",
-      files: [{ from: "foo.wasm", to: "foo.wasm" }],
-    });
-
-    expect(() => syncEngines(dir)).toThrow(
-      /engine.json version "1.0.0" does not match installed "@acme\/foo" version "2.0.0"/,
-    );
-  });
-
   it("fails a static file over the (injectable) size limit, naming the file and the fix", () => {
     const dir = makeTempDir();
     writePackage(dir, "@acme/foo", "1.0.0", { "foo.wasm": "0123456789" }); // 10 bytes
@@ -335,7 +332,6 @@ describe("syncEngines", () => {
     writeFile(dir, "public/engines/foo@0.9.0/foo.wasm", "old");
     writePackage(dir, "@acme/foo", "1.0.0", { "foo.wasm": "new-bytes" });
     writeEngine(dir, "foo", {
-      version: "1.0.0",
       package: "@acme/foo",
       files: [{ from: "foo.wasm", to: "foo.wasm" }],
     });
@@ -359,21 +355,6 @@ describe("syncEngines", () => {
       true,
     );
   });
-
-  it("only rewrites engine.json when its assets actually changed — a second run is a no-op write", () => {
-    const dir = makeTempDir();
-    writePackage(dir, "@acme/foo", "1.0.0", { "foo.wasm": "0123456789" });
-    writeEngine(dir, "foo", {
-      package: "@acme/foo",
-      files: [{ from: "foo.wasm", to: "foo.wasm" }],
-    });
-
-    const first = syncEngines(dir);
-    expect(first.rewrittenEngineJson).toHaveLength(1);
-
-    const second = syncEngines(dir);
-    expect(second.rewrittenEngineJson).toEqual([]);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -385,7 +366,7 @@ describe("scanEngineSources", () => {
     expect(scanEngineSources(makeTempDir())).toEqual([]);
   });
 
-  it("reads id/version/location/package/files, sorted by id", () => {
+  it("reads id/location/package/files, sorted by id — no version field", () => {
     const dir = makeTempDir();
     writeEngine(dir, "zeta", { location: "native" });
     writeEngine(dir, "alpha", {
@@ -393,7 +374,9 @@ describe("scanEngineSources", () => {
       files: [{ from: "a.wasm", to: "a.wasm" }],
     });
 
-    expect(scanEngineSources(dir).map((s) => s.id)).toEqual(["alpha", "zeta"]);
+    const sources = scanEngineSources(dir);
+    expect(sources.map((s) => s.id)).toEqual(["alpha", "zeta"]);
+    expect(sources.every((s) => !("version" in s))).toBe(true);
   });
 });
 

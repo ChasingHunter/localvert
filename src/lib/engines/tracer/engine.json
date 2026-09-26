@@ -1,9 +1,8 @@
 {
   "id": "tracer",
-  "version": "1.0.2",
+  "versionFrom": "@image-tracer-ts/core",
   "license": "MIT",
   "location": "bundled",
   "needsIsolation": false,
-  "heavy": false,
-  "assets": []
+  "heavy": false
 }

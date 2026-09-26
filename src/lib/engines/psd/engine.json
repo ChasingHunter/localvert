@@ -1,9 +1,8 @@
 {
   "id": "psd",
-  "version": "0.4.0",
+  "versionFrom": "@webtoon/psd",
   "license": "MIT",
   "location": "bundled",
   "needsIsolation": false,
-  "heavy": false,
-  "assets": []
+  "heavy": false
 }

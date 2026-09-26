@@ -1,6 +1,5 @@
 {
   "id": "jsquash-webp",
-  "version": "1.5.0",
   "license": "Apache-2.0",
   "location": "static",
   "needsIsolation": false,
@@ -18,20 +17,6 @@
     {
       "from": "codec/enc/webp_enc_simd.wasm",
       "to": "webp_enc_simd.wasm"
-    }
-  ],
-  "assets": [
-    {
-      "path": "webp_dec.wasm",
-      "bytes": 137960
-    },
-    {
-      "path": "webp_enc_simd.wasm",
-      "bytes": 345584
-    },
-    {
-      "path": "webp_enc.wasm",
-      "bytes": 281261
     }
   ]
 }

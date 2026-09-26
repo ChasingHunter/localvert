@@ -1,6 +1,5 @@
 {
   "id": "jsquash-png",
-  "version": "3.1.1",
   "license": "Apache-2.0",
   "location": "static",
   "package": "@jsquash/png",
@@ -11,11 +10,5 @@
     }
   ],
   "needsIsolation": false,
-  "heavy": false,
-  "assets": [
-    {
-      "path": "squoosh_png_bg.wasm",
-      "bytes": 181088
-    }
-  ]
+  "heavy": false
 }

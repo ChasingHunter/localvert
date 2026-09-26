@@ -69,10 +69,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # `pnpm gen` lands in Phase 0.4. The registry barrels it writes
-      # (src/tools/index.ts, src/lib/engines/manifest.ts) are committed and
-      # reviewed as output, so a generator that would change them is a bug.
-      # Guarded on the script existing so this step is a no-op until then.
+      # `pnpm gen`'s registry barrels (src/tools/{index,loaders}.ts,
+      # src/lib/engines/{ids,loaders}.ts) are committed and reviewed as
+      # output, so a generator that would change them is a bug — a forgotten
+      # tool or engine registration. `src/lib/engines/manifest.ts` is *not*
+      # committed (gitignored): its version/asset-size fields are derived
+      # from installed npm packages (see docs/ENGINES.md, "How engine assets
+      # ship"), so it changes on every dependency bump by design — `postinstall`
+      # regenerates it right after this install step. Guarded on the script
+      # existing so this step is a no-op until `pnpm gen` lands.
       - name: Generated files are up to date
         run: |
           if [ -n "$(node -p "require('./package.json').scripts.gen || ''")" ]; then
@@ -82,8 +87,9 @@ jobs:
       - name: Build
         run: pnpm build
 
-      # `pnpm build` runs sync-engines (rewrites engine.json asset sizes) and
-      # gen. Any diff means someone forgot to commit their output.
+      # `pnpm build` runs sync-engines and gen, which only touch committed
+      # files (never manifest.ts, gitignored) when a tool/engine registration
+      # was forgotten — never on a plain dependency version bump.
       - name: Engine assets and generated files are committed
         run: git diff --exit-code
 

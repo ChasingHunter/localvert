@@ -16,6 +16,7 @@ import type { LibRawSettings, Metadata, RawImageData } from "libraw-wasm";
 import type { Operation, StepFormat } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
+import { ENGINE_MANIFEST } from "../manifest";
 import type {
   EngineAdapter,
   EngineInput,
@@ -65,7 +66,17 @@ type CreateLibRawModule = (
  * engine specifically: `libraw-wasm` wraps LibRaw, LGPL-2.1/CDDL-1.0 dual —
  * treated as copyleft, same arms-length rules as the GPL engines in that ADR.
  */
-const metadata = meta as Pick<
+const metadata = {
+  ...(meta as Pick<
+    EngineAdapter,
+    "id" | "license" | "location" | "needsIsolation" | "heavy"
+  >),
+  // engine.json has no "version" for this engine (derived from its
+  // installed npm package) -- pnpm gen resolves the real value into
+  // manifest.ts, which this reads at build time. See docs/ENGINES.md,
+  // "How engine assets ship".
+  version: ENGINE_MANIFEST.libraw.version,
+} satisfies Pick<
   EngineAdapter,
   "id" | "version" | "license" | "location" | "needsIsolation" | "heavy"
 >;

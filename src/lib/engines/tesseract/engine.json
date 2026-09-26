@@ -1,6 +1,5 @@
 {
   "id": "tesseract",
-  "version": "7.0.0",
   "license": "Apache-2.0",
   "location": "static",
   "needsIsolation": false,
@@ -39,36 +38,6 @@
       "from": "4.0.0_best_int/eng.traineddata.gz",
       "to": "eng.traineddata.gz",
       "package": "@tesseract.js-data/eng"
-    }
-  ],
-  "assets": [
-    {
-      "path": "eng.traineddata.gz",
-      "bytes": 2952873
-    },
-    {
-      "path": "tesseract-core-lstm.wasm",
-      "bytes": 2871085
-    },
-    {
-      "path": "tesseract-core-lstm.wasm.js",
-      "bytes": 3954181
-    },
-    {
-      "path": "tesseract-core-simd-lstm.wasm",
-      "bytes": 2871377
-    },
-    {
-      "path": "tesseract-core-simd-lstm.wasm.js",
-      "bytes": 3954569
-    },
-    {
-      "path": "tesseract.esm.min.js",
-      "bytes": 63220
-    },
-    {
-      "path": "worker.min.js",
-      "bytes": 111307
     }
   ]
 }

@@ -1,6 +1,5 @@
 {
   "id": "libraw",
-  "version": "1.6.0",
   "license": "ISC (wrapper) + LibRaw LGPL-2.1 / CDDL-1.0 dual",
   "location": "static",
   "needsIsolation": false,
@@ -14,16 +13,6 @@
     {
       "from": "dist/libraw.js",
       "to": "libraw.js"
-    }
-  ],
-  "assets": [
-    {
-      "path": "libraw.js",
-      "bytes": 69155
-    },
-    {
-      "path": "libraw.wasm",
-      "bytes": 1417725
     }
   ]
 }

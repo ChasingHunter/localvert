@@ -42,31 +42,49 @@ function writeFile(rootDir: string, relPath: string, content: string): void {
   writeFileSync(fullPath, content);
 }
 
+/** Writes a minimal npm package under `<rootDir>/node_modules/<pkg>/` with the given files' contents. */
+function writePackage(
+  rootDir: string,
+  pkg: string,
+  version: string,
+  files: Record<string, string>,
+): void {
+  writeFile(
+    rootDir,
+    `node_modules/${pkg}/package.json`,
+    JSON.stringify({ name: pkg, version }),
+  );
+  for (const [path, content] of Object.entries(files)) {
+    writeFile(rootDir, `node_modules/${pkg}/${path}`, content);
+  }
+}
+
 /**
  * Default `location` is "static", so `package`/`files` are included by
  * default too — otherwise every existing call site unrelated to those two
- * new fields would fail validation for the wrong reason. A caller that wants
- * a "native" engine.json (no `package`/`files` allowed) overrides both to
- * `undefined`, which `JSON.stringify` drops from the merged object entirely.
+ * fields would fail validation for the wrong reason. A caller that wants a
+ * "native" engine.json (no `package`/`files` allowed, hand-written
+ * `version`) overrides both to `undefined` (dropped by `JSON.stringify`) and
+ * sets `version`.
  */
 function engineJson(overrides: Partial<Record<string, unknown>> = {}): string {
   return JSON.stringify({
     id: "foo",
-    version: "1.0.0",
     license: "MIT",
     location: "static",
     package: "@acme/foo",
     files: [{ from: "foo.wasm", to: "foo.wasm" }],
     needsIsolation: false,
     heavy: false,
-    assets: [],
     ...overrides,
   });
 }
 
 /**
  * A fixture with two tools (in different categories) and three engines, one
- * per `location` — the shape most of the tests below scan.
+ * per `location` — the shape most of the tests below scan. Each static/r2
+ * engine gets a matching `node_modules` package so version/asset resolution
+ * has something real to read.
  */
 function makeFullFixture(): string {
   const dir = makeTempDir();
@@ -81,6 +99,7 @@ function makeFullFixture(): string {
     "src/lib/engines/bar/engine.json",
     engineJson({
       id: "bar",
+      version: "1.0.0",
       location: "native",
       package: undefined,
       files: undefined,
@@ -88,12 +107,15 @@ function makeFullFixture(): string {
   );
   writeFile(dir, "src/lib/engines/bar/adapter.ts", "export default {};\n");
 
+  writePackage(dir, "@acme/baz", "2.1.0", {
+    "codec/baz.wasm": "x".repeat(2000),
+    "codec/baz.data": "x".repeat(500),
+  });
   writeFile(
     dir,
     "src/lib/engines/baz/engine.json",
     engineJson({
       id: "baz",
-      version: "2.1.0",
       license: "Apache-2.0",
       location: "r2",
       package: "@acme/baz",
@@ -103,23 +125,17 @@ function makeFullFixture(): string {
       ],
       needsIsolation: true,
       heavy: true,
-      assets: [
-        { path: "baz.wasm", bytes: 2000 },
-        { path: "baz.data", bytes: 500 },
-      ],
     }),
   );
   writeFile(dir, "src/lib/engines/baz/adapter.ts", "export default {};\n");
 
+  writePackage(dir, "@acme/foo", "1.2.3", {
+    "foo.wasm": "x".repeat(1024),
+  });
   writeFile(
     dir,
     "src/lib/engines/foo/engine.json",
-    engineJson({
-      id: "foo",
-      version: "1.2.3",
-      location: "static",
-      assets: [{ path: "foo.wasm", bytes: 1024 }],
-    }),
+    engineJson({ id: "foo", location: "static" }),
   );
   writeFile(dir, "src/lib/engines/foo/adapter.ts", "export default {};\n");
 
@@ -200,25 +216,28 @@ describe("genToolsLoaders", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseEngineMeta", () => {
-  it("parses a valid engine.json", () => {
+  it('parses a valid static engine.json — no version, derived from "package"', () => {
     const meta = parseEngineMeta("foo", engineJson());
     expect(meta).toEqual({
       id: "foo",
-      version: "1.0.0",
       license: "MIT",
       location: "static",
       needsIsolation: false,
       heavy: false,
-      assets: [],
       package: "@acme/foo",
       files: [{ from: "foo.wasm", to: "foo.wasm" }],
     });
   });
 
-  it("parses a native engine.json with no package/files", () => {
+  it("parses a native engine.json with a hand-written version, no package/files", () => {
     const meta = parseEngineMeta(
       "foo",
-      engineJson({ location: "native", package: undefined, files: undefined }),
+      engineJson({
+        location: "native",
+        version: "1.0.0",
+        package: undefined,
+        files: undefined,
+      }),
     );
     expect(meta).toEqual({
       id: "foo",
@@ -227,7 +246,6 @@ describe("parseEngineMeta", () => {
       location: "native",
       needsIsolation: false,
       heavy: false,
-      assets: [],
     });
   });
 
@@ -243,16 +261,16 @@ describe("parseEngineMeta", () => {
     ).toThrow(/"location".*must be one of/);
   });
 
-  it("rejects a non-semver version", () => {
-    expect(() => parseEngineMeta("foo", engineJson({ version: "v1" }))).toThrow(
-      /"version".*must be semver/,
-    );
-  });
-
   it("rejects a non-boolean needsIsolation", () => {
     expect(() =>
       parseEngineMeta("foo", engineJson({ needsIsolation: "yes" })),
     ).toThrow(/"needsIsolation" must be a boolean/);
+  });
+
+  it('rejects "assets" in engine.json — sizes are computed, never hand-written', () => {
+    expect(() => parseEngineMeta("foo", engineJson({ assets: [] }))).toThrow(
+      /"assets" is not allowed in engine\.json/,
+    );
   });
 
   it.each(["static", "r2"] as const)(
@@ -314,7 +332,7 @@ describe("parseEngineMeta", () => {
     expect(() =>
       parseEngineMeta(
         "foo",
-        engineJson({ location: "native", files: undefined }),
+        engineJson({ location: "native", version: "1.0.0", files: undefined }),
       ),
     ).toThrow(/"package" is not allowed when location is "native"/);
   });
@@ -323,15 +341,78 @@ describe("parseEngineMeta", () => {
     expect(() =>
       parseEngineMeta(
         "foo",
-        engineJson({ location: "native", package: undefined }),
+        engineJson({
+          location: "native",
+          version: "1.0.0",
+          package: undefined,
+        }),
       ),
     ).toThrow(/"files" is not allowed when location is "native"/);
   });
 
-  it("parses a bundled engine.json with no package/files", () => {
+  it('rejects "version" when location is "static" — it is derived from "package"', () => {
+    expect(() =>
+      parseEngineMeta("foo", engineJson({ version: "1.0.0" })),
+    ).toThrow(/"version" is not allowed when location is "static"/);
+  });
+
+  it('rejects "versionFrom" when location is "static"', () => {
+    expect(() =>
+      parseEngineMeta("foo", engineJson({ versionFrom: "@acme/other" })),
+    ).toThrow(/"versionFrom" is not allowed when location is "static"/);
+  });
+
+  it("rejects a native engine.json with no version", () => {
+    expect(() =>
+      parseEngineMeta(
+        "foo",
+        engineJson({
+          location: "native",
+          package: undefined,
+          files: undefined,
+        }),
+      ),
+    ).toThrow(/"version".*must be semver/);
+  });
+
+  it("rejects a non-semver version on a native engine", () => {
+    expect(() =>
+      parseEngineMeta(
+        "foo",
+        engineJson({
+          location: "native",
+          version: "v1",
+          package: undefined,
+          files: undefined,
+        }),
+      ),
+    ).toThrow(/"version".*must be semver/);
+  });
+
+  it('forbids "versionFrom" when location is "native"', () => {
+    expect(() =>
+      parseEngineMeta(
+        "foo",
+        engineJson({
+          location: "native",
+          version: "1.0.0",
+          versionFrom: "@acme/other",
+          package: undefined,
+          files: undefined,
+        }),
+      ),
+    ).toThrow(/"versionFrom" is not allowed when location is "native"/);
+  });
+
+  it("parses a bundled engine.json with a hand-written version (our own code)", () => {
     const meta = parseEngineMeta(
       "foo",
-      engineJson({ location: "bundled", package: undefined, files: undefined }),
+      engineJson({
+        location: "bundled",
+        version: "1.0.0",
+        package: undefined,
+        files: undefined,
+      }),
     );
     expect(meta).toEqual({
       id: "foo",
@@ -340,15 +421,62 @@ describe("parseEngineMeta", () => {
       location: "bundled",
       needsIsolation: false,
       heavy: false,
-      assets: [],
     });
+  });
+
+  it('parses a bundled engine.json with "versionFrom" (tracks an npm package\'s version)', () => {
+    const meta = parseEngineMeta(
+      "foo",
+      engineJson({
+        location: "bundled",
+        versionFrom: "heic-to",
+        package: undefined,
+        files: undefined,
+      }),
+    );
+    expect(meta).toEqual({
+      id: "foo",
+      versionFrom: "heic-to",
+      license: "MIT",
+      location: "bundled",
+      needsIsolation: false,
+      heavy: false,
+    });
+  });
+
+  it('rejects a "bundled" engine.json with neither "version" nor "versionFrom"', () => {
+    expect(() =>
+      parseEngineMeta(
+        "foo",
+        engineJson({
+          location: "bundled",
+          package: undefined,
+          files: undefined,
+        }),
+      ),
+    ).toThrow(/needs exactly one of "version".*or "versionFrom"/);
+  });
+
+  it('rejects a "bundled" engine.json with both "version" and "versionFrom"', () => {
+    expect(() =>
+      parseEngineMeta(
+        "foo",
+        engineJson({
+          location: "bundled",
+          version: "1.0.0",
+          versionFrom: "heic-to",
+          package: undefined,
+          files: undefined,
+        }),
+      ),
+    ).toThrow(/needs exactly one of "version".*or "versionFrom"/);
   });
 
   it('forbids "package" when location is "bundled"', () => {
     expect(() =>
       parseEngineMeta(
         "foo",
-        engineJson({ location: "bundled", files: undefined }),
+        engineJson({ location: "bundled", version: "1.0.0", files: undefined }),
       ),
     ).toThrow(/"package" is not allowed when location is "bundled"/);
   });
@@ -357,7 +485,11 @@ describe("parseEngineMeta", () => {
     expect(() =>
       parseEngineMeta(
         "foo",
-        engineJson({ location: "bundled", package: undefined }),
+        engineJson({
+          location: "bundled",
+          version: "1.0.0",
+          package: undefined,
+        }),
       ),
     ).toThrow(/"files" is not allowed when location is "bundled"/);
   });
@@ -393,6 +525,139 @@ describe("scanEngines", () => {
   it("returns metadata for every valid engine directory, sorted", () => {
     const dir = makeFullFixture();
     expect(scanEngines(dir).map((m) => m.id)).toEqual(["bar", "baz", "foo"]);
+  });
+
+  it("derives a static engine's version from the installed package, not engine.json", () => {
+    const dir = makeFullFixture();
+    const foo = scanEngines(dir).find((m) => m.id === "foo");
+    expect(foo?.version).toBe("1.2.3");
+  });
+
+  it("derives an r2 engine's version from the installed package", () => {
+    const dir = makeFullFixture();
+    const baz = scanEngines(dir).find((m) => m.id === "baz");
+    expect(baz?.version).toBe("2.1.0");
+  });
+
+  it("computes a static engine's asset sizes by statting the source package, no copy needed", () => {
+    const dir = makeFullFixture();
+    const foo = scanEngines(dir).find((m) => m.id === "foo");
+    expect(foo?.assets).toEqual([{ path: "foo.wasm", bytes: 1024 }]);
+  });
+
+  it('computes bytes for a directory entry ("from"/"to" both ending in "/"), one asset per file', () => {
+    const dir = makeTempDir();
+    writePackage(dir, "@acme/cmaps-pkg", "1.0.0", {
+      "cmaps/Foo.bcmap": "cmap-a", // 6 bytes
+      "cmaps/nested/Bar.bcmap": "cmap-b", // 6 bytes
+    });
+    writeFile(
+      dir,
+      "src/lib/engines/withcmaps/engine.json",
+      engineJson({
+        id: "withcmaps",
+        package: "@acme/cmaps-pkg",
+        files: [{ from: "cmaps/", to: "cmaps/" }],
+      }),
+    );
+    writeFile(
+      dir,
+      "src/lib/engines/withcmaps/adapter.ts",
+      "export default {};\n",
+    );
+
+    const [meta] = scanEngines(dir);
+    if (!meta) throw new Error("expected exactly one engine");
+    expect(meta.version).toBe("1.0.0");
+    expect(meta.assets).toEqual([
+      { path: "cmaps/Foo.bcmap", bytes: 6 },
+      { path: "cmaps/nested/Bar.bcmap", bytes: 6 },
+    ]);
+  });
+
+  it("a file entry's own \"package\" borrows bytes from a different npm package than the engine's own", () => {
+    const dir = makeTempDir();
+    writePackage(dir, "@acme/foo", "1.2.3", { "codec/foo.wasm": "0123456789" });
+    writePackage(dir, "@acme/foo-data", "9.9.9", { "data/foo.dat": "hello" });
+    writeFile(
+      dir,
+      "src/lib/engines/foo/engine.json",
+      engineJson({
+        id: "foo",
+        package: "@acme/foo",
+        files: [
+          { from: "codec/foo.wasm", to: "foo.wasm" },
+          { from: "data/foo.dat", to: "foo.dat", package: "@acme/foo-data" },
+        ],
+      }),
+    );
+    writeFile(dir, "src/lib/engines/foo/adapter.ts", "export default {};\n");
+
+    const [meta] = scanEngines(dir);
+    if (!meta) throw new Error("expected exactly one engine");
+    // Version comes from the engine's own "package" alone — "@acme/foo-data"
+    // (9.9.9) never factors in.
+    expect(meta.version).toBe("1.2.3");
+    expect(meta.assets).toEqual([
+      { path: "foo.dat", bytes: 5 },
+      { path: "foo.wasm", bytes: 10 },
+    ]);
+  });
+
+  it("derives a bundled engine's version from \"versionFrom\"'s installed package", () => {
+    const dir = makeTempDir();
+    writePackage(dir, "heic-to", "1.5.2", { "index.js": "x" });
+    writeFile(
+      dir,
+      "src/lib/engines/heic/engine.json",
+      engineJson({
+        id: "heic",
+        location: "bundled",
+        versionFrom: "heic-to",
+        package: undefined,
+        files: undefined,
+      }),
+    );
+    writeFile(dir, "src/lib/engines/heic/adapter.ts", "export default {};\n");
+
+    const [meta] = scanEngines(dir);
+    if (!meta) throw new Error("expected exactly one engine");
+    expect(meta.version).toBe("1.5.2");
+    expect(meta.assets).toEqual([]);
+  });
+
+  it("keeps a bundled engine's hand-written version when there's no versionFrom", () => {
+    const dir = makeTempDir();
+    writeFile(
+      dir,
+      "src/lib/engines/exif/engine.json",
+      engineJson({
+        id: "exif",
+        location: "bundled",
+        version: "1.0.0",
+        package: undefined,
+        files: undefined,
+      }),
+    );
+    writeFile(dir, "src/lib/engines/exif/adapter.ts", "export default {};\n");
+
+    const [meta] = scanEngines(dir);
+    if (!meta) throw new Error("expected exactly one engine");
+    expect(meta.version).toBe("1.0.0");
+  });
+
+  it("fails with a clear message when the declared package isn't installed", () => {
+    const dir = makeTempDir();
+    writeFile(
+      dir,
+      "src/lib/engines/foo/engine.json",
+      engineJson({ id: "foo", package: "@acme/missing" }),
+    );
+    writeFile(dir, "src/lib/engines/foo/adapter.ts", "export default {};\n");
+
+    expect(() => scanEngines(dir)).toThrow(
+      /cannot resolve package "@acme\/missing"/,
+    );
   });
 });
 
@@ -459,7 +724,7 @@ describe("genEngineManifest", () => {
     expect(out).not.toContain("files");
   });
 
-  it("computes baseUrl per location", () => {
+  it("computes baseUrl per location, using the derived version", () => {
     const dir = makeFullFixture();
     const out = genEngineManifest(scanEngines(dir));
     expect(out).toContain('baseUrl: "",'); // bar: native

@@ -29,8 +29,10 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -180,31 +182,63 @@ export interface EngineSourceFileLike {
   package?: string;
 }
 
-/** Mirrors `src/lib/engines/meta.ts`'s `EngineMeta` — see that file for the shape this script must produce. */
-export interface EngineMetaLike {
+/**
+ * The structural shape of one `engine.json`, validated but not yet resolved:
+ * `version` isn't known for real yet for a "static"/"r2" engine (derived
+ * from the installed `package`'s version) or a "bundled" engine with
+ * `versionFrom` set (derived from *that* package). `scanEngines` is what
+ * resolves those, via `resolveVersion`/`resolveAssets` below, into the final
+ * `EngineMetaLike` `pnpm gen`'s codegen functions consume.
+ */
+export interface EngineSourceMeta {
   id: string;
-  version: string;
   license: string;
   location: EngineLocationLike;
   needsIsolation: boolean;
   heavy: boolean;
-  assets: readonly EngineAssetLike[];
-  /** Required iff `location` is "static" or "r2"; forbidden for "native" — see `parseEngineMeta`. */
+  /**
+   * Hand-written version. Required for "native" (wraps a browser API — no
+   * installed package to derive from) and for "bundled" without
+   * `versionFrom` (our own code, e.g. `exif`). Forbidden for "static"/"r2"
+   * (always derived from `package`) and for "bundled" with `versionFrom`.
+   */
+  version?: string;
+  /**
+   * "bundled" only: the npm package whose installed version stands in for
+   * this engine's own — e.g. `heic` ships our adapter around `heic-to`, so
+   * its version tracks `heic-to`'s. Mutually exclusive with `version`.
+   */
+  versionFrom?: string;
+  /** Required iff `location` is "static" or "r2"; forbidden otherwise — see `parseEngineMeta`. */
   package?: string;
   files?: readonly EngineSourceFileLike[];
+}
+
+/**
+ * `EngineSourceMeta` plus what `scanEngines` resolves against installed
+ * node_modules packages: a real semver `version` and each declared file's
+ * real size on disk. Mirrors `src/lib/engines/meta.ts`'s `EngineMeta` (with
+ * `assets` filled in) — this is the shape `genEngineIds`/`genEngineManifest`/
+ * `genEngineLoaders` consume.
+ */
+export interface EngineMetaLike extends EngineSourceMeta {
+  version: string;
+  assets: readonly EngineAssetLike[];
 }
 
 const SEMVER_RE = /^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$/;
 
 /**
  * Parses and validates one engine directory's `engine.json` text against
- * the contract in `src/lib/engines/meta.ts`. Throws a
- * `[gen-registry] engine "<dir>": ...` message on any violation.
+ * the contract in `src/lib/engines/meta.ts`. Pure structural validation only
+ * — no filesystem access beyond the string already read, so no `rootDir` is
+ * needed here. Throws a `[gen-registry] engine "<dir>": ...` message on any
+ * violation.
  */
 export function parseEngineMeta(
   dirName: string,
   rawJson: string,
-): EngineMetaLike {
+): EngineSourceMeta {
   const fail = (message: string): never => {
     throw new Error(`[gen-registry] engine "${dirName}": ${message}`);
   };
@@ -223,11 +257,6 @@ export function parseEngineMeta(
       `"id" ("${String(j.id)}") must match its directory name ("${dirName}")`,
     );
   }
-  if (typeof j.version !== "string" || !SEMVER_RE.test(j.version)) {
-    fail(
-      `"version" (${JSON.stringify(j.version)}) must be semver, e.g. "1.0.0"`,
-    );
-  }
   if (typeof j.license !== "string" || j.license.trim() === "") {
     fail(`"license" must be a non-empty string`);
   }
@@ -239,47 +268,37 @@ export function parseEngineMeta(
       `"location" (${JSON.stringify(j.location)}) must be one of ${ENGINE_LOCATIONS.join(", ")}`,
     );
   }
+  const location = j.location as EngineLocationLike;
   if (typeof j.needsIsolation !== "boolean") {
     fail(`"needsIsolation" must be a boolean`);
   }
   if (typeof j.heavy !== "boolean") {
     fail(`"heavy" must be a boolean`);
   }
-  if (!Array.isArray(j.assets)) {
-    fail(`"assets" must be an array`);
+  if (j.assets !== undefined) {
+    fail(
+      `"assets" is not allowed in engine.json — sizes are computed by "pnpm gen" from the installed package`,
+    );
   }
 
-  const assets: EngineAssetLike[] = (j.assets as unknown[]).map((a, i) => {
-    if (typeof a !== "object" || a === null) {
-      fail(`"assets[${i}]" must be an object`);
-    }
-    const asset = a as Record<string, unknown>;
-    if (typeof asset.path !== "string" || asset.path === "") {
-      fail(`"assets[${i}].path" must be a non-empty string`);
-    }
-    if (typeof asset.bytes !== "number" || asset.bytes < 0) {
-      fail(`"assets[${i}].bytes" must be a non-negative number`);
-    }
-    return { path: asset.path as string, bytes: asset.bytes as number };
-  });
-
   // "package"/"files" name the npm package and files `sync-engines` copies
-  // the engine's assets from — meaningless for "native" (wraps a browser
-  // API) or "bundled" (pure JS in the engine's own worker chunk), neither of
-  // which ships assets of its own.
-  const needsSource = j.location === "static" || j.location === "r2";
+  // the engine's assets from, and (for "static"/"r2") the package
+  // `scanEngines` derives this engine's version from — meaningless for
+  // "native" (wraps a browser API) or "bundled" (pure JS in the engine's own
+  // worker chunk), neither of which ships assets of its own.
+  const needsSource = location === "static" || location === "r2";
   let pkg: string | undefined;
   let files: EngineSourceFileLike[] | undefined;
 
   if (needsSource) {
     if (typeof j.package !== "string" || j.package.trim() === "") {
-      fail(`"package" is required when location is "${j.location}"`);
+      fail(`"package" is required when location is "${location}"`);
     }
     pkg = j.package as string;
 
     if (!Array.isArray(j.files) || j.files.length === 0) {
       fail(
-        `"files" is required when location is "${j.location}" and must be a non-empty array`,
+        `"files" is required when location is "${location}" and must be a non-empty array`,
       );
     }
     files = (j.files as unknown[]).map((f, i) => {
@@ -306,25 +325,218 @@ export function parseEngineMeta(
     });
   } else {
     if (j.package !== undefined) {
-      fail(`"package" is not allowed when location is "${j.location}"`);
+      fail(`"package" is not allowed when location is "${location}"`);
     }
     if (j.files !== undefined) {
-      fail(`"files" is not allowed when location is "${j.location}"`);
+      fail(`"files" is not allowed when location is "${location}"`);
     }
+  }
+
+  // version / versionFrom: exactly one source of truth per location.
+  let version: string | undefined;
+  let versionFrom: string | undefined;
+
+  if (needsSource) {
+    if (j.version !== undefined) {
+      fail(
+        `"version" is not allowed when location is "${location}" — it is derived from the installed "package" version`,
+      );
+    }
+    if (j.versionFrom !== undefined) {
+      fail(`"versionFrom" is not allowed when location is "${location}"`);
+    }
+  } else if (location === "bundled") {
+    const hasVersion = j.version !== undefined;
+    const hasVersionFrom = j.versionFrom !== undefined;
+    if (hasVersion === hasVersionFrom) {
+      fail(
+        `a "bundled" engine needs exactly one of "version" (our own code) or "versionFrom" (an npm package whose version we track)`,
+      );
+    }
+    if (hasVersion) {
+      if (typeof j.version !== "string" || !SEMVER_RE.test(j.version)) {
+        fail(
+          `"version" (${JSON.stringify(j.version)}) must be semver, e.g. "1.0.0"`,
+        );
+      }
+      version = j.version as string;
+    } else {
+      if (typeof j.versionFrom !== "string" || j.versionFrom.trim() === "") {
+        fail(`"versionFrom" must be a non-empty string`);
+      }
+      versionFrom = j.versionFrom as string;
+    }
+  } else {
+    // "native"
+    if (j.versionFrom !== undefined) {
+      fail(`"versionFrom" is not allowed when location is "native"`);
+    }
+    if (typeof j.version !== "string" || !SEMVER_RE.test(j.version)) {
+      fail(
+        `"version" (${JSON.stringify(j.version)}) must be semver, e.g. "1.0.0"`,
+      );
+    }
+    version = j.version as string;
   }
 
   return {
     id: j.id as string,
-    version: j.version as string,
     license: j.license as string,
-    location: j.location as EngineLocationLike,
+    location,
     needsIsolation: j.needsIsolation as boolean,
     heavy: j.heavy as boolean,
-    assets,
+    ...(version !== undefined ? { version } : {}),
+    ...(versionFrom !== undefined ? { versionFrom } : {}),
     ...(pkg !== undefined && files !== undefined
       ? { package: pkg, files }
       : {}),
   };
+}
+
+/**
+ * Resolves an installed npm package's on-disk directory. Tries
+ * `require.resolve` first (works even for a package whose `exports` map
+ * happens to expose `./package.json`); a package whose `exports` blocks that
+ * subpath makes `require.resolve` throw even though the package is
+ * installed, so this falls back to the conventional `node_modules/<pkg>`
+ * layout. `paths: [rootDir]` — rather than resolving relative to this
+ * script's own location — is what makes this testable against a fixture
+ * `rootDir` with its own `node_modules`.
+ *
+ * Duplicated from `scripts/sync-engines.ts`'s function of the same name
+ * rather than imported — see this file's module doc comment, "Static source
+ * scanning only", on why this script imports nothing of our own.
+ */
+export function resolvePackageDir(pkg: string, rootDir: string): string {
+  const require = createRequire(import.meta.url);
+  try {
+    return dirname(
+      require.resolve(`${pkg}/package.json`, { paths: [rootDir] }),
+    );
+  } catch {
+    const fallback = join(rootDir, "node_modules", ...pkg.split("/"));
+    if (existsSync(join(fallback, "package.json"))) return fallback;
+    throw new Error(
+      `[gen-registry] cannot resolve package "${pkg}" from ${rootDir} — is it installed?`,
+    );
+  }
+}
+
+function readInstalledVersion(packageDir: string, dirName: string): string {
+  const pkgJsonPath = join(packageDir, "package.json");
+  const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf8")) as {
+    version?: unknown;
+  };
+  if (typeof pkgJson.version !== "string") {
+    throw new Error(
+      `[gen-registry] engine "${dirName}": "${pkgJsonPath}" has no "version" field`,
+    );
+  }
+  return pkgJson.version;
+}
+
+/**
+ * Every regular file under `dir`, recursively, as POSIX-style paths relative
+ * to `dir` (e.g. `"nested/Foo.bcmap"`) — used by `resolveAssets`'s
+ * directory-entry support below, mirroring
+ * `scripts/sync-engines.ts`'s function of the same name.
+ */
+function listFilesRecursive(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      for (const rel of listFilesRecursive(join(dir, entry.name))) {
+        out.push(`${entry.name}/${rel}`);
+      }
+    } else if (entry.isFile()) {
+      out.push(entry.name);
+    }
+  }
+  return out;
+}
+
+/**
+ * Resolves one engine's real version: hand-written for "native" and for
+ * "bundled" without `versionFrom`; otherwise read off the installed npm
+ * package's own `package.json` (`package` for "static"/"r2", `versionFrom`
+ * for "bundled" with it set).
+ */
+function resolveVersion(
+  dirName: string,
+  source: EngineSourceMeta,
+  rootDir: string,
+): string {
+  if (source.location === "static" || source.location === "r2") {
+    return readInstalledVersion(
+      resolvePackageDir(source.package as string, rootDir),
+      dirName,
+    );
+  }
+  if (source.location === "bundled" && source.versionFrom !== undefined) {
+    return readInstalledVersion(
+      resolvePackageDir(source.versionFrom, rootDir),
+      dirName,
+    );
+  }
+  // "native", or "bundled" without versionFrom — parseEngineMeta guarantees
+  // `version` is set in both remaining cases.
+  return source.version as string;
+}
+
+/**
+ * Resolves one "static"/"r2" engine's real asset sizes by `stat`ing each
+ * declared file directly in its source npm package — no copying needed, so
+ * this can run before (or without) `pnpm sync-engines`. Empty for "native"/
+ * "bundled", which ship no assets of their own. Mirrors
+ * `scripts/sync-engines.ts`'s `copyEngineFiles`, minus the actual copy.
+ */
+function resolveAssets(
+  dirName: string,
+  source: EngineSourceMeta,
+  rootDir: string,
+): EngineAssetLike[] {
+  if (source.location !== "static" && source.location !== "r2") return [];
+
+  const fail = (message: string): never => {
+    throw new Error(`[gen-registry] engine "${dirName}": ${message}`);
+  };
+
+  const packageDir = resolvePackageDir(source.package as string, rootDir);
+  const packageDirs = new Map<string, string>([
+    [source.package as string, packageDir],
+  ]);
+  const resolveFilePackageDir = (fileSource: EngineSourceFileLike): string => {
+    if (fileSource.package === undefined) return packageDir;
+    const cached = packageDirs.get(fileSource.package);
+    if (cached) return cached;
+    const resolved = resolvePackageDir(fileSource.package, rootDir);
+    packageDirs.set(fileSource.package, resolved);
+    return resolved;
+  };
+
+  const assets: EngineAssetLike[] = [];
+  for (const fileSource of source.files ?? []) {
+    const { from, to } = fileSource;
+    if (from.endsWith("/") !== to.endsWith("/")) {
+      fail(
+        `a directory entry's "from" and "to" must both end with "/" (got from="${from}", to="${to}")`,
+      );
+    }
+    const fromPackageDir = resolveFilePackageDir(fileSource);
+
+    if (from.endsWith("/")) {
+      const srcDir = join(fromPackageDir, ...from.split("/"));
+      for (const rel of listFilesRecursive(srcDir)) {
+        const bytes = statSync(join(srcDir, ...rel.split("/"))).size;
+        assets.push({ path: `${to}${rel}`, bytes });
+      }
+      continue;
+    }
+
+    const bytes = statSync(join(fromPackageDir, ...from.split("/"))).size;
+    assets.push({ path: to, bytes });
+  }
+  return assets.sort((a, b) => a.path.localeCompare(b.path));
 }
 
 /**
@@ -382,7 +594,10 @@ export function scanEngines(rootDir: string): EngineMetaLike[] {
     }
 
     const rawJson = readFileSync(join(dir, "engine.json"), "utf8");
-    metas.push(parseEngineMeta(dirName, rawJson));
+    const source = parseEngineMeta(dirName, rawJson);
+    const version = resolveVersion(dirName, source, rootDir);
+    const assets = resolveAssets(dirName, source, rootDir);
+    metas.push({ ...source, version, assets });
   }
 
   assertNoDuplicateIds(metas);

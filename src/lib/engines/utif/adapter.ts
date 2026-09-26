@@ -2,6 +2,7 @@ import { decode, decodeImage, toRGBA8 } from "utif2";
 import type { Operation, StepFormat } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
+import { ENGINE_MANIFEST } from "../manifest";
 import type {
   EngineAdapter,
   EngineInput,
@@ -16,7 +17,17 @@ import meta from "./engine.json";
  * `engine.json` is the single source of truth for this adapter's metadata —
  * see the identical cast in `../canvas/adapter.ts`.
  */
-const metadata = meta as Pick<
+const metadata = {
+  ...(meta as Pick<
+    EngineAdapter,
+    "id" | "license" | "location" | "needsIsolation" | "heavy"
+  >),
+  // engine.json has no "version" for this engine (derived from its
+  // installed npm package) -- pnpm gen resolves the real value into
+  // manifest.ts, which this reads at build time. See docs/ENGINES.md,
+  // "How engine assets ship".
+  version: ENGINE_MANIFEST.utif.version,
+} satisfies Pick<
   EngineAdapter,
   "id" | "version" | "license" | "location" | "needsIsolation" | "heavy"
 >;

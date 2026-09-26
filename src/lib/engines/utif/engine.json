@@ -1,9 +1,8 @@
 {
   "id": "utif",
-  "version": "4.1.0",
+  "versionFrom": "utif2",
   "license": "MIT",
   "location": "bundled",
   "needsIsolation": false,
-  "heavy": false,
-  "assets": []
+  "heavy": false
 }
