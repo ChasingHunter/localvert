@@ -8,7 +8,8 @@ import { test as base, expect } from "@playwright/test";
  * `pdf-lib` engine: ADR-0008's multi-file tools `merge-pdf` (many-to-one),
  * `split-pdf` (one-to-many) and `images-to-pdf` (many-to-one), plus the
  * one-to-one tools `rotate-pdf`, `delete-pdf-pages`, `extract-pdf-pages` (via
- * `delete-pdf-pages`'s shared `extract` op), `protect-pdf` and `unlock-pdf`.
+ * `delete-pdf-pages`'s shared `extract` op), `protect-pdf`, `unlock-pdf` and
+ * `compress-pdf`.
  *
  * `e2e/fixtures/a.pdf` (2 pages, 150x150) and `b.pdf` (1 page, 250x250) —
  * generated once by a throwaway `@cantoo/pdf-lib` script, committed as
@@ -18,6 +19,12 @@ import { test as base, expect } from "@playwright/test";
  * distinguishes an "a" page from a "b" page just as reliably.
  * `photo-small.jpg`/`photo-medium.jpg` (also in `e2e/fixtures/`, shared with
  * the image-matrix specs) stand in for real jpgs in the `images-to-pdf` test.
+ * `photos.pdf` (one page, a single ~2000x1500 noisy JPEG) is a separate
+ * fixture for `compress-pdf` — generated once by a throwaway Node script
+ * that ran `@jsquash/jpeg`'s wasm encoder directly (compiled from its
+ * `.wasm` file in `node_modules` via `WebAssembly.compile`, the same
+ * manual-instantiation path `@jsquash/jpeg`'s own `init()` supports) to
+ * produce a real, incompressible-looking JPEG without a browser.
  */
 
 function fixturePath(name: string): string {
@@ -301,6 +308,33 @@ test.describe("protect-pdf / unlock-pdf", () => {
       [150, 150],
       [150, 150],
     ]);
+  });
+});
+
+test.describe("compress-pdf", () => {
+  test("shrinks an image-heavy PDF", async ({ page }) => {
+    await page.goto("/tools/compress-pdf");
+
+    const inputBytes = readFileSync(fixturePath("photos.pdf"));
+
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles(fixturePath("photos.pdf"));
+
+    const downloadLink = page.getByRole("link", { name: "Download" });
+    await expect(downloadLink).toBeVisible({ timeout: 15_000 });
+
+    const downloadPromise = page.waitForEvent("download");
+    await downloadLink.click();
+    const download = await downloadPromise;
+    const path = await download.path();
+    if (!path) throw new Error("download produced no local path");
+    const outputBytes = readFileSync(path);
+
+    expect(outputBytes.byteLength).toBeLessThan(inputBytes.byteLength);
+
+    const doc = await PDFDocument.load(outputBytes);
+    expect(doc.getPageCount()).toBe(1);
   });
 });
 

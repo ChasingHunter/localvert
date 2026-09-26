@@ -128,7 +128,9 @@ Goal: the image matrix people actually search for, fast and batched.
       many-to-one/one-to-many tools) — reorder still pending (2026-09-26)
 - [x] images → PDF (`images-to-pdf`, @cantoo/pdf-lib, many-to-one) — PDF →
       images is the "Render to image" item below (2026-09-26)
-- [ ] Compress: ≥40% reduction on an image-heavy fixture
+- [x] Compress: ≥40% reduction on an image-heavy fixture (pdf-lib +
+      OffscreenCanvas re-encode, not PDFium — ADR-0008's 2026-09-26 update;
+      ~91% measured on the browser-test fixture) (2026-09-26)
 - [x] Protect / unlock (password, AES-256 via @cantoo/pdf-lib — both
       directions genuinely supported, not just protect) — flatten forms
       still pending (2026-09-26)

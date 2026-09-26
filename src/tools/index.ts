@@ -39,6 +39,7 @@ import tiffToPng from "@/tools/image/tiff-to-png";
 import webpToJpg from "@/tools/image/webp-to-jpg";
 import webpToPng from "@/tools/image/webp-to-png";
 import webpToSvg from "@/tools/image/webp-to-svg";
+import compressPdf from "@/tools/pdf/compress-pdf";
 import deletePdfPages from "@/tools/pdf/delete-pdf-pages";
 import extractPdfPages from "@/tools/pdf/extract-pdf-pages";
 import imagesToPdf from "@/tools/pdf/images-to-pdf";
@@ -90,6 +91,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   webpToJpg,
   webpToPng,
   webpToSvg,
+  compressPdf,
   deletePdfPages,
   extractPdfPages,
   imagesToPdf,

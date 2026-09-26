@@ -91,6 +91,7 @@ apply to any of them, so that column reads their own **Arity** instead.
 | `images-to-pdf` | JPEG/PNG | PDF | pdf-lib | many-to-one | One image per page, in the order arranged via drag/keyboard reorder; page size fit/A4/letter, orientation, margin |
 | `protect-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Adds a password, AES-256; printing/copying permissions |
 | `unlock-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Removes a password you already have |
+| `compress-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Re-encodes embedded images smaller (`level`: smallest/balanced/best); never bigger than the input |
 | `pdf-to-jpg` | PDF | JPEG | pdfjs | one-to-many | One JPG per selected page (`pages`, `dpi`, `quality`); white background |
 | `pdf-to-png` | PDF | PNG | pdfjs | one-to-many | One PNG per selected page (`pages`, `dpi`); page transparency preserved |
 
