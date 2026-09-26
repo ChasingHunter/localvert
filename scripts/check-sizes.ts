@@ -11,13 +11,18 @@
  *      for browsers with no ES module support, and Localvert requires a
  *      module-capable browser anyway (workers, wasm, ES modules), so no
  *      browser it supports ever fetches one.
- *   2. any first-load chunk contains the string `localvert-engine:<id>` —
- *      an engine adapter's `marker` literal (invariant 3). Engine adapters
- *      are dynamic-imported only from inside a worker (see "Engines" in
- *      docs/ARCHITECTURE.md); if that marker shows up in a chunk a page
- *      loads up front, an engine leaked into the core bundle. Minifiers keep
- *      string literals, so grepping the built output for the marker is a
- *      reliable, mechanical check — no source maps or bundle analysis needed.
+ *   2. any first-load chunk contains one of `FORBIDDEN_FIRST_LOAD_SUBSTRINGS`:
+ *      either the string `localvert-engine:<id>` — an engine adapter's
+ *      `marker` literal (invariant 3), or the literal `@embedpdf` — the PDF
+ *      editor's session engine (ADR-0009), whose packages ship module-path
+ *      and CDN-URL string literals that survive minification. Engine
+ *      adapters and the editor's `@embedpdf/*` code are dynamic-imported only
+ *      from inside a worker or an app-mode tool's own lazily-loaded chunk
+ *      (see "Engines" in docs/ARCHITECTURE.md); if either marker shows up in
+ *      a chunk a page loads up front, something heavy leaked into the core
+ *      bundle. Minifiers keep string literals, so grepping the built output
+ *      for these markers is a reliable, mechanical check — no source maps or
+ *      bundle analysis needed.
  *   3. a page references a script file that isn't in `out/` — broken build
  *      output.
  *
@@ -46,6 +51,37 @@ export const CORE_BUDGET_GZ_BYTES = 300 * 1024;
  */
 const ENGINE_MARKER_PREFIX = "localvert-engine:";
 const ENGINE_MARKER_RE = /localvert-engine:[\w-]+/g;
+
+/**
+ * A first-load chunk containing any of these substrings is a build-time
+ * failure (see the module doc comment's point 2). `@embedpdf` is not a
+ * `marker`-shaped literal like an engine adapter's — it's the npm scope of
+ * every PDF editor package (ADR-0009) — so it's matched as a plain substring
+ * rather than through `ENGINE_MARKER_RE`.
+ */
+const FORBIDDEN_FIRST_LOAD_SUBSTRINGS = [
+  ENGINE_MARKER_PREFIX,
+  "@embedpdf",
+] as const;
+
+/**
+ * Every forbidden substring found in `content`, for reporting which page and
+ * which chunk leaked what. Returns `localvert-engine:<id>` markers verbatim
+ * (one per distinct engine id) and, separately, the literal `"@embedpdf"`
+ * when any `@embedpdf/*` package code is present.
+ */
+export function findForbiddenMarkers(content: string): string[] {
+  const found: string[] = [];
+  for (const substring of FORBIDDEN_FIRST_LOAD_SUBSTRINGS) {
+    if (!content.includes(substring)) continue;
+    if (substring === ENGINE_MARKER_PREFIX) {
+      found.push(...(content.match(ENGINE_MARKER_RE) ?? []));
+    } else {
+      found.push(substring);
+    }
+  }
+  return found;
+}
 
 /** One first-load script as referenced by a page, resolved to bytes on disk. */
 export interface ScriptInfo {
@@ -260,12 +296,10 @@ function main(): void {
     const fullPath = join(outDir, outPath);
     const bytes = readFileSync(fullPath);
     const content = bytes.toString("utf8");
-    const hasEngineMarker = content.includes(ENGINE_MARKER_PREFIX);
+    const markers = findForbiddenMarkers(content);
+    const hasEngineMarker = markers.length > 0;
     if (hasEngineMarker) {
-      reportedMarkers.set(
-        outPath,
-        new Set(content.match(ENGINE_MARKER_RE) ?? []),
-      );
+      reportedMarkers.set(outPath, new Set(markers));
     }
     const info: ScriptInfo = {
       path: outPath,

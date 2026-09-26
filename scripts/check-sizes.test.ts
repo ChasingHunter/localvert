@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CORE_BUDGET_GZ_BYTES,
   evaluatePage,
+  findForbiddenMarkers,
   firstLoadScripts,
   gzipSize,
   type ScriptInfo,
@@ -75,6 +76,38 @@ describe("gzipSize", () => {
   it("is deterministic for the same input", () => {
     const buf = new TextEncoder().encode("localvert-engine:canvas".repeat(50));
     expect(gzipSize(buf)).toBe(gzipSize(buf));
+  });
+});
+
+describe("findForbiddenMarkers", () => {
+  it("finds a localvert-engine: marker", () => {
+    expect(findForbiddenMarkers("...localvert-engine:canvas...")).toEqual([
+      "localvert-engine:canvas",
+    ]);
+  });
+
+  it("finds every distinct engine marker present", () => {
+    expect(
+      findForbiddenMarkers(
+        "localvert-engine:canvas and localvert-engine:pdfium",
+      ),
+    ).toEqual(["localvert-engine:canvas", "localvert-engine:pdfium"]);
+  });
+
+  it("flags @embedpdf as a second forbidden substring (ADR-0009)", () => {
+    expect(findForbiddenMarkers('e.F("@embedpdf/pdfium/dist/x.js")')).toEqual([
+      "@embedpdf",
+    ]);
+  });
+
+  it("reports both kinds of marker when a chunk carries both", () => {
+    expect(
+      findForbiddenMarkers("localvert-engine:pdfium ... @embedpdf/engines"),
+    ).toEqual(["localvert-engine:pdfium", "@embedpdf"]);
+  });
+
+  it("returns an empty list for clean content", () => {
+    expect(findForbiddenMarkers("ordinary application code")).toEqual([]);
   });
 });
 

@@ -31,6 +31,14 @@ export function createPdfiumWorkerEngine(): {
 } {
   const worker = new Worker(new URL("./pdfium.worker.ts", import.meta.url), {
     type: "module",
+    // NOT `localvert-engine:pdfium` (colon-suffixed) — that exact shape is
+    // `scripts/check-sizes.ts`'s engine-adapter marker convention (invariant
+    // 3), reserved for code that must NEVER appear in a page's first load at
+    // all. This is legitimate main-thread glue (the same role as
+    // `spawn.ts`'s `name: "localvert-engine"`, also deliberately
+    // non-colon-suffixed) — it's expected to be reachable from the editor's
+    // own lazily-loaded chunk, just not from every OTHER page. See this
+    // file's own doc comment above and docs/editor/EMBEDPDF_NOTES.md.
     name: "localvert-pdfium",
   });
   const engine = new WebWorkerEngine(worker);

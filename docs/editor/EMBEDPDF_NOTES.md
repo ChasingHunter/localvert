@@ -526,3 +526,71 @@ gained `src/lib/editor/**/*.worker.ts` in its `include`. The four
   + `plugin-*` vs. bare-`PdfEngine` UI decision, the
   `applyAllRedactions`-returns-`false` semantics) is unchanged by E0b and
   still open.
+
+## E1b Unit 1 findings (2026-09-26): the core-bundle leak, and a real Turbopack limitation
+
+**The leak, and the fix.** `AppTool` (`src/components/app-tool.tsx`) resolved
+an app-mode tool's component generically: `TOOL_LOADERS[slug]().then(tool =>
+tool.app())`, called inside a `useEffect`. Measured: the FULL EmbedPDF/PDFium
+runtime (wasm loader, `PdfEngine`/`WebWorkerEngine` code, the
+`cdn.jsdelivr.net/npm/@embedpdf/fonts-*` font-fallback URL constants) landed
+in a chunk referenced by **every** `/tools/*` page's `<script>` tags, at up to
+299.0 KB gz — right at the 300 KB budget ceiling, regardless of slug. Fixed
+by giving `PdfEditorApp` its own module-scope `next/dynamic()` const in
+`app-tool.tsx`, referenced directly in JSX — the same pattern `ToolRunner`
+already uses for `OptionsForm`/`CropEditor`. Confirmed by direct string
+search of the built output: `@embedpdf/pdfium`, `@embedpdf/fonts-*`, and
+`cdn.jsdelivr.net` are now present ONLY in a chunk that zero pages reference
+(fetched exclusively via the real runtime `import()` when the editor
+actually opens) — the heavy runtime genuinely never reaches a page's first
+load anymore.
+
+**A real, still-open Turbopack/Next question.** Getting there took five
+separate experiments, because a small amount of glue code (the
+`@embedpdf/engines/worker` `WebWorkerEngine` proxy class, `pdf-editor-app.tsx`'s
+own component logic) kept appearing in a page-INDEPENDENT shared chunk
+regardless of how it was wired:
+
+- A bare `import()` inside a `useEffect` (original code) — leaked.
+- `next/dynamic()` called inside `useMemo`, keyed by a `Record` lookup —
+  leaked, identical chunk hash to the next attempt.
+- `next/dynamic()` as a module-scope `const`, referenced directly by name in
+  JSX (the exact `OptionsForm`/`CropEditor` pattern) — leaked, **same chunk
+  hash as the previous attempt**, meaning the JSX shape made no difference.
+- A raw `import()` with zero `next/dynamic` involvement, called from inside a
+  `<button onClick>` handler never invoked during the initial render (the
+  same shape as `ToolRunner`'s proven-safe `jobEngine()` helper) — **still
+  leaked**, even with a trivial test module containing nothing but a string
+  constant and zero `@embedpdf` involvement.
+- Only once EVERY statically-present `import()` targeting `@embedpdf`-heavy
+  modules was removed (confirmed via `pdf-editor.ts`'s own `app:` field,
+  which is a *second*, independent reachability path to the same component)
+  did the leaked chunk stop existing.
+
+Conclusion, evidenced but not root-caused: in this Next 16 + Turbopack +
+`output: "export"` + app-router (`generateStaticParams`) build, a SMALL
+amount of code from ANY module reachable via `import()` — however deeply
+nested, however conditionally guarded, regardless of `next/dynamic` vs. raw
+`import()` — ends up duplicated into a page-independent chunk shipped on
+literally every exported page. The actual HEAVY content (wasm, the CDN font
+URLs, the full PDFium engine) does NOT suffer this — it's confirmed
+genuinely on-demand — but a thin proxy/wrapper layer around it does. This
+also affects `CropEditor` already (its chunk is present on `crop-jpg.html` AND
+`avif-to-jpg.html`, i.e. also globally shared) — pre-existing, apparently
+priced into the budget by coincidence rather than by design, not something
+this slice introduced.
+
+**Why Unit 2 (the `@embedpdf/core` + `plugin-*` viewer rewrite) wasn't
+attempted.** `@embedpdf/core` and its plugins reference `@embedpdf/models`
+value exports (`Task`, error codes, annotation enums) throughout their normal
+main-thread operation — far more pervasively than the current bare-`PdfEngine`
+UI's handful of enum references. Given the finding above, that guarantees a
+literal `@embedpdf` package-path string reaches the same page-independent
+shared chunk. Whether that stays small enough to fit the budget (this
+slice's fix keeps tool pages at 299.0 KB gz — under the 300 KB budget, but
+right at its edge, with meaningfully less headroom than the ~156 KB baseline
+this brief's Unit 1 target assumed) needs to be checked empirically before
+committing to the plugin rewrite, and the root cause of the shared-chunk
+behavior above is worth understanding first — it may be a Turbopack
+version/config issue fixable at the framework-config level rather than
+something every future app-mode tool has to route around by hand.
