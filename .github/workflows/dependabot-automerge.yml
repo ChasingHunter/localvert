@@ -1,0 +1,41 @@
+name: Dependabot auto-merge
+
+# `pull_request`, not `pull_request_target`: this workflow needs no repo
+# secrets beyond the ephemeral GITHUB_TOKEN and never checks out or executes
+# the PR's own code, so there is nothing here for a malicious dependency bump
+# to exploit by way of workflow-file or code changes in the fork/branch. The
+# actual merge still waits on every required check (the branch protection
+# ruleset), so `gh pr merge --auto` only *arms* the merge — it lands once
+# `pnpm check`/build/etc. all pass on this PR's own commit, same as a human
+# clicking "merge when ready" would.
+on: pull_request
+
+permissions: {}
+
+jobs:
+  automerge:
+    name: Auto-merge patch/minor
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # A major bump (or anything else) gets no action here — the PR stays
+      # open for a human to read the changelog and merge by hand. Only
+      # patch/minor, the update classes ROADMAP already groups under one
+      # Dependabot PR (dependabot.yml's "minor-and-patch" group), auto-merge.
+      - name: Enable auto-merge for a patch/minor update
+        if: |
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
