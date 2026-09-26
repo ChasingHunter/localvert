@@ -10,17 +10,41 @@ permissions: {}
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    # contents: read only — the job's own GITHUB_TOKEN no longer writes
+    # anything. Both the app-token mint and release-please's PR/tag/release
+    # writes below authenticate as the "localvert-release" GitHub App instead.
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
     steps:
+      # Mints a short-lived token for the "localvert-release" GitHub App
+      # (repo variable RELEASE_APP_CLIENT_ID — the App's Client ID, e.g.
+      # "Iv23..." — and repo secret RELEASE_APP_PRIVATE_KEY). Needed because
+      # GITHUB_TOKEN-authored PRs have their workflow runs stuck in
+      # `action_required` until a human clicks "Approve and run" — a PAT
+      # would avoid that too, but it expires and acts as whichever human owns
+      # it. A per-project App token expires in an hour, is scoped to this
+      # repo only, and its blast radius is this repo alone.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          token: ${{ steps.app-token.outputs.token }}
 
 # A release is a push to `main`: merging the release PR is what ships it,
-# because deploy.yml already triggers on push to main. This workflow's own
-# GITHUB_TOKEN-created tag and GitHub Release don't trigger other workflows —
-# that's fine here, since nothing needs to react to the tag itself.
+# because deploy.yml already triggers on push to main. release-please now
+# opens the PR (and later creates the tag/GitHub Release) as the
+# "localvert-release" App rather than github-actions[bot], so:
+#   - the release PR itself gets full CI (ci.yml's `pull_request` trigger,
+#     codeql.yml's `pull_request` trigger, dependency-review.yml) without
+#     manual approval — that was the point of this change.
+#   - the App-authored tag push and GitHub Release publish CAN trigger other
+#     workflows (unlike GITHUB_TOKEN's), but nothing in this repo listens for
+#     `push: tags`, `release`, or `create` — ci.yml and codeql.yml only watch
+#     `push: branches: [main]`, so the merge commit to main (not the tag) is
+#     what actually fires them, exactly as before.

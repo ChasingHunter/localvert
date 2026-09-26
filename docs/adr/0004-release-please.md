@@ -90,3 +90,22 @@ the release PR is a checkpoint worth keeping.
 **Manual versioning and a hand-written CHANGELOG.** Rejected as the thing most
 certain to rot. It is also the least useful to an AI-driven workflow, where the
 commit metadata is already structured and free to exploit.
+
+## Update — 2026-09-26: open the release PR with a GitHub App token
+
+Release PRs opened with the default `GITHUB_TOKEN` have their own workflow
+runs held in `action_required` until a human clicks "Approve and run" —
+GitHub withholds `GITHUB_TOKEN`-triggered runs from a token-authored PR as an
+anti-recursion guard. That defeats the "review the PR, see CI pass, merge"
+checkpoint this ADR is built around: CI would never run unattended.
+
+`release-please.yml` now mints a token from a private GitHub App
+(`localvert-release`) via `actions/create-github-app-token` and passes it to
+`release-please-action`, so the PR is authored by the App instead. Repo
+config: variable `RELEASE_APP_CLIENT_ID` (the App's Client ID, e.g.
+"Iv23..."), secret `RELEASE_APP_PRIVATE_KEY`. A PAT was rejected as the
+alternative because it expires (release automation silently breaks until a
+human renews it) and it acts as whichever human owns it, so a leak or a
+departure both bite. The App is scoped to this one repository (permissions:
+contents, pull-requests, issues — write) and created per-project rather than
+org-wide, so a compromised key's blast radius stays inside `localvert`.
