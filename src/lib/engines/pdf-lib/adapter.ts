@@ -1,5 +1,10 @@
 import type { Operation, StepFormat } from "@/lib/registry";
-import { FORMATS, parsePageRange, sniffFormat } from "@/lib/registry";
+import {
+  FORMATS,
+  parsePageOrder,
+  parsePageRange,
+  sniffFormat,
+} from "@/lib/registry";
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
 import { ENGINE_MANIFEST } from "../manifest";
@@ -44,6 +49,7 @@ function supports(
     op === "split" ||
     op === "rotate" ||
     op === "extract" ||
+    op === "reorder" ||
     op === "protect" ||
     op === "unlock" ||
     op === "compress"
@@ -125,6 +131,8 @@ async function run(task: EngineTask): Promise<EngineResult> {
         return await runRotate(task);
       case "extract":
         return await runExtract(task);
+      case "reorder":
+        return await runReorder(task);
       case "protect":
         return await runProtect(task);
       case "unlock":
@@ -476,6 +484,44 @@ async function runExtract(task: EngineTask): Promise<EngineResult> {
 
   const outDoc = await mod.PDFDocument.create();
   const copied = await outDoc.copyPages(srcDoc, keepIndices);
+  for (const page of copied) outDoc.addPage(page);
+  onProgress?.(1);
+
+  const outBytes = await outDoc.save();
+  return {
+    kind: "bytes",
+    bytes: outBytes.slice().buffer,
+    mime: FORMATS.pdf.mime,
+  };
+}
+
+/**
+ * reorder (pdf -> pdf): rebuilds the document with pages copied in the
+ * order `options.order` names — see `parsePageOrder`'s doc comment for the
+ * full grammar (ranges may run backwards; repeating a page number
+ * duplicates that page in the output; a page left out of the spec is
+ * dropped). `""` means unchanged: every page copied in its original order,
+ * nothing dropped or duplicated. Same shape as `runExtract` (one input, one
+ * output document, `copyPages` + `addPage`) but its own op rather than a
+ * third `extract` mode — `extract`'s "keep"/"remove" both select a *subset*
+ * without reordering or duplicating; this always reproduces every named
+ * index exactly, including repeats.
+ */
+async function runReorder(task: EngineTask): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  const bytes = await inputToArrayBuffer(input);
+  signal.throwIfAborted();
+
+  const mod = await import("@cantoo/pdf-lib");
+  const srcDoc = await loadPdf(mod, bytes);
+
+  const orderSpec = typeof options.order === "string" ? options.order : "";
+  const indices = parsePageOrder(orderSpec, srcDoc.getPageCount());
+
+  const outDoc = await mod.PDFDocument.create();
+  const copied = await outDoc.copyPages(srcDoc, indices);
   for (const page of copied) outDoc.addPage(page);
   onProgress?.(1);
 

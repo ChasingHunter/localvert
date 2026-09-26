@@ -13,7 +13,7 @@ export {
 } from "./formats";
 export { imagePipeline } from "./image-pipeline";
 export { outputFileName } from "./naming";
-export { parsePageRange } from "./page-range";
+export { parsePageOrder, parsePageRange } from "./page-range";
 export type {
   Capabilities,
   EngineCandidate,

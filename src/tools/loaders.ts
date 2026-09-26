@@ -52,6 +52,7 @@ export const TOOL_LOADERS = {
   "pdf-to-jpg": () => import("./pdf/pdf-to-jpg"),
   "pdf-to-png": () => import("./pdf/pdf-to-png"),
   "protect-pdf": () => import("./pdf/protect-pdf"),
+  "reorder-pdf-pages": () => import("./pdf/reorder-pdf-pages"),
   "rotate-pdf": () => import("./pdf/rotate-pdf"),
   "split-pdf": () => import("./pdf/split-pdf"),
   "unlock-pdf": () => import("./pdf/unlock-pdf"),

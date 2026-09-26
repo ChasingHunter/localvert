@@ -96,3 +96,84 @@ export function parsePageRange(spec: string, pageCount: number): number[] {
 
   return indices;
 }
+
+const ORDER_TOKEN_RE = /^(\d+)(?:-(\d+))?$/;
+
+/**
+ * Parses a page-*order* spec for `reorder-pdf-pages`: a comma-separated list
+ * of page numbers and ranges, same 1-based/inclusive token grammar as
+ * `parsePageRange`'s "1-3, 5" — but a deliberately different contract, so
+ * this is its own function rather than a `parsePageRange` option:
+ *
+ * - **Duplicates are kept, not deduped.** Repeating a page is how you
+ *   duplicate it in the output (e.g. "1, 1, 2" — page 1 appears twice) — a
+ *   legitimate reorder-tool use `parsePageRange`'s single-copy-per-page
+ *   contract (every other pdf-lib tool) can't express.
+ * - **A range may run backwards** ("6-4" = pages 6, 5, 4, in that order) —
+ *   reordering is exactly the operation where "backwards" is a meaningful,
+ *   intentional request, unlike `rotate`/`extract`/`split`'s ranges, which
+ *   only ever select a set of pages.
+ * - **No open-ended range** ("8-"): with duplicates allowed and no implied
+ *   sort, "the rest of the document" has no well-defined position to land
+ *   at, so it isn't supported — every page must be named explicitly.
+ *
+ * `""` (and `"all"`) means "unchanged": every page, in its original order,
+ * with nothing dropped or duplicated — the empty-input default `reorder-pdf-
+ * pages` ships with. Every named page number must exist in the document
+ * (1..pageCount); a page simply left out of the spec is dropped from the
+ * output, same as `extract`'s "keep" mode.
+ */
+export function parsePageOrder(spec: string, pageCount: number): number[] {
+  if (pageCount < 1) {
+    fail(`pageCount must be at least 1, got ${pageCount}`);
+  }
+
+  const trimmed = spec.trim();
+  if (trimmed === "" || trimmed.toLowerCase() === "all") {
+    return Array.from({ length: pageCount }, (_, i) => i);
+  }
+
+  const indices: number[] = [];
+
+  for (const rawToken of trimmed.split(",")) {
+    const token = rawToken.trim().replace(/\s*-\s*/g, "-");
+    if (token === "") {
+      fail(`invalid page order "${spec}" — empty entry between commas`);
+    }
+
+    const match = ORDER_TOKEN_RE.exec(token);
+    if (!match) {
+      fail(
+        `invalid page order "${token}" — expected a page number or a range like "1-3" or "6-4"`,
+      );
+    }
+
+    const [, startStr, endStr] = match;
+    const start = Number(startStr);
+    if (start < 1 || start > pageCount) {
+      outOfRange(start, token, pageCount);
+    }
+
+    // No "-" at all: a bare page number, e.g. "5".
+    if (endStr === undefined) {
+      indices.push(start - 1);
+      continue;
+    }
+
+    const end = Number(endStr);
+    if (end < 1 || end > pageCount) {
+      outOfRange(end, token, pageCount);
+    }
+
+    // Forwards or backwards, inclusive of both ends — unlike
+    // `parsePageRange`, a reversed range ("6-4") is a valid, intentional
+    // request here rather than an error.
+    if (start <= end) {
+      for (let n = start; n <= end; n++) indices.push(n - 1);
+    } else {
+      for (let n = start; n >= end; n--) indices.push(n - 1);
+    }
+  }
+
+  return indices;
+}

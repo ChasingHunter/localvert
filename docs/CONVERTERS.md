@@ -89,6 +89,7 @@ apply to any of them, so that column reads their own **Arity** instead.
 | `rotate-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Rotates selected pages 90/180/270°, added to any existing rotation |
 | `delete-pdf-pages` | PDF | PDF | pdf-lib | one-to-one (batch) | Removes the given pages, keeps the rest in order |
 | `extract-pdf-pages` | PDF | PDF | pdf-lib | one-to-one (batch) | Keeps only the given pages, in the order given |
+| `reorder-pdf-pages` | PDF | PDF | pdf-lib | one-to-one (batch) | Rearranges pages per `order` (e.g. "3, 1, 2, 4-6"); ranges may run backwards, repeating a page duplicates it, blank = unchanged |
 | `images-to-pdf` | JPEG/PNG | PDF | pdf-lib | many-to-one | One image per page, in the order arranged via drag/keyboard reorder; page size fit/A4/letter, orientation, margin |
 | `protect-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Adds a password, AES-256; printing/copying permissions |
 | `unlock-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Removes a password you already have |

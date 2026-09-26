@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parsePageRange } from "./page-range";
+import { parsePageOrder, parsePageRange } from "./page-range";
 
 describe("parsePageRange", () => {
   it('treats "" as every page', () => {
@@ -65,6 +65,67 @@ describe("parsePageRange", () => {
 
   it("throws when pageCount is less than 1", () => {
     expect(() => parsePageRange("1", 0)).toThrow(
+      /pageCount must be at least 1/,
+    );
+  });
+});
+
+describe("parsePageOrder", () => {
+  it('treats "" as unchanged — every page, in original order', () => {
+    expect(parsePageOrder("", 4)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('treats "all" (any case) as unchanged', () => {
+    expect(parsePageOrder("ALL", 3)).toEqual([0, 1, 2]);
+  });
+
+  it("keeps a mix of numbers and ranges in the order given", () => {
+    expect(parsePageOrder("3, 1, 2", 3)).toEqual([2, 0, 1]);
+  });
+
+  it("expands a forward range in order", () => {
+    expect(parsePageOrder("4-6", 6)).toEqual([3, 4, 5]);
+  });
+
+  it("expands a reversed range back to front", () => {
+    expect(parsePageOrder("6-4", 6)).toEqual([5, 4, 3]);
+  });
+
+  it("keeps duplicates instead of deduping — repeating a page duplicates it", () => {
+    expect(parsePageOrder("1, 1, 2", 2)).toEqual([0, 0, 1]);
+  });
+
+  it("drops any page left out of the spec", () => {
+    expect(parsePageOrder("2", 3)).toEqual([1]);
+  });
+
+  it("throws for a page number below 1", () => {
+    expect(() => parsePageOrder("0", 5)).toThrow(/out of range/);
+  });
+
+  it("throws for a page number above pageCount", () => {
+    expect(() => parsePageOrder("6", 5)).toThrow(/out of range/);
+  });
+
+  it("throws when either end of a range is out of range", () => {
+    expect(() => parsePageOrder("1-9", 5)).toThrow(/out of range/);
+    expect(() => parsePageOrder("9-1", 5)).toThrow(/out of range/);
+  });
+
+  it('rejects an open-ended range ("8-") — every page must be named', () => {
+    expect(() => parsePageOrder("8-", 10)).toThrow(/invalid page order/);
+  });
+
+  it("throws for a malformed token", () => {
+    expect(() => parsePageOrder("abc", 5)).toThrow(/invalid page order/);
+  });
+
+  it("throws for an empty entry between commas", () => {
+    expect(() => parsePageOrder("1,,3", 5)).toThrow(/invalid page order/);
+  });
+
+  it("throws when pageCount is less than 1", () => {
+    expect(() => parsePageOrder("1", 0)).toThrow(
       /pageCount must be at least 1/,
     );
   });

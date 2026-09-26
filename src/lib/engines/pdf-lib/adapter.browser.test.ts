@@ -173,6 +173,7 @@ describe("pdf-lib adapter", () => {
       expect(adapter.supports("split", "pdf", "pdf")).toBe(true);
       expect(adapter.supports("rotate", "pdf", "pdf")).toBe(true);
       expect(adapter.supports("extract", "pdf", "pdf")).toBe(true);
+      expect(adapter.supports("reorder", "pdf", "pdf")).toBe(true);
       expect(adapter.supports("protect", "pdf", "pdf")).toBe(true);
       expect(adapter.supports("unlock", "pdf", "pdf")).toBe(true);
     });
@@ -587,6 +588,129 @@ describe("pdf-lib adapter", () => {
         ),
       ).rejects.toSatisfy(
         (e: unknown) => isEngineError(e) && e.code === "internal",
+      );
+    });
+  });
+
+  describe("run: reorder", () => {
+    it('rearranges pages per "order", dropping any page left out', async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([
+        [100, 100],
+        [150, 150],
+        [200, 200],
+      ]);
+
+      const result = await instance.run(
+        baseTask({
+          op: "reorder",
+          input: bytesInput(doc),
+          options: { order: "3, 1, 2" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(await pageSizes(result.bytes)).toEqual([
+        [200, 200],
+        [100, 100],
+        [150, 150],
+      ]);
+    });
+
+    it("leaves the document unchanged when order is blank", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([
+        [100, 100],
+        [150, 150],
+      ]);
+
+      const result = await instance.run(
+        baseTask({
+          op: "reorder",
+          input: bytesInput(doc),
+          options: { order: "" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(await pageSizes(result.bytes)).toEqual([
+        [100, 100],
+        [150, 150],
+      ]);
+    });
+
+    it("duplicates a page when its number repeats in order", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([
+        [100, 100],
+        [150, 150],
+      ]);
+
+      const result = await instance.run(
+        baseTask({
+          op: "reorder",
+          input: bytesInput(doc),
+          options: { order: "1, 1, 2" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(await pageSizes(result.bytes)).toEqual([
+        [100, 100],
+        [100, 100],
+        [150, 150],
+      ]);
+    });
+
+    it("expands a reversed range back to front", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([
+        [100, 100],
+        [150, 150],
+        [200, 200],
+      ]);
+
+      const result = await instance.run(
+        baseTask({
+          op: "reorder",
+          input: bytesInput(doc),
+          options: { order: "3-1" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(await pageSizes(result.bytes)).toEqual([
+        [200, 200],
+        [150, 150],
+        [100, 100],
+      ]);
+    });
+
+    it("throws EngineError('unsupported') for a password-protected PDF", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const encrypted = await buildEncryptedPdf();
+
+      await expect(
+        instance.run(
+          baseTask({
+            op: "reorder",
+            input: bytesInput(encrypted),
+            options: { order: "" },
+          }),
+        ),
+      ).rejects.toSatisfy(
+        (e: unknown) => isEngineError(e) && e.code === "unsupported",
       );
     });
   });

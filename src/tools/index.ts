@@ -50,6 +50,7 @@ import pdfEditor from "@/tools/pdf/pdf-editor";
 import pdfToJpg from "@/tools/pdf/pdf-to-jpg";
 import pdfToPng from "@/tools/pdf/pdf-to-png";
 import protectPdf from "@/tools/pdf/protect-pdf";
+import reorderPdfPages from "@/tools/pdf/reorder-pdf-pages";
 import rotatePdf from "@/tools/pdf/rotate-pdf";
 import splitPdf from "@/tools/pdf/split-pdf";
 import unlockPdf from "@/tools/pdf/unlock-pdf";
@@ -105,6 +106,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   pdfToJpg,
   pdfToPng,
   protectPdf,
+  reorderPdfPages,
   rotatePdf,
   splitPdf,
   unlockPdf,
