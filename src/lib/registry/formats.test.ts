@@ -132,10 +132,31 @@ describe("sniffFile", () => {
 });
 
 describe("FORMATS table shape", () => {
-  it("every format has at least one magic alternative", () => {
-    for (const spec of Object.values(FORMATS)) {
+  /**
+   * Formats with no magic bytes of their own — never sniffable, so a tool
+   * may only ever `produce` one, never `accept` it. Exactly `txt` today
+   * (OCR's plain-text output); a new output-only format joins this list on
+   * purpose rather than silently exempting itself.
+   */
+  const OUTPUT_ONLY: readonly FormatId[] = ["txt"];
+
+  it("every sniffable format has at least one magic alternative", () => {
+    for (const [id, spec] of Object.entries(FORMATS) as [
+      FormatId,
+      (typeof FORMATS)[FormatId],
+    ][]) {
+      if (OUTPUT_ONLY.includes(id)) continue;
       expect(spec.magic.length).toBeGreaterThan(0);
     }
+  });
+
+  it("an output-only format has no magic bytes and never sniffs", () => {
+    for (const id of OUTPUT_ONLY) {
+      expect(FORMATS[id].magic.length).toBe(0);
+    }
+    // A file full of the "txt" format's own bytes still can't sniff as
+    // "txt" — there's nothing to match, by construction.
+    expect(sniffFormat(new TextEncoder().encode("plain text file"))).toBeNull();
   });
 
   it("every extension is lowercase with no leading dot", () => {

@@ -242,6 +242,19 @@ export const FORMATS = {
       [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
     ],
   },
+  txt: {
+    label: "Text",
+    ext: ["txt"],
+    mime: "text/plain",
+    category: "document",
+    // Output-only: plain text has no magic bytes of its own to sniff, so no
+    // dropped file can ever be identified as this format. `sniffFormat`'s
+    // `.some()` over an empty `magic` array is always `false`, which is
+    // exactly the "never matches" behavior an output-only format needs —
+    // see the OCR tools (`src/tools/image/image-to-text.ts`) that `produce`
+    // this format but never `accept` it.
+    magic: [],
+  },
 } as const satisfies Record<string, FormatSpec>;
 
 export type FormatId = keyof typeof FORMATS;
