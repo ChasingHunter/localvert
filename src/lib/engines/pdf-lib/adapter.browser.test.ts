@@ -1,8 +1,10 @@
 import {
+  PDFDict,
   PDFDocument,
   PDFName,
   PDFNumber,
   PDFRawStream,
+  PDFString,
   StandardFonts,
 } from "@cantoo/pdf-lib";
 import { describe, expect, it } from "vitest";
@@ -1115,6 +1117,93 @@ describe("pdf-lib adapter", () => {
       ).rejects.toSatisfy(
         (e: unknown) => isEngineError(e) && e.code === "aborted",
       );
+    });
+  });
+
+  describe("run: sanitize", () => {
+    /** Title/author set, a document-level JavaScript (Names/JavaScript, via
+     * `addJavaScript`), an OpenAction JavaScript action, and an attached
+     * file — one of every kind of hidden data `sanitize`'s three default-on
+     * switches (`metadata`/`javascript`/`attachments`) target. */
+    async function buildDirtyPdf(): Promise<ArrayBuffer> {
+      const doc = await PDFDocument.create();
+      doc.addPage([100, 100]);
+      doc.setTitle("Secret Title");
+      doc.setAuthor("Jane Doe");
+      doc.addJavaScript("greet", "app.alert('hello');");
+      doc.catalog.set(
+        PDFName.of("OpenAction"),
+        doc.context.obj({
+          S: "JavaScript",
+          JS: PDFString.of("app.alert('opened');"),
+        }),
+      );
+      await doc.attach(new Uint8Array([1, 2, 3]), "secret.txt", {
+        mimeType: "text/plain",
+      });
+      const bytes = await doc.save();
+      return bytes.slice().buffer;
+    }
+
+    it("strips metadata, javascript and attachments by default", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const dirty = await buildDirtyPdf();
+
+      const result = await instance.run(
+        baseTask({ op: "sanitize", input: bytesInput(dirty) }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+
+      const reopened = await PDFDocument.load(result.bytes);
+      expect(reopened.getTitle()).toBeUndefined();
+      expect(reopened.getAuthor()).toBeUndefined();
+      expect(reopened.getProducer()).toBeUndefined();
+      expect(reopened.getDocumentJavaScripts()).toEqual([]);
+      expect(
+        reopened.catalog.lookupMaybe(PDFName.of("OpenAction"), PDFDict),
+      ).toBeUndefined();
+      expect(reopened.getAttachments()).toEqual([]);
+      expect(reopened.getPageCount()).toBe(1);
+    });
+
+    it("leaves a URI link annotation alone when links is left off", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await PDFDocument.create();
+      const page = doc.addPage([100, 100]);
+      const linkRef = doc.context.register(
+        doc.context.obj({
+          Type: "Annot",
+          Subtype: "Link",
+          Rect: [0, 0, 50, 50],
+          A: { S: "URI", URI: PDFString.of("https://example.com") },
+        }),
+      );
+      page.node.addAnnot(linkRef);
+      const bytes = (await doc.save()).slice().buffer;
+
+      const result = await instance.run(
+        baseTask({
+          op: "sanitize",
+          input: bytesInput(bytes),
+          // links defaults to false when omitted -- explicit here for clarity.
+          options: { links: false },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+
+      const reopened = await PDFDocument.load(result.bytes);
+      const annots = reopened.getPages()[0]?.node.Annots();
+      if (!annots) throw new Error("expected the link annotation to survive");
+      const annot = reopened.context.lookup(annots.get(0), PDFDict);
+      const action = annot.lookupMaybe(PDFName.of("A"), PDFDict);
+      const uri = action?.lookupMaybe(PDFName.of("URI"), PDFString);
+      expect(uri?.decodeText()).toBe("https://example.com");
     });
   });
 });

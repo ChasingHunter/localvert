@@ -88,6 +88,7 @@ export type Operation =
   | "protect"
   | "unlock"
   | "flatten"
+  | "sanitize"
   | "render"
   | "ocr"
   /**

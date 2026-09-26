@@ -54,6 +54,7 @@ import pdfToSearchablePdf from "@/tools/pdf/pdf-to-searchable-pdf";
 import protectPdf from "@/tools/pdf/protect-pdf";
 import reorderPdfPages from "@/tools/pdf/reorder-pdf-pages";
 import rotatePdf from "@/tools/pdf/rotate-pdf";
+import sanitizePdf from "@/tools/pdf/sanitize-pdf";
 import splitPdf from "@/tools/pdf/split-pdf";
 import unlockPdf from "@/tools/pdf/unlock-pdf";
 
@@ -112,6 +113,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   protectPdf,
   reorderPdfPages,
   rotatePdf,
+  sanitizePdf,
   splitPdf,
   unlockPdf,
 ];

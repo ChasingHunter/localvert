@@ -56,6 +56,7 @@ export const TOOL_LOADERS = {
   "protect-pdf": () => import("./pdf/protect-pdf"),
   "reorder-pdf-pages": () => import("./pdf/reorder-pdf-pages"),
   "rotate-pdf": () => import("./pdf/rotate-pdf"),
+  "sanitize-pdf": () => import("./pdf/sanitize-pdf"),
   "split-pdf": () => import("./pdf/split-pdf"),
   "unlock-pdf": () => import("./pdf/unlock-pdf"),
 } satisfies Record<string, () => Promise<{ default: ToolDefinition }>>;

@@ -67,6 +67,7 @@ import { Button } from "@/components/ui/button";
 import { flattenExportedForms } from "@/lib/editor/flatten-forms";
 import { flattenRedactedPagesToImages } from "@/lib/editor/flatten-redacted-pages";
 import { createPdfiumWorkerEngine } from "@/lib/editor/pdfium-engine";
+import { sanitizeExportedPdf } from "@/lib/editor/sanitize-export";
 import type { ReplacePageImage } from "@/lib/engines/pdf-lib/adapter";
 import { FormLayer, isFillableWidget } from "./form-layer";
 import { RedactionLayer, type RedactionMark } from "./redaction-layer";
@@ -381,6 +382,12 @@ function Editor({ documentId, fileName }: EditorProps) {
   );
   const hasFormFields = pagesWithFields.size > 0;
   const [flattenForms, setFlattenForms] = useState(false);
+  // E4b — "Remove hidden data" export option: pdf-lib's `sanitize` op
+  // (metadata + JavaScript + attachments) on the exported bytes. Always
+  // offered (unlike "Flatten forms", which only shows for a document that
+  // actually has fields) — every PDF can carry metadata/JS/attachments,
+  // regardless of whether it has a form.
+  const [sanitizeExport, setSanitizeExport] = useState(false);
 
   // E4a -- redaction marking. Keyed by page index; `Editor` (not
   // `RedactionLayer`) owns this because "Apply redactions" needs every
@@ -675,6 +682,14 @@ function Editor({ documentId, fileName }: EditorProps) {
       if (flattenForms) {
         bytes = await flattenExportedForms(bytes);
       }
+      // Sanitize runs AFTER flatten: flatten only touches form fields/
+      // appearances, sanitize only touches metadata/JS/attachments — the two
+      // never fight over the same bytes, but running sanitize last means its
+      // output (what actually gets downloaded) is never re-processed by
+      // flatten afterward.
+      if (sanitizeExport) {
+        bytes = await sanitizeExportedPdf(bytes);
+      }
       const blob = new Blob([bytes], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const base = fileName.replace(/\.pdf$/i, "");
@@ -688,7 +703,7 @@ function Editor({ documentId, fileName }: EditorProps) {
     } finally {
       setExporting(false);
     }
-  }, [exportProvides, fileName, flattenForms]);
+  }, [exportProvides, fileName, flattenForms, sanitizeExport]);
 
   const onWheel = useCallback(
     (e: React.WheelEvent<HTMLDivElement>) => {
@@ -912,6 +927,14 @@ function Editor({ documentId, fileName }: EditorProps) {
               Flatten forms
             </label>
           )}
+          <label className="flex items-center gap-1 text-xs text-ink-muted">
+            <input
+              type="checkbox"
+              checked={sanitizeExport}
+              onChange={(e) => setSanitizeExport(e.target.checked)}
+            />
+            Remove hidden data
+          </label>
           <Button type="button" onClick={handleExport} disabled={exporting}>
             {exporting ? "Exporting…" : "Export PDF"}
           </Button>

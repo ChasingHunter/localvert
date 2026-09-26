@@ -95,6 +95,7 @@ apply to any of them, so that column reads their own **Arity** instead.
 | `unlock-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Removes a password you already have |
 | `compress-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Re-encodes embedded images smaller (`level`: smallest/balanced/best); never bigger than the input |
 | `flatten-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Bakes form field values into the page, removes the fields; no-op on a PDF with no form |
+| `sanitize-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Strips metadata/JavaScript/attachments (default on), web links (default off) |
 | `pdf-to-jpg` | PDF | JPEG | pdfjs | one-to-many | One JPG per selected page (`pages`, `dpi`, `quality`); white background |
 | `pdf-to-png` | PDF | PNG | pdfjs | one-to-many | One PNG per selected page (`pages`, `dpi`); page transparency preserved |
 | `image-to-searchable-pdf` | JPEG/PNG/WebP/BMP | PDF | tesseract | one-to-one (batch) | Adds an invisible OCR text layer over the original page image; English only today (`language` select). Single-page input only — see `pdf-to-searchable-pdf` for multi-page |

@@ -1,3 +1,4 @@
+import type { PDFDict } from "@cantoo/pdf-lib";
 import type { Operation, StepFormat } from "@/lib/registry";
 import {
   FORMATS,
@@ -58,7 +59,8 @@ function supports(
     // on this op. Not reachable from any `defineTool` pipeline; listed here
     // only so a direct `pool.run` call (like `flattenExportedForms`'s) can
     // route to this adapter the same way every other op does.
-    op === "replacePagesWithImages"
+    op === "replacePagesWithImages" ||
+    op === "sanitize"
   );
 }
 
@@ -149,6 +151,8 @@ async function run(task: EngineTask): Promise<EngineResult> {
         return await runFlatten(task);
       case "replacePagesWithImages":
         return await runReplacePagesWithImages(task);
+      case "sanitize":
+        return await runSanitize(task);
       default:
         throw new EngineError(
           "unsupported",
@@ -173,13 +177,18 @@ type PdfLibModule = typeof import("@cantoo/pdf-lib");
  * loop pays for `import("@cantoo/pdf-lib")` once, not once per input file —
  * the browser's module cache makes repeat calls cheap either way, but there
  * is no reason to call it N times in a loop when the caller already has it.
+ *
+ * `loadOptions` defaults to `@cantoo/pdf-lib`'s own defaults (every op but
+ * `sanitize`); `runSanitize` is the one caller that passes
+ * `{ updateMetadata: false }` — see its doc comment for why.
  */
 async function loadPdf(
   mod: PdfLibModule,
   bytes: ArrayBuffer,
+  loadOptions?: Parameters<PdfLibModule["PDFDocument"]["load"]>[1],
 ): Promise<Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>> {
   try {
-    return await mod.PDFDocument.load(bytes);
+    return await mod.PDFDocument.load(bytes, loadOptions);
   } catch (e) {
     if (e instanceof mod.EncryptedPDFError) {
       throw new EngineError(
@@ -1061,6 +1070,177 @@ async function runReplacePagesWithImages(
     });
     onProgress?.((i + 1) / images.length);
   }
+
+  const outBytes = await doc.save();
+  return {
+    kind: "bytes",
+    bytes: outBytes.slice().buffer,
+    mime: FORMATS.pdf.mime,
+  };
+}
+
+const INFO_DICT_KEYS = [
+  "Title",
+  "Author",
+  "Subject",
+  "Keywords",
+  "Creator",
+  "Producer",
+  "CreationDate",
+  "ModDate",
+] as const;
+
+/**
+ * Deletes every standard Info-dict entry (E4b's `metadata` option), plus the
+ * catalog's own `/Metadata` XMP stream if present. `PDFDocument`'s own
+ * `getInfoDict()` (used by `setTitle`/`getProducer`/etc.) is private, so this
+ * reaches the Info dict the same way `stripOrphanedEncryptDict` above reaches
+ * arbitrary objects: through `doc.context` directly. `trailerInfo.Info` is
+ * `undefined` for a document with no Info dict at all — nothing to clear.
+ */
+function clearMetadata(
+  mod: PdfLibModule,
+  doc: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>,
+): void {
+  const infoRef = doc.context.trailerInfo.Info;
+  if (infoRef) {
+    const info = doc.context.lookup(infoRef, mod.PDFDict);
+    for (const key of INFO_DICT_KEYS) info.delete(mod.PDFName.of(key));
+  }
+  doc.catalog.delete(mod.PDFName.of("Metadata"));
+}
+
+/** True when `dict`'s `/S` entry (an action dictionary's own type key) names
+ * a JavaScript action — used to leave a document's other action types (e.g.
+ * `/GoTo`, `/URI`) alone unless a caller specifically wants those gone too
+ * (`links`, below). */
+function isJavaScriptAction(mod: PdfLibModule, dict: PDFDict): boolean {
+  const s = dict.lookupMaybe(mod.PDFName.of("S"), mod.PDFName);
+  return s?.asString() === "/JavaScript";
+}
+
+/**
+ * Removes every document-level JavaScript entry point (E4b's `javascript`
+ * option): the catalog's `/OpenAction` (only when it's a JS action — a
+ * `/GoTo` destination-array or -dict OpenAction is a normal "open to this
+ * page" instruction, not a script, so it's left alone), the catalog's whole
+ * `/AA` (additional-actions) dict (every entry there is a JS action per ISO
+ * 32000 — no per-entry check needed), and the `/Names /JavaScript` name
+ * tree that named scripts (Acrobat's "Document JavaScripts") live in.
+ */
+function clearDocumentJavaScript(
+  mod: PdfLibModule,
+  doc: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>,
+): void {
+  const openAction = doc.catalog.lookupMaybe(
+    mod.PDFName.of("OpenAction"),
+    mod.PDFDict,
+  );
+  if (openAction && isJavaScriptAction(mod, openAction)) {
+    doc.catalog.delete(mod.PDFName.of("OpenAction"));
+  }
+  doc.catalog.delete(mod.PDFName.of("AA"));
+  doc.catalog.Names()?.delete(mod.PDFName.of("JavaScript"));
+}
+
+/**
+ * Walks every page's `/Annots` array once, applying whichever of
+ * `javascript`/`links`/`attachments` is on to each annotation dict in place —
+ * one pass rather than three, since all three only ever look at the same
+ * per-annotation data (`/Subtype`, `/A`, `/AA`). A `FileAttachment`
+ * annotation is removed outright via `PDFPageLeaf.removeAnnot` (there's no
+ * "keep the annotation, strip the file" — the annotation *is* the attached
+ * file); every other case just deletes a key on the dict that survives.
+ */
+function sanitizePageAnnotations(
+  mod: PdfLibModule,
+  doc: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>,
+  opts: { javascript: boolean; links: boolean; attachments: boolean },
+): void {
+  for (const page of doc.getPages()) {
+    const annots = page.node.Annots();
+    if (!annots) continue;
+    // Snapshot refs before mutating -- `removeAnnot` shrinks the live array,
+    // which would otherwise skip the entry that shifts into a just-visited
+    // index.
+    const refs = annots.asArray().filter((o) => o instanceof mod.PDFRef);
+    for (const ref of refs) {
+      const annot = doc.context.lookup(ref, mod.PDFDict);
+
+      if (opts.attachments) {
+        const subtype = annot.lookupMaybe(
+          mod.PDFName.of("Subtype"),
+          mod.PDFName,
+        );
+        if (subtype?.asString() === "/FileAttachment") {
+          page.node.removeAnnot(ref);
+          continue;
+        }
+      }
+
+      if (opts.javascript) {
+        annot.delete(mod.PDFName.of("AA"));
+        const action = annot.lookupMaybe(mod.PDFName.of("A"), mod.PDFDict);
+        if (action && isJavaScriptAction(mod, action)) {
+          annot.delete(mod.PDFName.of("A"));
+        }
+      }
+
+      if (opts.links) {
+        const subtype = annot.lookupMaybe(
+          mod.PDFName.of("Subtype"),
+          mod.PDFName,
+        );
+        if (subtype?.asString() === "/Link") {
+          const action = annot.lookupMaybe(mod.PDFName.of("A"), mod.PDFDict);
+          const s = action?.lookupMaybe(mod.PDFName.of("S"), mod.PDFName);
+          if (s?.asString() === "/URI") annot.delete(mod.PDFName.of("A"));
+        }
+      }
+    }
+  }
+}
+
+/**
+ * sanitize (pdf -> pdf, `sanitize-pdf`): strips hidden/embedded data a viewer
+ * doesn't show but a document can still carry — metadata, JavaScript and
+ * embedded-file attachments, each independently toggleable, plus an
+ * opt-in `links` pass that strips URI actions from link annotations (default
+ * off: web links are visible, wanted content, not "hidden data" — this is
+ * for the rare case a caller wants a fully inert document).
+ *
+ * Loads with `{ updateMetadata: false }` — `@cantoo/pdf-lib`'s default
+ * (`true`) makes `PDFDocument`'s own constructor call its private
+ * `updateInfoDict()`, which sets `/Producer` and `/Creator` to
+ * `"pdf-lib (https://github.com/Hopding/pdf-lib)"` and stamps `/ModDate` to
+ * now, *before* this function gets a chance to clear anything (confirmed by
+ * reading `PDFDocument.js`: `updateInfoDict` only ever runs from the
+ * constructor, gated on this flag — never from `save()`/`prepareForSave()` —
+ * so `{ updateMetadata: false }` at load time is sufficient; no special
+ * `save()` options are needed on the way out).
+ */
+async function runSanitize(task: EngineTask): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  const bytes = await inputToArrayBuffer(input);
+  signal.throwIfAborted();
+
+  const mod = await import("@cantoo/pdf-lib");
+  const doc = await loadPdf(mod, bytes, { updateMetadata: false });
+
+  const metadata = options.metadata !== false;
+  const javascript = options.javascript !== false;
+  const attachments = options.attachments !== false;
+  const links = options.links === true;
+
+  if (metadata) clearMetadata(mod, doc);
+  if (javascript) clearDocumentJavaScript(mod, doc);
+  if (attachments) doc.catalog.Names()?.delete(mod.PDFName.of("EmbeddedFiles"));
+  if (javascript || links || attachments) {
+    sanitizePageAnnotations(mod, doc, { javascript, links, attachments });
+  }
+  onProgress?.(1);
 
   const outBytes = await doc.save();
   return {
