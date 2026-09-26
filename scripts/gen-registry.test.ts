@@ -285,6 +285,31 @@ describe("parseEngineMeta", () => {
     ).toThrow(/"files\[0\]\.to" must be a non-empty string/);
   });
 
+  it('parses a "files" entry with its own "package" override', () => {
+    const meta = parseEngineMeta(
+      "foo",
+      engineJson({
+        files: [
+          { from: "foo.wasm", to: "foo.wasm" },
+          { from: "data.bin", to: "data.bin", package: "@acme/foo-data" },
+        ],
+      }),
+    );
+    expect(meta.files).toEqual([
+      { from: "foo.wasm", to: "foo.wasm" },
+      { from: "data.bin", to: "data.bin", package: "@acme/foo-data" },
+    ]);
+  });
+
+  it('rejects a "files" entry whose "package" is not a string', () => {
+    expect(() =>
+      parseEngineMeta(
+        "foo",
+        engineJson({ files: [{ from: "x.wasm", to: "x.wasm", package: 5 }] }),
+      ),
+    ).toThrow(/"files\[0\]\.package" must be a string/);
+  });
+
   it('forbids "package" when location is "native"', () => {
     expect(() =>
       parseEngineMeta(

@@ -154,6 +154,49 @@ describe("syncEngines", () => {
     ]);
   });
 
+  it("a file entry's own \"package\" borrows from a different npm package than the engine's own", () => {
+    const dir = makeTempDir();
+    writePackage(dir, "@acme/foo", "1.2.3", {
+      "codec/foo.wasm": "0123456789", // 10 bytes
+    });
+    writePackage(dir, "@acme/foo-data", "9.9.9", {
+      "data/foo.dat": "hello", // 5 bytes
+    });
+    writeEngine(dir, "foo", {
+      version: "1.2.3",
+      package: "@acme/foo",
+      files: [
+        { from: "codec/foo.wasm", to: "foo.wasm" },
+        {
+          from: "data/foo.dat",
+          to: "foo.dat",
+          package: "@acme/foo-data",
+        },
+      ],
+    });
+
+    const result = syncEngines(dir);
+
+    expect(result.engines).toEqual([
+      {
+        id: "foo",
+        version: "1.2.3",
+        location: "static",
+        files: [
+          { path: "foo.dat", bytes: 5 },
+          { path: "foo.wasm", bytes: 10 },
+        ],
+      },
+    ]);
+    expect(readFile(dir, "public/engines/foo@1.2.3/foo.wasm")).toBe(
+      "0123456789",
+    );
+    expect(readFile(dir, "public/engines/foo@1.2.3/foo.dat")).toBe("hello");
+    // The version check only ever applies to the engine's own "package" —
+    // "@acme/foo-data" here is never version-checked against anything in
+    // engine.json, which has no field to check it against.
+  });
+
   it("copies an r2 engine's files to .engines-r2/xl/<id>@<version>/", () => {
     const dir = makeTempDir();
     writePackage(dir, "@acme/bar", "0.9.0", {

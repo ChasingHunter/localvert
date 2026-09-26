@@ -28,10 +28,20 @@ export interface EngineAsset {
  * this engine's asset directory. `from` is relative to the package's own
  * directory; `to` is the filename it lands as under `public/engines/<id>@<
  * version>/` (static) or `.engines-r2/xl/<id>@<version>/` (r2).
+ *
+ * `package` overrides the engine's own top-level `package` for this one
+ * file — for an engine whose assets are split across several npm packages
+ * (e.g. `tesseract`: the `tesseract.js` package ships the JS glue, while
+ * `tesseract.js-core` ships the wasm and `@tesseract.js-data/eng` ships the
+ * language data). Omitted, `from` resolves against the engine's own
+ * `package` as before. `sync-engines`'s installed-version check only ever
+ * runs against the engine's own `package`/`version` pair — a file borrowed
+ * from a different package is copied as-is, unchecked against any version.
  */
 export interface EngineSourceFile {
   from: string;
   to: string;
+  package?: string;
 }
 
 /**

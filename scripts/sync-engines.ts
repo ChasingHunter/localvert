@@ -77,6 +77,9 @@ export const STATIC_LIMIT_BYTES = 20 * 1024 * 1024;
 export interface SourceFile {
   from: string;
   to: string;
+  /** Overrides the engine's own `package` for this one file — see
+   * `EngineSourceFile`'s doc comment in `src/lib/engines/types.ts`. */
+  package?: string;
 }
 
 /** The handful of `engine.json` fields this script reads. Not the full contract — see the module doc comment. */
@@ -162,7 +165,16 @@ function readEngineSource(dir: string, id: string): EngineSource {
     if (typeof file.from !== "string" || typeof file.to !== "string") {
       fail(`"files[${i}]" must have string "from" and "to"`);
     }
-    return { from: file.from as string, to: file.to as string };
+    if (file.package !== undefined && typeof file.package !== "string") {
+      fail(`"files[${i}].package" must be a string`);
+    }
+    return {
+      from: file.from as string,
+      to: file.to as string,
+      ...(file.package !== undefined
+        ? { package: file.package as string }
+        : {}),
+    };
   });
 
   return {
@@ -277,21 +289,38 @@ function copyOneFile(
  * `files` entry would, never a directory as one opaque blob).
  */
 function copyEngineFiles(
+  rootDir: string,
   packageDir: string,
   dest: string,
   source: EngineSource & { location: "static" | "r2" },
   staticLimitBytes: number,
 ): SyncedFile[] {
+  // Caches each override package's resolved directory — several files often
+  // borrow from the same non-primary package (e.g. tesseract's four
+  // tesseract.js-core files), and `resolvePackageDir` does real filesystem
+  // resolution.
+  const packageDirs = new Map<string, string>();
+  const resolveFilePackageDir = (fileSource: SourceFile): string => {
+    if (fileSource.package === undefined) return packageDir;
+    const cached = packageDirs.get(fileSource.package);
+    if (cached) return cached;
+    const resolved = resolvePackageDir(fileSource.package, rootDir);
+    packageDirs.set(fileSource.package, resolved);
+    return resolved;
+  };
+
   const files: SyncedFile[] = [];
-  for (const { from, to } of source.files ?? []) {
+  for (const fileSource of source.files ?? []) {
+    const { from, to } = fileSource;
     if (from.endsWith("/") !== to.endsWith("/")) {
       fail(
         `${source.id}: a directory entry's "from" and "to" must both end with "/" (got from="${from}", to="${to}")`,
       );
     }
+    const fromPackageDir = resolveFilePackageDir(fileSource);
 
     if (from.endsWith("/")) {
-      const srcDir = join(packageDir, ...from.split("/"));
+      const srcDir = join(fromPackageDir, ...from.split("/"));
       for (const rel of listFilesRecursive(srcDir)) {
         files.push(
           copyOneFile(
@@ -307,7 +336,7 @@ function copyEngineFiles(
       continue;
     }
 
-    const srcPath = join(packageDir, ...from.split("/"));
+    const srcPath = join(fromPackageDir, ...from.split("/"));
     files.push(
       copyOneFile(
         srcPath,
@@ -408,7 +437,13 @@ export function syncEngines(
     }
 
     const dest = destRoot(rootDir, source);
-    const files = copyEngineFiles(packageDir, dest, source, staticLimitBytes);
+    const files = copyEngineFiles(
+      rootDir,
+      packageDir,
+      dest,
+      source,
+      staticLimitBytes,
+    );
 
     if (
       source.location === "r2" &&

@@ -175,6 +175,9 @@ export interface EngineAssetLike {
 export interface EngineSourceFileLike {
   from: string;
   to: string;
+  /** Overrides the engine's own `package` for this one file — see
+   * `EngineSourceFile`'s doc comment in `src/lib/engines/types.ts`. */
+  package?: string;
 }
 
 /** Mirrors `src/lib/engines/meta.ts`'s `EngineMeta` — see that file for the shape this script must produce. */
@@ -290,7 +293,16 @@ export function parseEngineMeta(
       if (typeof file.to !== "string" || file.to === "") {
         fail(`"files[${i}].to" must be a non-empty string`);
       }
-      return { from: file.from as string, to: file.to as string };
+      if (file.package !== undefined && typeof file.package !== "string") {
+        fail(`"files[${i}].package" must be a string`);
+      }
+      return {
+        from: file.from as string,
+        to: file.to as string,
+        ...(file.package !== undefined
+          ? { package: file.package as string }
+          : {}),
+      };
     });
   } else {
     if (j.package !== undefined) {
