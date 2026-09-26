@@ -36,7 +36,6 @@
   },
   "dependencies": {
     "@cantoo/pdf-lib": "^2.11.1",
-    "@embedpdf/pdfium": "^2.15.1",
     "@image-tracer-ts/core": "^1.0.2",
     "@jsquash/avif": "^2.1.1",
     "@jsquash/jpeg": "^1.6.0",

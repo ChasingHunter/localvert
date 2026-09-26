@@ -48,13 +48,13 @@ defaulting to `"one-to-one"`, so every existing tool is unchanged.
   inside the same job would buy nothing for page renders.
 
 Engines for Phase 2: `@cantoo/pdf-lib` (MIT) for structure edits,
-images → PDF and protection; `pdfjs-dist` (Apache-2.0) for render and text,
-with `isEvalSupported: false` and its worker, cmaps and standard fonts
-self-hosted under `/engines/pdfjs@<ver>/`; `@embedpdf/pdfium` (MIT, PDFium
-BSD/Apache) for compression; and `tesseract.js` (Apache-2.0) for OCR, with
-the worker, core and traineddata self-hosted, because its default CDN fetch
-is blocked by our CSP. **mupdf is rejected**: it is AGPL-3.0, which would
-make the whole deployed app AGPL, and that contradicts ADR-0002.
+images → PDF, protection and compression (see the 2026-09-26 update below);
+`pdfjs-dist` (Apache-2.0) for render and text, with `isEvalSupported: false`
+and its worker, cmaps and standard fonts self-hosted under
+`/engines/pdfjs@<ver>/`; and `tesseract.js` (Apache-2.0) for OCR, with the
+worker, core and traineddata self-hosted, because its default CDN fetch is
+blocked by our CSP. **mupdf is rejected**: it is AGPL-3.0, which would make
+the whole deployed app AGPL, and that contradicts ADR-0002.
 
 ## Consequences
 
@@ -88,3 +88,25 @@ anyway.
 
 **mupdf for everything.** Rejected: AGPL (see above), despite being the most
 capable single engine.
+
+## Update 2026-09-26: compression uses pdf-lib + OffscreenCanvas, not PDFium
+
+The original plan for `compress` was `@embedpdf/pdfium` (MIT, PDFium
+BSD/Apache — a full wasm PDF renderer/rasterizer). In practice, embedded
+raster images dominate a PDF's on-disk size; the structure (pages, fonts,
+content streams) rarely does. Walking the existing `@cantoo/pdf-lib`
+document's own object table for `/Subtype /Image` XObjects, decoding each
+one (a DCTDecode stream straight through `createImageBitmap`; an 8-bit
+DeviceRGB/DeviceGray FlateDecode raster via pdf-lib's own stream-decoding
+utilities) and re-encoding it through `OffscreenCanvas` at a lower
+resolution/quality gets most of a dedicated compression engine's benefit
+with zero extra wasm download — no new engine, no new license review, no
+size-budget entry. `@embedpdf/pdfium` is dropped from `package.json`
+(`chore(deps)` commit) and struck from ENGINES.md's planned table.
+
+This is deliberately narrow: CMYK, indexed color, JBIG2, JPX, soft masks and
+16-bit images are left untouched rather than risk decoding them wrong. If a
+later fixture shows most real-world PDFs' images fall outside this narrow
+path, PDFium remains the fallback to reconsider — this update doesn't close
+that door, it just says pdf-lib is enough for the ≥40%-reduction target on
+an image-heavy fixture today.

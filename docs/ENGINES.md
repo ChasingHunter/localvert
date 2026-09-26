@@ -41,7 +41,7 @@ as its codec preference table.
 | `tracer` | — | svg | — | adapter ready |
 | `exif` | — | — | `strip`: jpg, png, webp | adapter ready |
 | `libraw` | raw | — | — | adapter ready |
-| `pdf-lib` | jpg, png (`merge` only) | — | `merge`, `split`, `rotate`, `extract`, `protect`, `unlock`: pdf | adapter ready |
+| `pdf-lib` | jpg, png (`merge` only) | — | `merge`, `split`, `rotate`, `extract`, `protect`, `unlock`, `compress`: pdf | adapter ready |
 | `pdfjs` | — | — | `render`: pdf → jpg, png | adapter ready |
 
 `canvas` also still runs the legacy single-step `transcode` op directly
@@ -231,7 +231,6 @@ first, then adapter, wiring, size budget, docs.
 
 | Engine | For | License | Approx size | Phase |
 |---|---|---|---|---|
-| `@embedpdf/pdfium` | PDF compression | Apache-2.0 / BSD-3 | ~10 MB | 2 |
 | `tesseract.js` | OCR | Apache-2.0 | core + traineddata | 2 |
 | `mediabunny` | Video/audio via WebCodecs — **primary path** | MIT | small | 3 |
 | `@ffmpeg/core-mt` | avi, wmv, flv, GIF out — **fallback only** | **GPL-2.0+** | ~32 MB → **R2** | 3 |
