@@ -1,4 +1,10 @@
-import { PDFDocument } from "@cantoo/pdf-lib";
+import {
+  PDFDocument,
+  PDFName,
+  PDFNumber,
+  PDFRawStream,
+  StandardFonts,
+} from "@cantoo/pdf-lib";
 import { describe, expect, it } from "vitest";
 import { isEngineError } from "../errors";
 import type { EngineInput, EngineTask } from "../types";
@@ -76,6 +82,82 @@ async function imageBytes(
   ctx.fillRect(0, 0, width, height);
   const blob = await canvas.convertToBlob({ type });
   return blob.arrayBuffer();
+}
+
+/** A large, incompressible-looking JPEG: uniform random per-pixel noise
+ * defeats a JPEG encoder's own DCT redundancy exploitation, so the source
+ * file is already about as big as a JPEG at this resolution gets — the
+ * `compress` fixture needs a real reduction to show, not just a resave of
+ * an already-tiny gradient or solid fill. */
+async function noisyJpegBytes(
+  width: number,
+  height: number,
+  quality: number,
+): Promise<ArrayBuffer> {
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = Math.floor(Math.random() * 256);
+    data[i + 1] = Math.floor(Math.random() * 256);
+    data[i + 2] = Math.floor(Math.random() * 256);
+    data[i + 3] = 255;
+  }
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d context in test setup");
+  ctx.putImageData(new ImageData(data, width, height), 0, 0);
+  const blob = await canvas.convertToBlob({ type: "image/jpeg", quality });
+  return blob.arrayBuffer();
+}
+
+/** Two big noisy JPEGs (the bulk of the file) plus one small PNG, each its
+ * own page — the compression fixture `runCompress`'s browser tests measure
+ * against. */
+async function buildImageHeavyPdf(): Promise<ArrayBuffer> {
+  const doc = await PDFDocument.create();
+  const jpg1 = await doc.embedJpg(await noisyJpegBytes(3000, 2000, 0.95));
+  const jpg2 = await doc.embedJpg(await noisyJpegBytes(3000, 2000, 0.95));
+  const png = await doc.embedPng(await imageBytes(200, 150, "image/png"));
+  for (const image of [jpg1, jpg2, png]) {
+    const page = doc.addPage([image.width, image.height]);
+    page.drawImage(image, {
+      x: 0,
+      y: 0,
+      width: image.width,
+      height: image.height,
+    });
+  }
+  const bytes = await doc.save();
+  return bytes.slice().buffer;
+}
+
+/** No image XObjects at all — `compress` should never make this bigger. */
+async function buildTextOnlyPdf(): Promise<ArrayBuffer> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const page = doc.addPage([300, 300]);
+  page.drawText("Hello, world! This is a text-only PDF fixture.", {
+    x: 20,
+    y: 150,
+    size: 14,
+    font,
+  });
+  const bytes = await doc.save();
+  return bytes.slice().buffer;
+}
+
+/** Every `/Subtype /Image` XObject's `/Width`, across the whole document —
+ * used to confirm `compress` actually downscaled the embedded images. */
+async function imageWidths(bytes: ArrayBuffer): Promise<number[]> {
+  const doc = await PDFDocument.load(bytes);
+  const widths: number[] = [];
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFRawStream)) continue;
+    const subtype = obj.dict.lookupMaybe(PDFName.of("Subtype"), PDFName);
+    if (subtype?.asString() !== "/Image") continue;
+    const width = obj.dict.lookupMaybe(PDFName.of("Width"), PDFNumber);
+    if (width) widths.push(width.asNumber());
+  }
+  return widths;
 }
 
 describe("pdf-lib adapter", () => {
@@ -756,6 +838,101 @@ describe("pdf-lib adapter", () => {
         [100, 100],
         [150, 150],
       ]);
+    });
+  });
+
+  describe("run: compress", () => {
+    it("shrinks an image-heavy pdf by at least 40% at the medium level", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildImageHeavyPdf();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: bytesInput(doc),
+          options: { level: "balanced" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+
+      const reduction = 1 - result.bytes.byteLength / doc.byteLength;
+      expect(reduction).toBeGreaterThanOrEqual(0.4);
+
+      const reopened = await PDFDocument.load(result.bytes);
+      expect(reopened.getPageCount()).toBe(3);
+
+      const widths = await imageWidths(result.bytes);
+      expect(widths.length).toBeGreaterThan(0);
+      for (const width of widths) {
+        expect(width).toBeLessThanOrEqual(1600);
+      }
+    }, 30000);
+
+    it("never makes a text-only pdf bigger", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildTextOnlyPdf();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: bytesInput(doc),
+          options: { level: "balanced" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(result.bytes.byteLength).toBeLessThanOrEqual(doc.byteLength);
+
+      const reopened = await PDFDocument.load(result.bytes);
+      expect(reopened.getPageCount()).toBe(1);
+    });
+
+    it("throws EngineError('unsupported') for a password-protected PDF", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const encrypted = await buildEncryptedPdf();
+
+      await expect(
+        instance.run(
+          baseTask({
+            op: "compress",
+            input: bytesInput(encrypted),
+            options: { level: "balanced" },
+          }),
+        ),
+      ).rejects.toSatisfy(
+        (e: unknown) => isEngineError(e) && e.code === "unsupported",
+      );
+    });
+
+    it("throws EngineError('aborted') when the signal is already aborted", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildTextOnlyPdf();
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        instance.run(
+          baseTask({
+            op: "compress",
+            input: bytesInput(doc),
+            options: { level: "balanced" },
+            signal: controller.signal,
+          }),
+        ),
+      ).rejects.toSatisfy(
+        (e: unknown) => isEngineError(e) && e.code === "aborted",
+      );
     });
   });
 });

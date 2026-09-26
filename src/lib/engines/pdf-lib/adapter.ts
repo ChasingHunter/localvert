@@ -34,14 +34,18 @@ function supports(
     op === "rotate" ||
     op === "extract" ||
     op === "protect" ||
-    op === "unlock"
+    op === "unlock" ||
+    op === "compress"
   );
 }
 
 /**
  * ADR-0008: byte-level PDF structure edits, not a raster pipeline — every op
  * here goes pdf -> pdf (or pdf -> many pdfs, or jpg/png -> pdf for
- * images-to-pdf), never through a `RasterImage` intermediate.
+ * images-to-pdf), never through this codebase's own `RasterImage`
+ * intermediate (`compress`'s per-image `OffscreenCanvas` re-encode, see
+ * below, stays entirely inside this one op — nothing crosses the
+ * `EngineTask`/`EngineResult` boundary as a raster).
  * `@cantoo/pdf-lib` is pure JS (no wasm, no separate fetched assets), so —
  * like `psd`/`tracer`/`utif`/`exif` — this adapter's whole implementation
  * ships inside its own lazily-imported worker chunk; `load()` has nothing to
@@ -114,6 +118,8 @@ async function run(task: EngineTask): Promise<EngineResult> {
         return await runProtect(task);
       case "unlock":
         return await runUnlock(task);
+      case "compress":
+        return await runCompress(task);
       default:
         throw new EngineError(
           "unsupported",
@@ -589,6 +595,232 @@ async function runUnlock(task: EngineTask): Promise<EngineResult> {
   onProgress?.(1);
 
   const outBytes = await doc.save();
+  return {
+    kind: "bytes",
+    bytes: outBytes.slice().buffer,
+    mime: FORMATS.pdf.mime,
+  };
+}
+
+type CompressLevel = "smallest" | "balanced" | "best";
+
+/**
+ * Downscale ceiling (long side, px) and JPEG re-encode quality per level —
+ * ADR-0008 rejected PDFium for this (see docs/adr/0008's 2026-09-26 update):
+ * embedded raster images dominate PDF size, so re-encoding them through
+ * OffscreenCanvas gets most of a dedicated PDF-compression engine's benefit
+ * with no extra wasm download.
+ */
+const COMPRESS_PRESETS: Record<
+  CompressLevel,
+  { maxDim: number; quality: number }
+> = {
+  smallest: { maxDim: 1000, quality: 0.5 },
+  balanced: { maxDim: 1600, quality: 0.7 },
+  best: { maxDim: 2400, quality: 0.85 },
+};
+
+type RawStream = ReturnType<PdfLibModule["PDFRawStream"]["of"]>;
+
+/** Every indirect object in `doc` whose dict says `/Subtype /Image` and
+ * which is a `PDFRawStream` (the shape every image XObject this adapter can
+ * touch takes — a `PDFContentStream` is never an image). */
+function findImageStreams(
+  mod: PdfLibModule,
+  doc: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>,
+): RawStream[] {
+  const streams: RawStream[] = [];
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof mod.PDFRawStream)) continue;
+    const subtype = obj.dict.lookupMaybe(
+      mod.PDFName.of("Subtype"),
+      mod.PDFName,
+    );
+    // `PDFName.asString()` includes the leading slash (it's the raw encoded
+    // token, e.g. `"/Image"`) — unlike `decodeText()`, which strips it. Every
+    // name comparison in this file matches on the encoded form, same as
+    // `stripOrphanedEncryptDict`'s existing `"/Standard"` check above.
+    if (subtype?.asString() === "/Image") streams.push(obj);
+  }
+  return streams;
+}
+
+/**
+ * Decodes one image XObject to an `ImageBitmap`, or `undefined` for anything
+ * outside this adapter's deliberately narrow scope (ADR-0008 update):
+ * anything but a plain DCTDecode JPEG or an 8-bit DeviceRGB/DeviceGray
+ * FlateDecode raster with no `/SMask` and no `/Decode` is left untouched —
+ * CMYK, indexed palettes, JBIG2, JPX, soft masks and 16-bit data all decode
+ * to something this narrow path would get wrong.
+ */
+async function decodeImageStream(
+  mod: PdfLibModule,
+  stream: RawStream,
+  width: number,
+  height: number,
+): Promise<ImageBitmap | undefined> {
+  const dict = stream.dict;
+  const filter = dict.get(mod.PDFName.of("Filter"));
+  if (!(filter instanceof mod.PDFName)) return undefined;
+
+  if (filter.asString() === "/DCTDecode") {
+    const blob = new Blob([new Uint8Array(stream.getContents())], {
+      type: "image/jpeg",
+    });
+    try {
+      return await createImageBitmap(blob);
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (filter.asString() !== "/FlateDecode") return undefined;
+  if (dict.has(mod.PDFName.of("SMask"))) return undefined;
+  if (dict.has(mod.PDFName.of("Decode"))) return undefined;
+
+  const bits = dict.lookupMaybe(
+    mod.PDFName.of("BitsPerComponent"),
+    mod.PDFNumber,
+  );
+  if (bits?.asNumber() !== 8) return undefined;
+
+  const colorSpace = dict.lookupMaybe(
+    mod.PDFName.of("ColorSpace"),
+    mod.PDFName,
+  );
+  const csName = colorSpace?.asString();
+  if (csName !== "/DeviceRGB" && csName !== "/DeviceGray") return undefined;
+  const channels = csName === "/DeviceGray" ? 1 : 3;
+
+  let raw: Uint8Array;
+  try {
+    raw = mod.decodePDFRawStream(stream).decode();
+  } catch {
+    return undefined;
+  }
+  if (raw.length < width * height * channels) return undefined;
+
+  const rgba = new Uint8ClampedArray(width * height * 4);
+  for (let i = 0; i < width * height; i++) {
+    const r = raw[i * channels] ?? 0;
+    const g = channels === 1 ? r : (raw[i * channels + 1] ?? 0);
+    const b = channels === 1 ? r : (raw[i * channels + 2] ?? 0);
+    rgba[i * 4] = r;
+    rgba[i * 4 + 1] = g;
+    rgba[i * 4 + 2] = b;
+    rgba[i * 4 + 3] = 255;
+  }
+
+  try {
+    return await createImageBitmap(new ImageData(rgba, width, height));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Re-encodes one image XObject in place (mutates `stream`'s dict and
+ * contents via `updateContents` — never replaces the indirect object
+ * itself), downscaling to `preset.maxDim` on the long side and re-encoding
+ * as JPEG at `preset.quality`. Only commits the swap when the result is
+ * actually smaller than what was there — this is the same "never make a
+ * file bigger" rule `runCompress` applies to the whole document, applied
+ * per image so a handful of already-tiny icons can't get bloated by a
+ * re-encode while the big photos next to them shrink.
+ */
+async function compressImageStream(
+  mod: PdfLibModule,
+  stream: RawStream,
+  preset: { maxDim: number; quality: number },
+): Promise<boolean> {
+  const dict = stream.dict;
+  const widthObj = dict.lookupMaybe(mod.PDFName.of("Width"), mod.PDFNumber);
+  const heightObj = dict.lookupMaybe(mod.PDFName.of("Height"), mod.PDFNumber);
+  if (!widthObj || !heightObj) return false;
+  const width = widthObj.asNumber();
+  const height = heightObj.asNumber();
+  if (width <= 0 || height <= 0) return false;
+
+  const bitmap = await decodeImageStream(mod, stream, width, height);
+  if (!bitmap) return false;
+
+  try {
+    const longSide = Math.max(bitmap.width, bitmap.height);
+    const scale = longSide > preset.maxDim ? preset.maxDim / longSide : 1;
+    const outWidth = Math.max(1, Math.round(bitmap.width * scale));
+    const outHeight = Math.max(1, Math.round(bitmap.height * scale));
+
+    const canvas = new OffscreenCanvas(outWidth, outHeight);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return false;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bitmap, 0, 0, outWidth, outHeight);
+
+    const encoded = await canvas.convertToBlob({
+      type: "image/jpeg",
+      quality: preset.quality,
+    });
+    const newBytes = new Uint8Array(await encoded.arrayBuffer());
+
+    if (newBytes.length >= stream.getContentsSize()) return false;
+
+    dict.set(mod.PDFName.of("Filter"), mod.PDFName.of("DCTDecode"));
+    dict.set(mod.PDFName.of("Width"), mod.PDFNumber.of(outWidth));
+    dict.set(mod.PDFName.of("Height"), mod.PDFNumber.of(outHeight));
+    dict.set(mod.PDFName.of("ColorSpace"), mod.PDFName.of("DeviceRGB"));
+    dict.set(mod.PDFName.of("BitsPerComponent"), mod.PDFNumber.of(8));
+    dict.delete(mod.PDFName.of("DecodeParms"));
+    stream.updateContents(newBytes);
+    return true;
+  } finally {
+    bitmap.close();
+  }
+}
+
+/**
+ * compress (pdf -> pdf): re-encodes every embedded raster image this adapter
+ * knows how to decode (see `decodeImageStream`), then saves with
+ * `useObjectStreams: true`. Never returns a file bigger than the input —
+ * per-image (`compressImageStream`) and again here for the whole document,
+ * since a text-only PDF (no images to shrink) can come back a few bytes
+ * larger after a round trip through `PDFDocument.save`. An encrypted input
+ * is `"unsupported"` via the shared `loadPdf` helper, same as merge/split/
+ * rotate/extract — unlocking is its own tool.
+ */
+async function runCompress(task: EngineTask): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  const bytes = await inputToArrayBuffer(input);
+  signal.throwIfAborted();
+
+  const mod = await import("@cantoo/pdf-lib");
+  const doc = await loadPdf(mod, bytes);
+
+  const level: CompressLevel =
+    options.level === "smallest" || options.level === "best"
+      ? options.level
+      : "balanced";
+  const preset = COMPRESS_PRESETS[level];
+
+  const images = findImageStreams(mod, doc);
+  if (images.length === 0) {
+    onProgress?.(1);
+  } else {
+    for (let i = 0; i < images.length; i++) {
+      signal.throwIfAborted();
+      const stream = images[i];
+      if (!stream) continue; // unreachable: guarded by `i < images.length`
+      await compressImageStream(mod, stream, preset);
+      onProgress?.((i + 1) / images.length);
+    }
+  }
+
+  const outBytes = await doc.save({ useObjectStreams: true });
+  if (outBytes.length >= bytes.byteLength) {
+    return { kind: "bytes", bytes, mime: FORMATS.pdf.mime };
+  }
   return {
     kind: "bytes",
     bytes: outBytes.slice().buffer,
