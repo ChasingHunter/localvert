@@ -10,6 +10,8 @@ export type FieldSpec = {
   label: string;
   help?: string;
   unit?: string;
+  /** See the `required` doc comment in `src/lib/registry/types.ts`. */
+  required?: boolean;
   /** See the `showWhen` doc comment in `src/lib/registry/types.ts`. */
   showWhen?: {
     field: string;
@@ -69,12 +71,13 @@ function describeField(key: string, rawField: CoreField): FieldSpec {
     );
   }
   const { type } = field._zod.def;
-  const { label, control, unit, help, showWhen } = meta;
+  const { label, control, unit, help, required, showWhen } = meta;
   const base = {
     key,
     label,
     ...(unit !== undefined && { unit }),
     ...(help !== undefined && { help }),
+    ...(required !== undefined && { required }),
     ...(showWhen !== undefined && { showWhen }),
   };
 
@@ -202,6 +205,28 @@ export function isFieldVisible(
   return Array.isArray(equals)
     ? (equals as readonly unknown[]).includes(current)
     : current === equals;
+}
+
+/**
+ * Whether every `required` field (see the doc comment in
+ * `src/lib/registry/types.ts`) currently holds a non-blank value — a
+ * required field is a valid zod value even when empty (e.g. `protect-pdf`'s
+ * `password` has no `.min(1)`), so this is a separate, UI-only check from
+ * `validateOptions`. A non-string required value only needs to exist
+ * (`undefined`/`null` fail it); a string one also can't be
+ * whitespace-only. `OptionsForm` gates the run/convert action on this.
+ */
+export function requiredFieldsSatisfied(
+  fields: readonly FieldSpec[],
+  values: Readonly<Record<string, unknown>>,
+): boolean {
+  return fields
+    .filter((field) => field.required)
+    .every((field) => {
+      const value = values[field.key];
+      if (typeof value === "string") return value.trim() !== "";
+      return value !== undefined && value !== null;
+    });
 }
 
 export type ValidateResult<S extends z.ZodObject> =

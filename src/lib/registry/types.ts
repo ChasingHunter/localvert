@@ -33,6 +33,17 @@ declare module "zod/v4/core" {
      */
     step?: number;
     /**
+     * Marks this field as required *for the tool to run*, distinct from
+     * zod-level validity — e.g. `protect-pdf`'s `password` is a valid
+     * (empty-string) value per its schema (see that tool's own doc comment
+     * on why it can't be a `.min(1)`-constrained field), but the engine
+     * throws at runtime if it's left blank. `OptionsForm` disables the
+     * run/convert action while any `required` field is empty or
+     * whitespace-only — see `requiredFieldsSatisfied` in
+     * `src/lib/options/fields.ts`.
+     */
+    required?: boolean;
+    /**
      * Renders this field only while another field in the same options
      * object currently equals `equals` (or, for a list, equals one of its
      * entries) — e.g. `split-pdf`'s `ranges` field only makes sense once
@@ -146,6 +157,8 @@ export interface OptionMeta {
     | "hidden";
   unit?: string;
   help?: string;
+  /** See the `required` doc comment on the `GlobalMeta` augmentation above. */
+  required?: boolean;
   /** See the `showWhen` doc comment on the `GlobalMeta` augmentation above. */
   showWhen?: {
     field: string;
@@ -235,4 +248,14 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
    * unread, for any other arity.
    */
   actionLabel?: string;
+  /**
+   * Every option key whose `.meta({ required: true })` marks it as required
+   * to run, in schema declaration order. Computed by `defineTool` itself
+   * from `options`'s meta — never set this by hand in a tool file. Kept as
+   * a plain string array (not re-derived from the zod schema) so
+   * `ToolRunner` can read it without importing zod itself, the same reason
+   * `app`/`kind` are read structurally instead — see invariant 3 and
+   * `hasCropField`'s doc comment in `src/components/tool-runner.tsx`.
+   */
+  requiredOptionKeys?: readonly string[];
 }

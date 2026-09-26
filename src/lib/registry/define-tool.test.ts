@@ -90,4 +90,24 @@ describe("defineTool", () => {
     });
     expect(() => defineTool(def)).toThrow(/^\[tool jpg-to-png\]/);
   });
+
+  it("computes requiredOptionKeys from fields meta'd required: true", () => {
+    const def = validDef({
+      options: z.object({
+        password: z
+          .string()
+          .meta({ label: "Password", control: "password", required: true }),
+        allowPrinting: z
+          .boolean()
+          .meta({ label: "Allow printing", control: "switch" }),
+      }),
+      defaults: { password: "", allowPrinting: true },
+    });
+    expect(defineTool(def).requiredOptionKeys).toEqual(["password"]);
+  });
+
+  it("computes an empty requiredOptionKeys when no field is required", () => {
+    const def = validDef();
+    expect(defineTool(def).requiredOptionKeys).toEqual([]);
+  });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useEffect, useId } from "react";
 import type { z } from "zod";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,7 @@ import {
   describeFields,
   type FieldSpec,
   isFieldVisible,
+  requiredFieldsSatisfied,
   validateOptions,
 } from "@/lib/options/fields";
 
@@ -27,6 +28,14 @@ interface OptionsFormProps<S extends z.ZodObject> {
   value: z.infer<S>;
   onChange: (value: z.infer<S>) => void;
   disabled?: boolean;
+  /**
+   * Reports whether every `required` field currently holds a non-blank
+   * value, every render where that changes — `ToolRunner` uses it to
+   * disable the run/convert action instead of letting a job start (and the
+   * engine throw) with a required field still empty. Absent `required`
+   * fields, this fires `true` once and stays that way.
+   */
+  onValidityChange?: (valid: boolean) => void;
 }
 
 /**
@@ -41,6 +50,7 @@ export function OptionsForm<S extends z.ZodObject>({
   value,
   onChange,
   disabled = false,
+  onValidityChange,
 }: OptionsFormProps<S>) {
   // A "crop" field never gets a generic row here — `ToolRunner` renders a
   // dedicated `CropEditor` for it instead (see crop-editor.tsx), and no
@@ -60,6 +70,11 @@ export function OptionsForm<S extends z.ZodObject>({
   // individual field's own `value` prop below already uses, so a `showWhen`
   // reading a field the user hasn't touched yet still sees its default.
   const effectiveValues = { ...defaultRecord, ...record };
+  const satisfied = requiredFieldsSatisfied(fields, effectiveValues);
+
+  useEffect(() => {
+    onValidityChange?.(satisfied);
+  }, [satisfied, onValidityChange]);
 
   const setField = (key: string, fieldValue: unknown) => {
     onChange({ ...record, [key]: fieldValue } as z.infer<S>);
@@ -69,16 +84,28 @@ export function OptionsForm<S extends z.ZodObject>({
     <div className="flex flex-col gap-5">
       {fields
         .filter((field) => isFieldVisible(field, effectiveValues))
-        .map((field) => (
-          <OptionField
-            key={field.key}
-            field={field}
-            value={record[field.key] ?? defaultRecord?.[field.key]}
-            error={errors[field.key]}
-            disabled={disabled}
-            onChange={(fieldValue) => setField(field.key, fieldValue)}
-          />
-        ))}
+        .map((field) => {
+          const fieldValue = record[field.key] ?? defaultRecord?.[field.key];
+          // A required field's own "required" hint takes priority over a
+          // schema error — the field is valid per zod (e.g. `protect-pdf`'s
+          // `password` has no `.min(1)`), so an empty required field would
+          // otherwise show no message at all.
+          const requiredHint =
+            field.required &&
+            (typeof fieldValue !== "string" || fieldValue.trim() === "")
+              ? `${field.label} is required.`
+              : undefined;
+          return (
+            <OptionField
+              key={field.key}
+              field={field}
+              value={fieldValue}
+              error={errors[field.key] ?? requiredHint}
+              disabled={disabled}
+              onChange={(fieldValue) => setField(field.key, fieldValue)}
+            />
+          );
+        })}
     </div>
   );
 }

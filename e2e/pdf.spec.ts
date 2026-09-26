@@ -309,6 +309,41 @@ test.describe("protect-pdf / unlock-pdf", () => {
       [150, 150],
     ]);
   });
+
+  test("disables the convert action until a password is typed", async ({
+    page,
+  }) => {
+    await page.goto("/tools/protect-pdf");
+
+    // No password yet — dropping the file stages it instead of submitting
+    // (see ToolRunner's `requiredKeysSatisfied`/`pendingRequiredFiles`).
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles(fixturePath("a.pdf"));
+
+    const convertButton = page.getByRole("button", { name: "Convert" });
+    await expect(convertButton).toBeVisible();
+    await expect(convertButton).toBeDisabled();
+    await expect(page.getByText("Password is required.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Download" })).toHaveCount(0);
+
+    await page.getByLabel("Password").fill("e2e-secret");
+    await expect(convertButton).toBeEnabled();
+
+    await convertButton.click();
+
+    const protectedLink = page.getByRole("link", { name: "Download" });
+    await expect(protectedLink).toBeVisible({ timeout: 15_000 });
+    const protectedDownloadPromise = page.waitForEvent("download");
+    await protectedLink.click();
+    const protectedDownload = await protectedDownloadPromise;
+    const protectedPath = await protectedDownload.path();
+    if (!protectedPath) throw new Error("download produced no local path");
+    const protectedBytes = readFileSync(protectedPath);
+
+    // Confirm it actually ran with the typed password, not a blank one.
+    await expect(PDFDocument.load(protectedBytes)).rejects.toThrow();
+  });
 });
 
 test.describe("compress-pdf", () => {

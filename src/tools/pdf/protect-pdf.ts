@@ -7,6 +7,9 @@ import { defineTool } from "@/lib/registry";
  * `options`, and there's no non-empty password to default to. The
  * pdf-lib engine's `runProtect` is the one that actually enforces it,
  * throwing a clear error if the job runs with the field still blank.
+ * `required: true` is the UI-level backstop for the same rule:
+ * `ToolRunner`/`OptionsForm` disable the run action while it's empty or
+ * whitespace, instead of letting the job start and fail inside the worker.
  */
 export default defineTool({
   slug: "protect-pdf",
@@ -20,7 +23,9 @@ export default defineTool({
   produces: "pdf",
 
   options: z.object({
-    password: z.string().meta({ label: "Password", control: "password" }),
+    password: z
+      .string()
+      .meta({ label: "Password", control: "password", required: true }),
     allowPrinting: z
       .boolean()
       .meta({ label: "Allow printing", control: "switch" }),

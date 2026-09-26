@@ -26,6 +26,24 @@ z.config({ jitless: true });
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /**
+ * A field's `.meta()` can sit under `.optional()`/`.default()` — those
+ * wrappers clone the inner type, so the clone `.meta()` was registered on
+ * survives underneath. Mirrors (as a small local copy, not a shared import)
+ * `src/lib/options/fields.ts`'s own `unwrap`: that module is a layer built
+ * on top of the registry, and the registry doesn't reach back up into it.
+ */
+function unwrapField(field: z.core.$ZodType): z.core.$ZodType {
+  const { type } = field._zod.def;
+  if (type === "optional" || type === "default") {
+    const { innerType } = field._zod.def as unknown as {
+      innerType: z.core.$ZodType;
+    };
+    return unwrapField(innerType);
+  }
+  return field;
+}
+
+/**
  * Validates a tool definition at definition time — i.e. as soon as the tool
  * file's module runs, not later at build or test time — so a broken tool
  * file fails loudly before it can become a route promising a conversion the
@@ -107,6 +125,13 @@ export function defineTool<S extends z.ZodObject>(
       );
     }
   });
+
+  def.requiredOptionKeys = Object.entries(def.options.shape)
+    .filter(([, field]) => {
+      const meta = z.globalRegistry.get(unwrapField(field as z.core.$ZodType));
+      return meta?.required === true;
+    })
+    .map(([key]) => key);
 
   return def;
 }

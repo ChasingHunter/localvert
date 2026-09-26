@@ -4,6 +4,7 @@ import {
   describeFields,
   type FieldSpec,
   isFieldVisible,
+  requiredFieldsSatisfied,
   validateOptions,
 } from "./fields";
 
@@ -381,6 +382,61 @@ describe("isFieldVisible", () => {
     expect(isFieldVisible(equalsList, { pageSize: "a4" })).toBe(true);
     expect(isFieldVisible(equalsList, { pageSize: "letter" })).toBe(true);
     expect(isFieldVisible(equalsList, { pageSize: "fit" })).toBe(false);
+  });
+});
+
+describe("requiredFieldsSatisfied", () => {
+  const password: FieldSpec = {
+    key: "password",
+    label: "Password",
+    control: "password",
+    required: true,
+  };
+  const optional: FieldSpec = {
+    key: "note",
+    label: "Note",
+    control: "text",
+  };
+
+  it("is true when there are no required fields", () => {
+    expect(requiredFieldsSatisfied([optional], {})).toBe(true);
+  });
+
+  it("is false when a required string field is missing", () => {
+    expect(requiredFieldsSatisfied([password], {})).toBe(false);
+  });
+
+  it("is false when a required string field is empty or whitespace-only", () => {
+    expect(requiredFieldsSatisfied([password], { password: "" })).toBe(false);
+    expect(requiredFieldsSatisfied([password], { password: "   " })).toBe(
+      false,
+    );
+  });
+
+  it("is true once a required string field holds a non-blank value", () => {
+    expect(requiredFieldsSatisfied([password], { password: "hunter2" })).toBe(
+      true,
+    );
+  });
+
+  it("ignores non-required fields regardless of their value", () => {
+    expect(
+      requiredFieldsSatisfied([password, optional], { password: "x" }),
+    ).toBe(true);
+  });
+
+  it("only needs a non-string required value to be defined", () => {
+    const count: FieldSpec = {
+      key: "count",
+      label: "Count",
+      control: "number",
+      min: 0,
+      max: 10,
+      step: 1,
+      required: true,
+    };
+    expect(requiredFieldsSatisfied([count], {})).toBe(false);
+    expect(requiredFieldsSatisfied([count], { count: 0 })).toBe(true);
   });
 });
 

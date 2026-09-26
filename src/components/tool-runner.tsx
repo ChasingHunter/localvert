@@ -54,6 +54,28 @@ interface ToolRunnerProps {
   slug: string;
 }
 
+/**
+ * Whether every one of a tool's `requiredOptionKeys` currently holds a
+ * non-blank value in `values` — the same rule `requiredFieldsSatisfied`
+ * (src/lib/options/fields.ts) applies, kept as a small local copy operating
+ * on plain option keys instead of `FieldSpec`s so this file never imports
+ * zod (see `hasCropField`'s doc comment above on why that matters). Used to
+ * decide, at drop time, whether a required-field tool can submit
+ * immediately (the field was already filled in before the drop) or must
+ * hold the file back for the explicit action button instead.
+ */
+function requiredKeysSatisfied(
+  keys: readonly string[],
+  values: Readonly<Record<string, unknown>>,
+): boolean {
+  return keys.every((key) => {
+    const value = values[key];
+    return typeof value === "string"
+      ? value.trim() !== ""
+      : value !== undefined && value !== null;
+  });
+}
+
 /** The extension a filename claims, without its dot — "" if it has none. */
 function extOf(name: string): string {
   const dot = name.lastIndexOf(".");
@@ -100,6 +122,20 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   const [zipping, setZipping] = useState(false);
   const [zipError, setZipError] = useState<string | null>(null);
   const [cropTarget, setCropTarget] = useState<AcceptedFile | null>(null);
+  // Files staged for a tool with at least one `required` option (e.g.
+  // `protect-pdf`'s `password`) whose value wasn't filled in yet at drop
+  // time — held back instead of submitted, since submitting would either
+  // run with a blank value or need the job cancelled and retried. A
+  // required field already filled in *before* the drop never reaches this
+  // state at all (see `requiredKeysSatisfied` above) — it submits
+  // immediately like any other tool. `canSubmit` mirrors `OptionsForm`'s
+  // own `requiredFieldsSatisfied` check (reported up via its
+  // `onValidityChange`) and starts `true` so a tool with no required fields
+  // is never blocked before its options even mount.
+  const [pendingRequiredFiles, setPendingRequiredFiles] = useState<
+    AcceptedFile[]
+  >([]);
+  const [canSubmit, setCanSubmit] = useState(true);
   // ADR-0008, arity "many-to-one" (e.g. merge-pdf): files accumulate here
   // across drops instead of submitting immediately, in the order the user
   // arranges them via `FileOrderList` — submission is the explicit
@@ -147,6 +183,10 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   // (`TOOL_LOADERS[slug]()` above).
   const hasCropField = tool ? "crop" in tool.options.shape : false;
   const isManyToOne = tool?.arity === "many-to-one";
+  // Plain string array on the tool definition itself (see its doc comment
+  // in `src/lib/registry/types.ts`) — read structurally, same as
+  // `hasCropField` above, so this file never imports zod just to check it.
+  const hasRequiredOptions = (tool?.requiredOptionKeys?.length ?? 0) > 0;
 
   const handleFiles = useCallback(
     async (accepted: AcceptedFile[], rejectedFiles: RejectedFile[]) => {
@@ -166,6 +206,17 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         setOrderedFiles((prev) => [...prev, ...accepted]);
         return;
       }
+      if (
+        hasRequiredOptions &&
+        !requiredKeysSatisfied(tool.requiredOptionKeys ?? [], options)
+      ) {
+        // Staged, not submitted — see `handleSubmitPending`. A required
+        // field already filled in *before* the drop (e.g. password typed
+        // first) skips this and submits immediately below, same as any
+        // other tool.
+        setPendingRequiredFiles((prev) => [...prev, ...accepted]);
+        return;
+      }
       const engine = await jobEngine();
       engine.submit(
         tool,
@@ -173,8 +224,19 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         options,
       );
     },
-    [tool, options, hasCropField, isManyToOne],
+    [tool, options, hasCropField, isManyToOne, hasRequiredOptions],
   );
+
+  const handleSubmitPending = useCallback(async () => {
+    if (!tool || pendingRequiredFiles.length === 0 || !canSubmit) return;
+    const engine = await jobEngine();
+    engine.submit(
+      tool,
+      pendingRequiredFiles.map((a) => ({ file: a.file, format: a.format })),
+      options,
+    );
+    setPendingRequiredFiles([]);
+  }, [tool, pendingRequiredFiles, options, canSubmit]);
 
   const handleSubmitOrdered = useCallback(async () => {
     if (!tool || orderedFiles.length < 2) return;
@@ -321,6 +383,23 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         </div>
       )}
 
+      {hasRequiredOptions && pendingRequiredFiles.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <ul className="flex flex-col gap-1 text-sm text-ink-muted">
+            {pendingRequiredFiles.map((f) => (
+              <li key={`${f.file.name}-${f.file.size}`}>{f.file.name}</li>
+            ))}
+          </ul>
+          <Button
+            type="button"
+            onClick={handleSubmitPending}
+            disabled={!canSubmit}
+          >
+            {tool.actionLabel ?? "Convert"}
+          </Button>
+        </div>
+      )}
+
       {rejected.length > 0 && (
         <ul className="flex flex-col gap-1">
           {rejected.map((r) => (
@@ -349,6 +428,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
           defaults={tool.defaults}
           value={options}
           onChange={setOptions}
+          onValidityChange={setCanSubmit}
         />
       )}
 
