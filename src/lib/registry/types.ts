@@ -1,3 +1,4 @@
+import type { ComponentType } from "react";
 import type { z } from "zod";
 import type { Category } from "./categories";
 import type { FormatId } from "./formats";
@@ -174,6 +175,27 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
   defaults: z.infer<S>;
   pipeline: readonly PipelineStep[];
   batch: boolean;
+  /**
+   * "job" (default): the one-shot job pipeline runs `pipeline` against
+   * whatever the user drops, through the existing dropzone/job-list UI (see
+   * `ToolRunner`).
+   *
+   * "app": a stateful, self-contained tool — it renders its own component
+   * (`app`) instead of going through the job pipeline. `pipeline`/`batch` are
+   * still required by this type (most tools need them) but are ignored for
+   * an "app" tool; `defineTool` doesn't validate them against anything for
+   * this kind. Its route, SEO metadata and category listing are still
+   * registry-derived, same as a job tool — only the on-page runner differs.
+   * See ADR-0009 (the PDF editor) and `src/app/tools/[slug]/page.tsx`.
+   */
+  kind?: "job" | "app";
+  /**
+   * Required iff `kind` is "app": lazily loads the tool's own component,
+   * rendered via `next/dynamic` with `ssr: false` (see `[slug]/page.tsx`) so
+   * its weight never lands in the tool page's first-load JS. Takes no props
+   * — an app-mode tool owns its entire UI, including its own dropzone.
+   */
+  app?: () => Promise<{ default: ComponentType }>;
   outputName?: (inputName: string, opts: z.infer<S>) => string;
   /**
    * How many files this tool consumes and produces (ADR-0008). Defaults to

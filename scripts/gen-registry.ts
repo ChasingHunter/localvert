@@ -197,6 +197,21 @@ export interface EngineSourceMeta {
   needsIsolation: boolean;
   heavy: boolean;
   /**
+   * "job" (the default): a one-shot `EngineAdapter` the job pipeline can
+   * dispatch a `run(task)` to — needs `adapter.ts` alongside `engine.json`,
+   * and is included in the `EngineId` union, `ENGINE_LOADERS`, and every
+   * pipeline step's engine candidates.
+   *
+   * "session": a stateful engine an app-mode tool owns directly (e.g.
+   * pdfium, driven by the PDF editor) — no `adapter.ts`, no one-shot
+   * `run(task)` shape fits it. Excluded from `EngineId`/`ENGINE_LOADERS`/the
+   * job pipeline entirely, but still included in `ENGINE_MANIFEST` (derived
+   * version, assets, baseUrl) and still copied by `sync-engines`, so a
+   * version bump of its npm package is zero-maintenance the same way a job
+   * engine's is.
+   */
+  kind: "job" | "session";
+  /**
    * Hand-written version. Required for "native" (wraps a browser API — no
    * installed package to derive from) and for "bundled" without
    * `versionFrom` (our own code, e.g. `exif`). Forbidden for "static"/"r2"
@@ -280,6 +295,10 @@ export function parseEngineMeta(
       `"assets" is not allowed in engine.json — sizes are computed by "pnpm gen" from the installed package`,
     );
   }
+  if (j.kind !== undefined && j.kind !== "job" && j.kind !== "session") {
+    fail(`"kind" must be "job" or "session"`);
+  }
+  const kind: "job" | "session" = j.kind === "session" ? "session" : "job";
 
   // "package"/"files" name the npm package and files `sync-engines` copies
   // the engine's assets from, and (for "static"/"r2") the package
@@ -385,6 +404,7 @@ export function parseEngineMeta(
     location,
     needsIsolation: j.needsIsolation as boolean,
     heavy: j.heavy as boolean,
+    kind,
     ...(version !== undefined ? { version } : {}),
     ...(versionFrom !== undefined ? { versionFrom } : {}),
     ...(pkg !== undefined && files !== undefined
@@ -582,11 +602,6 @@ export function scanEngines(rootDir: string): EngineMetaLike[] {
 
     if (!hasJson && !hasAdapter) continue;
 
-    if (hasJson && !hasAdapter) {
-      throw new Error(
-        `[gen-registry] engine "${dirName}" has engine.json but no adapter.ts`,
-      );
-    }
     if (hasAdapter && !hasJson) {
       throw new Error(
         `[gen-registry] engine "${dirName}" has adapter.ts but no engine.json`,
@@ -595,6 +610,22 @@ export function scanEngines(rootDir: string): EngineMetaLike[] {
 
     const rawJson = readFileSync(join(dir, "engine.json"), "utf8");
     const source = parseEngineMeta(dirName, rawJson);
+
+    // A "job" engine needs `adapter.ts` — the job pipeline dispatches a
+    // one-shot `run(task)` to it. A "session" engine (e.g. pdfium) is a
+    // stateful engine an app-mode tool drives directly; it must NOT have
+    // one, so it never leaks into `EngineId`/`ENGINE_LOADERS` by accident.
+    if (source.kind === "session" && hasAdapter) {
+      throw new Error(
+        `[gen-registry] engine "${dirName}" is kind "session" and must not have adapter.ts — session engines are excluded from the job pipeline`,
+      );
+    }
+    if (source.kind !== "session" && !hasAdapter) {
+      throw new Error(
+        `[gen-registry] engine "${dirName}" has engine.json but no adapter.ts`,
+      );
+    }
+
     const version = resolveVersion(dirName, source, rootDir);
     const assets = resolveAssets(dirName, source, rootDir);
     metas.push({ ...source, version, assets });
@@ -644,8 +675,13 @@ function propKey(id: string): string {
   return VALID_IDENTIFIER_RE.test(id) ? id : JSON.stringify(id);
 }
 
+/** "session" engines (e.g. pdfium) are excluded from `EngineId` — the job
+ * pipeline never dispatches to them. See `EngineSourceMeta.kind`. */
 export function genEngineIds(metas: readonly EngineMetaLike[]): string {
-  const ids = metas.map((m) => m.id).sort();
+  const ids = metas
+    .filter((m) => m.kind !== "session")
+    .map((m) => m.id)
+    .sort();
   const union =
     ids.length === 0 ? "never" : ids.map((id) => `"${id}"`).join(" | ");
   return `${GENERATED_HEADER}\nexport type EngineId = ${union};\n`;
@@ -666,6 +702,7 @@ export function genEngineManifest(metas: readonly EngineMetaLike[]): string {
       `    location: "${m.location}",`,
       `    needsIsolation: ${m.needsIsolation},`,
       `    heavy: ${m.heavy},`,
+      `    kind: "${m.kind}",`,
       `    assets: [${assets}],`,
       `    baseUrl: "${baseUrl}",`,
       `    totalBytes: ${totalBytes},`,
@@ -686,10 +723,11 @@ export function genEngineManifest(metas: readonly EngineMetaLike[]): string {
   ].join("\n")}\n`;
 }
 
+/** "session" engines have no `adapter.ts` — excluded, same as `genEngineIds`. */
 export function genEngineLoaders(metas: readonly EngineMetaLike[]): string {
-  const entries = sortedById(metas).map(
-    (m) => `  ${propKey(m.id)}: () => import("./${m.id}/adapter"),`,
-  );
+  const entries = sortedById(metas)
+    .filter((m) => m.kind !== "session")
+    .map((m) => `  ${propKey(m.id)}: () => import("./${m.id}/adapter"),`);
   const body = entries.length === 0 ? "{}" : `{\n${entries.join("\n")}\n}`;
 
   return `${[

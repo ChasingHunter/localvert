@@ -14,6 +14,14 @@ export interface EngineMeta {
   location: EngineLocation;
   needsIsolation: boolean;
   heavy: boolean;
+  /**
+   * "job" (default): has an `adapter.ts`, is part of the `EngineId` union and
+   * the job pipeline. "session": a stateful engine an app-mode tool drives
+   * directly (e.g. pdfium) — no adapter, excluded from `EngineId`/
+   * `ENGINE_LOADERS`, but still resolved here for its version/assets/baseUrl.
+   * See `scripts/gen-registry.ts`'s `EngineSourceMeta.kind`.
+   */
+  kind: "job" | "session";
   assets: readonly EngineAsset[];
   /**
    * The npm package `sync-engines` copies assets from. Required iff

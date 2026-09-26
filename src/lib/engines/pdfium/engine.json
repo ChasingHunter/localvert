@@ -1,0 +1,10 @@
+{
+  "id": "pdfium",
+  "license": "MIT",
+  "location": "static",
+  "kind": "session",
+  "package": "@embedpdf/pdfium",
+  "files": [{ "from": "dist/pdfium.wasm", "to": "pdfium.wasm" }],
+  "needsIsolation": false,
+  "heavy": true
+}

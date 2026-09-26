@@ -224,6 +224,7 @@ describe("parseEngineMeta", () => {
       location: "static",
       needsIsolation: false,
       heavy: false,
+      kind: "job",
       package: "@acme/foo",
       files: [{ from: "foo.wasm", to: "foo.wasm" }],
     });
@@ -246,6 +247,7 @@ describe("parseEngineMeta", () => {
       location: "native",
       needsIsolation: false,
       heavy: false,
+      kind: "job",
     });
   });
 
@@ -421,6 +423,7 @@ describe("parseEngineMeta", () => {
       location: "bundled",
       needsIsolation: false,
       heavy: false,
+      kind: "job",
     });
   });
 
@@ -441,6 +444,7 @@ describe("parseEngineMeta", () => {
       location: "bundled",
       needsIsolation: false,
       heavy: false,
+      kind: "job",
     });
   });
 
@@ -493,6 +497,22 @@ describe("parseEngineMeta", () => {
       ),
     ).toThrow(/"files" is not allowed when location is "bundled"/);
   });
+
+  it('defaults "kind" to "job" when omitted', () => {
+    expect(parseEngineMeta("foo", engineJson()).kind).toBe("job");
+  });
+
+  it('parses "kind": "session"', () => {
+    expect(parseEngineMeta("foo", engineJson({ kind: "session" })).kind).toBe(
+      "session",
+    );
+  });
+
+  it('rejects an unknown "kind"', () => {
+    expect(() =>
+      parseEngineMeta("foo", engineJson({ kind: "worker" })),
+    ).toThrow(/"kind" must be "job" or "session"/);
+  });
 });
 
 describe("scanEngines", () => {
@@ -519,6 +539,32 @@ describe("scanEngines", () => {
     writeFile(dir, "src/lib/engines/foo/adapter.ts", "export default {};\n");
     expect(() => scanEngines(dir)).toThrow(
       /engine "foo" has adapter\.ts but no engine\.json/,
+    );
+  });
+
+  it('accepts a "session" engine with no adapter.ts', () => {
+    const dir = makeTempDir();
+    writeFile(
+      dir,
+      "src/lib/engines/foo/engine.json",
+      engineJson({ kind: "session" }),
+    );
+    writePackage(dir, "@acme/foo", "1.2.3", { "foo.wasm": "wasm-bytes" });
+    const [meta] = scanEngines(dir);
+    expect(meta?.kind).toBe("session");
+    expect(meta?.version).toBe("1.2.3");
+  });
+
+  it('errors when a "session" engine has an adapter.ts', () => {
+    const dir = makeTempDir();
+    writeFile(
+      dir,
+      "src/lib/engines/foo/engine.json",
+      engineJson({ kind: "session" }),
+    );
+    writeFile(dir, "src/lib/engines/foo/adapter.ts", "export default {};\n");
+    expect(() => scanEngines(dir)).toThrow(
+      /engine "foo" is kind "session" and must not have adapter\.ts/,
     );
   });
 
@@ -670,6 +716,7 @@ describe("assertNoDuplicateIds", () => {
       location: "native",
       needsIsolation: false,
       heavy: false,
+      kind: "job",
       assets: [],
     };
   }
@@ -749,6 +796,7 @@ describe("genEngineManifest", () => {
         location: "bundled",
         needsIsolation: false,
         heavy: false,
+        kind: "job",
         assets: [],
       },
     ]);
@@ -764,11 +812,28 @@ describe("genEngineManifest", () => {
         location: "native",
         needsIsolation: false,
         heavy: false,
+        kind: "job",
         assets: [],
       },
     ]);
     expect(out).toContain('"jsquash-jpeg": {');
     expect(out).not.toMatch(/[^"]jsquash-jpeg:\s*\{/);
+  });
+
+  it('includes a "session" engine (no adapter.ts) with its own kind, excluded from EngineId/ENGINE_LOADERS', () => {
+    const dir = makeTempDir();
+    writeFile(
+      dir,
+      "src/lib/engines/pdfium/engine.json",
+      engineJson({ id: "pdfium", kind: "session", package: "@acme/pdfium" }),
+    );
+    writePackage(dir, "@acme/pdfium", "2.15.1", { "foo.wasm": "wasm" });
+    const metas = scanEngines(dir);
+    expect(genEngineIds(metas)).not.toContain("pdfium");
+    expect(genEngineLoaders(metas)).not.toContain("pdfium");
+    const manifest = genEngineManifest(metas);
+    expect(manifest).toContain('kind: "session",');
+    expect(manifest).toContain("pdfium:");
   });
 });
 
@@ -795,6 +860,7 @@ describe("genEngineLoaders", () => {
         location: "native",
         needsIsolation: false,
         heavy: false,
+        kind: "job",
         assets: [],
       },
     ]);

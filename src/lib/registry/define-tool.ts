@@ -65,6 +65,14 @@ export function defineTool<S extends z.ZodObject>(
     fail(`defaults do not satisfy options: ${parsed.error.message}`);
   }
 
+  const kind = def.kind ?? "job";
+  if (kind === "app" && !def.app) {
+    fail('kind "app" requires an "app" loader');
+  }
+  if (kind === "job" && def.app) {
+    fail('"app" is only allowed when kind is "app"');
+  }
+
   const arity = def.arity ?? "one-to-one";
   if (arity === "many-to-one") {
     // "batch" (repeat this tool per dropped file) and "many-to-one" (combine
