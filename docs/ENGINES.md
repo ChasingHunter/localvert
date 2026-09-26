@@ -43,6 +43,7 @@ as its codec preference table.
 | `libraw` | raw | — | — | adapter ready |
 | `pdf-lib` | jpg, png (`merge` only) | — | `merge`, `split`, `rotate`, `extract`, `protect`, `unlock`, `compress`: pdf | adapter ready |
 | `pdfjs` | — | — | `render`: pdf → jpg, png | adapter ready |
+| `tesseract` | — | — | `ocr`: jpg, png, webp, bmp → txt, pdf | adapter ready |
 
 `canvas` also still runs the legacy single-step `transcode` op directly
 (bytes of one format straight to bytes of another) for a tool that predates
@@ -160,6 +161,39 @@ text via predefined Adobe CMaps) ship as real per-file assets under
 (`{from: "cmaps/", to: "cmaps/"}`) to copy pdf.js's own directory trees of
 them one file at a time, same as every other engine's fixed file list.
 
+`tesseract` (`tesseract.js`, wrapping the Tesseract OCR engine) doesn't fit
+the decode/encode/transform shape either — its one op, `ocr`, hands an image
+straight to tesseract.js's own `recognize()` (which does its own decoding)
+and reads back either plain text or a searchable PDF (the original page
+image plus an invisible OCR text layer, via `recognize({pdf: true})`). It is
+`heavy: true`: `load()` spins up **one** real nested `Worker` (tesseract.js's
+own — a same-origin worker inside our worker, allowed by ADR-0006's
+`worker-src 'self' blob:`) and loads the wasm core plus the English language
+model into it once, reused across every `run()` this adapter instance
+handles rather than per job — the entire reason `heavy` engines get a pinned
+worker with an idle TTL instead of loading fresh every call. `workerPath`/
+`corePath`/`langPath` all point at this engine's own `ctx.baseUrl`, never
+tesseract.js's jsdelivr CDN defaults. `corePath` is passed as an exact
+`.wasm.js` file rather than a directory: tesseract.js's own worker-side core
+loader (`getCore.js`) otherwise probes for a browser's SIMD *and*
+relaxed-SIMD support and, on a browser that reports the latter (current
+Chromium does), tries to fetch a `-relaxedsimd-` core file that
+`tesseract.js-core`@6.1.2 (the installed version) predates and never built —
+confirmed failing against a real Chromium run. A local `WebAssembly.validate`
+SIMD probe (the same bytes `wasm-feature-detect`'s own check uses)
+picks between the two tiers this engine actually ships instead: the
+SIMD-LSTM core for the common case, plain LSTM as the no-SIMD fallback.
+tesseract.js's package entry point requires a Node-only module unless a
+bundler honours its `package.json` `"browser"` field remap — unverified for
+a Turbopack worker bundle — so this adapter ships tesseract.js's own prebuilt
+`dist/tesseract.esm.min.js` browser bundle as a static asset and
+runtime-imports it instead, the same pattern as `pdfjs`/`libraw`. Uses the
+smaller "best_int" English language model (`@tesseract.js-data/eng`'s
+`4.0.0_best_int` variant, ~3 MB gzipped) rather than the full ~11 MB one.
+Multi-page scanned-PDF → searchable-PDF (rendering each page with `pdfjs`
+first, OCR-ing each, then merging) is future work — the current tools take a
+single page image, not a PDF.
+
 ---
 
 ## Delivery table
@@ -191,6 +225,7 @@ Size, placement, threading. Placement is enforced by `scripts/sync-engines.ts`:
 | `libraw` | `libraw-wasm` | 1.6.0 | **LGPL-2.1/CDDL-1.0 dual** | ~1.4 MiB | static | no |
 | `pdf-lib` | `@cantoo/pdf-lib` | 2.11.1 | MIT | 0 (bundled in JS) | bundled | no |
 | `pdfjs` | `pdfjs-dist` | 6.3.289 | Apache-2.0 | ~4.8 MiB (pdf.mjs + pdf.worker.mjs + cmaps + standard_fonts) | static | no |
+| `tesseract` | `tesseract.js` (+ `tesseract.js-core`, `@tesseract.js-data/eng`) | 7.0.0 | Apache-2.0 (data: MIT) | ~16 MiB (JS glue + worker + 2 wasm core tiers + English "best_int" model) | static | no |
 
 ### How engine assets ship
 
@@ -202,6 +237,15 @@ for "native" or "bundled" — neither ships assets of its own: "native" wraps a
 browser API, "bundled" is pure JS shipped inside the engine's own worker
 chunk instead of a separate fetched asset. `version` must equal the
 installed package's version — engine URLs are versioned by it.
+
+A file entry can also carry its own `package`, overriding the engine's
+top-level one for that one file — for an engine whose assets are split
+across several npm packages, like `tesseract` (`tesseract.js` for the JS
+glue, `tesseract.js-core` for the wasm, `@tesseract.js-data/eng` for the
+language data). The version check above only ever applies to the engine's
+own primary `package`; a borrowed file is copied as-is, unchecked against
+any version — `engine.json` has only the one `version` field to check
+against.
 
 `pnpm sync-engines` reads those fields, copies each file into place
 (`public/engines/<id>@<version>/` for "static", `.engines-r2/xl/<id>@<

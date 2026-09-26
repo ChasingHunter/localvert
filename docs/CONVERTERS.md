@@ -52,6 +52,7 @@ level, not through the full UI.
 | `strip-exif` | JPEG/PNG/WebP | same format | exif | Yes | Byte-level metadata strip, no re-encode; drops GPS/EXIF/XMP/IPTC, keeps ICC colour profile; optionally rebuilds a minimal orientation-only EXIF |
 | `raw-to-jpg` | Camera RAW (CR2, NEF, ARW, DNG, RAF, ORF, RW2, …) | JPEG | libraw → jsquash-jpeg | Yes | Camera white balance, sRGB, 8-bit; optional half-size decode; strips EXIF (incl. GPS) |
 | `raw-to-png` | Camera RAW (CR2, NEF, ARW, DNG, RAF, ORF, RW2, …) | PNG | libraw → jsquash-png | Yes | Camera white balance, sRGB, 8-bit; optional half-size decode; strips EXIF (incl. GPS) |
+| `image-to-text` | JPEG/PNG/WebP/BMP | Text (OCR) | tesseract | Yes | English only today (`language` select); OCR accuracy depends on the source image |
 
 ## Image operations
 
@@ -94,6 +95,7 @@ apply to any of them, so that column reads their own **Arity** instead.
 | `compress-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Re-encodes embedded images smaller (`level`: smallest/balanced/best); never bigger than the input |
 | `pdf-to-jpg` | PDF | JPEG | pdfjs | one-to-many | One JPG per selected page (`pages`, `dpi`, `quality`); white background |
 | `pdf-to-png` | PDF | PNG | pdfjs | one-to-many | One PNG per selected page (`pages`, `dpi`); page transparency preserved |
+| `image-to-searchable-pdf` | JPEG/PNG/WebP/BMP | PDF | tesseract | one-to-one (batch) | Adds an invisible OCR text layer over the original page image; English only today (`language` select). Single-page input only — multi-page scanned-PDF → searchable-PDF is a follow-up (see docs/ROADMAP.md) |
 
 ## Video
 

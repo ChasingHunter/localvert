@@ -135,8 +135,11 @@ Goal: the image matrix people actually search for, fast and batched.
       directions genuinely supported, not just protect) — flatten forms
       still pending (2026-09-26)
 - [x] Render to image (pdfjs-dist, self-hosted worker + cmaps) (2026-09-26)
-- [ ] OCR (tesseract.js; self-host traineddata — the default CDN fetch
-      violates our CSP, which is the point)
+- [x] OCR (tesseract.js; self-host traineddata — the default CDN fetch
+      violates our CSP, which is the point) — image → text and image →
+      searchable PDF (single page) (2026-09-26)
+  - [ ] Multi-page scanned-PDF → searchable-PDF (render each page with
+        pdfjs, OCR each, merge) — follow-up, not built yet
 
 ## Phase 3 — Video and audio
 
