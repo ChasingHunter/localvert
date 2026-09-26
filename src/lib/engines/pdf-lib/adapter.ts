@@ -52,7 +52,8 @@ function supports(
     op === "reorder" ||
     op === "protect" ||
     op === "unlock" ||
-    op === "compress"
+    op === "compress" ||
+    op === "flatten"
   );
 }
 
@@ -139,6 +140,8 @@ async function run(task: EngineTask): Promise<EngineResult> {
         return await runUnlock(task);
       case "compress":
         return await runCompress(task);
+      case "flatten":
+        return await runFlatten(task);
       default:
         throw new EngineError(
           "unsupported",
@@ -878,6 +881,40 @@ async function runCompress(task: EngineTask): Promise<EngineResult> {
   if (outBytes.length >= bytes.byteLength) {
     return { kind: "bytes", bytes, mime: FORMATS.pdf.mime };
   }
+  return {
+    kind: "bytes",
+    bytes: outBytes.slice().buffer,
+    mime: FORMATS.pdf.mime,
+  };
+}
+
+/**
+ * flatten (pdf -> pdf): `doc.getForm().flatten()` bakes every field's current
+ * value into its page's content stream and removes the field/widget itself —
+ * `@cantoo/pdf-lib`'s own default (`{ updateFieldAppearances: true }`)
+ * regenerates each field's appearance from its value first, so this also
+ * fixes fields a non-conforming writer left with a stale or missing
+ * appearance stream. No options: unlike `protect`/`unlock`, there's nothing
+ * here for a caller to choose. `getForm()` creates an empty AcroForm when the
+ * document has none (see its doc comment in `PDFDocument.d.ts`), and
+ * flattening that is a no-op — a form-less PDF round-trips through `save()`
+ * unchanged in substance, same "safe on a no-op input" contract as
+ * `runCompress`.
+ */
+async function runFlatten(task: EngineTask): Promise<EngineResult> {
+  const { input, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  const bytes = await inputToArrayBuffer(input);
+  signal.throwIfAborted();
+
+  const mod = await import("@cantoo/pdf-lib");
+  const doc = await loadPdf(mod, bytes);
+
+  doc.getForm().flatten();
+  onProgress?.(1);
+
+  const outBytes = await doc.save();
   return {
     kind: "bytes",
     bytes: outBytes.slice().buffer,

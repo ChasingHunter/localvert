@@ -87,6 +87,7 @@ export type Operation =
   | "reorder"
   | "protect"
   | "unlock"
+  | "flatten"
   | "render"
   | "ocr";
 

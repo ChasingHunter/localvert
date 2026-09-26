@@ -43,6 +43,7 @@ import webpToSvg from "@/tools/image/webp-to-svg";
 import compressPdf from "@/tools/pdf/compress-pdf";
 import deletePdfPages from "@/tools/pdf/delete-pdf-pages";
 import extractPdfPages from "@/tools/pdf/extract-pdf-pages";
+import flattenPdf from "@/tools/pdf/flatten-pdf";
 import imageToSearchablePdf from "@/tools/pdf/image-to-searchable-pdf";
 import imagesToPdf from "@/tools/pdf/images-to-pdf";
 import mergePdf from "@/tools/pdf/merge-pdf";
@@ -99,6 +100,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   compressPdf,
   deletePdfPages,
   extractPdfPages,
+  flattenPdf,
   imageToSearchablePdf,
   imagesToPdf,
   mergePdf,

@@ -168,7 +168,7 @@ describe("pdf-lib adapter", () => {
   });
 
   describe("supports", () => {
-    it("accepts merge, split, rotate, extract, protect and unlock, pdf to pdf", () => {
+    it("accepts merge, split, rotate, extract, protect, unlock and flatten, pdf to pdf", () => {
       expect(adapter.supports("merge", "pdf", "pdf")).toBe(true);
       expect(adapter.supports("split", "pdf", "pdf")).toBe(true);
       expect(adapter.supports("rotate", "pdf", "pdf")).toBe(true);
@@ -176,6 +176,7 @@ describe("pdf-lib adapter", () => {
       expect(adapter.supports("reorder", "pdf", "pdf")).toBe(true);
       expect(adapter.supports("protect", "pdf", "pdf")).toBe(true);
       expect(adapter.supports("unlock", "pdf", "pdf")).toBe(true);
+      expect(adapter.supports("flatten", "pdf", "pdf")).toBe(true);
     });
 
     it("accepts merge from jpg/png, for images-to-pdf", () => {
@@ -959,6 +960,63 @@ describe("pdf-lib adapter", () => {
       );
       if (unlocked.kind !== "bytes") throw new Error("expected bytes result");
       expect(await pageSizes(unlocked.bytes)).toEqual([
+        [100, 100],
+        [150, 150],
+      ]);
+    });
+  });
+
+  describe("run: flatten", () => {
+    it("bakes field values into the page and removes the fields", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+
+      const doc = await PDFDocument.create();
+      const page = doc.addPage([200, 200]);
+      const font = await doc.embedFont(StandardFonts.Helvetica);
+      const form = doc.getForm();
+
+      const textField = form.createTextField("name");
+      textField.setText("Ada Lovelace");
+      textField.addToPage(page, { font });
+
+      const checkBox = form.createCheckBox("agree");
+      checkBox.check();
+      checkBox.addToPage(page);
+
+      expect(form.getFields().length).toBe(2);
+      const bytes = (await doc.save()).slice().buffer;
+
+      const result = await instance.run(
+        baseTask({ op: "flatten", input: bytesInput(bytes) }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+
+      const reopened = await PDFDocument.load(result.bytes);
+      expect(reopened.getForm().getFields().length).toBe(0);
+      expect(reopened.getPageCount()).toBe(1);
+    });
+
+    it("is a no-op on a pdf with no form", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([
+        [100, 100],
+        [150, 150],
+      ]);
+
+      const result = await instance.run(
+        baseTask({ op: "flatten", input: bytesInput(doc) }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+
+      const reopened = await PDFDocument.load(result.bytes);
+      expect(reopened.getForm().getFields().length).toBe(0);
+      expect(await pageSizes(result.bytes)).toEqual([
         [100, 100],
         [150, 150],
       ]);

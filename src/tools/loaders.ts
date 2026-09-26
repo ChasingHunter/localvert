@@ -45,6 +45,7 @@ export const TOOL_LOADERS = {
   "compress-pdf": () => import("./pdf/compress-pdf"),
   "delete-pdf-pages": () => import("./pdf/delete-pdf-pages"),
   "extract-pdf-pages": () => import("./pdf/extract-pdf-pages"),
+  "flatten-pdf": () => import("./pdf/flatten-pdf"),
   "image-to-searchable-pdf": () => import("./pdf/image-to-searchable-pdf"),
   "images-to-pdf": () => import("./pdf/images-to-pdf"),
   "merge-pdf": () => import("./pdf/merge-pdf"),
