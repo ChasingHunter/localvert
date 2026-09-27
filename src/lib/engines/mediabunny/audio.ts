@@ -56,6 +56,7 @@ const AUDIO_INPUT_FORMATS = new Set<StepFormat>([
   "ogg",
   "opus",
   "m4a",
+  "aac",
 ]);
 
 /** True for every (op, input, output) triple this file's `run` handles —

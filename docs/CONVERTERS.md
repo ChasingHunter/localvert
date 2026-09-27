@@ -138,6 +138,8 @@ apply to any of them, so that column reads their own **Arity** instead.
 | `mp4-to-mp3` | MP4 | MP3 | mediabunny | Yes | Discards the video track; bitrate/sample rate/channels |
 | `mov-to-mp3` | MOV | MP3 | mediabunny | Yes | Discards the video track; bitrate/sample rate/channels |
 | `webm-to-mp3` | WebM | MP3 | mediabunny | Yes | Discards the video track; bitrate/sample rate/channels |
+| `aac-to-mp3` | AAC (raw ADTS) | MP3 | mediabunny | Yes | Bitrate/sample rate/channels |
+| `opus-to-mp3` | Opus (Ogg container) | MP3 | mediabunny | Yes | Bitrate/sample rate/channels |
 
 ## Document
 

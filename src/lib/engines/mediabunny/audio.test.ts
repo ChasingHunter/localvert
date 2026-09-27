@@ -38,6 +38,8 @@ describe("supportsAudioTranscode", () => {
     expect(supportsAudioTranscode("transcode", "mp4", "mp3")).toBe(true);
     expect(supportsAudioTranscode("transcode", "mov", "opus")).toBe(true);
     expect(supportsAudioTranscode("transcode", "webm", "wav")).toBe(true);
+    expect(supportsAudioTranscode("transcode", "aac", "mp3")).toBe(true);
+    expect(supportsAudioTranscode("transcode", "opus", "mp3")).toBe(true);
   });
 
   it("rejects a non-transcode op", () => {

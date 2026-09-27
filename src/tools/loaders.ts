@@ -2,6 +2,7 @@
 import type { ToolDefinition } from "@/lib/registry";
 
 export const TOOL_LOADERS = {
+  "aac-to-mp3": () => import("./audio/aac-to-mp3"),
   "extract-audio": () => import("./audio/extract-audio"),
   "flac-to-mp3": () => import("./audio/flac-to-mp3"),
   "m4a-to-mp3": () => import("./audio/m4a-to-mp3"),
@@ -11,6 +12,7 @@ export const TOOL_LOADERS = {
   "mp3-to-wav": () => import("./audio/mp3-to-wav"),
   "mp4-to-mp3": () => import("./audio/mp4-to-mp3"),
   "ogg-to-mp3": () => import("./audio/ogg-to-mp3"),
+  "opus-to-mp3": () => import("./audio/opus-to-mp3"),
   "wav-to-flac": () => import("./audio/wav-to-flac"),
   "wav-to-mp3": () => import("./audio/wav-to-mp3"),
   "webm-to-mp3": () => import("./audio/webm-to-mp3"),
