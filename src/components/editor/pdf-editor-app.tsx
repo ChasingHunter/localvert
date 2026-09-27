@@ -233,12 +233,12 @@ const plugins: PluginBatchRegistrations = [
   createPluginRegistration(ThumbnailPluginPackage, {}),
   createPluginRegistration(SelectionPluginPackage, {}),
   createPluginRegistration(InteractionManagerPluginPackage, {}),
-  createPluginRegistration(AnnotationPluginPackage, {
-    // A newly created FreeText annotation starts in edit mode so the user
-    // (or the e2e suite) can type right away instead of needing a separate
-    // double-click-to-edit gesture.
-    editAfterCreate: true,
-  }),
+  // No plugin-wide `editAfterCreate`: it is the fallback for every tool that
+  // doesn't set its own, so `true` here put freshly placed stamps into edit
+  // mode, where the annotation layer drops their drag handlers ("can't
+  // position images"). FreeText and Callout already set `editAfterCreate`
+  // in their own tool behavior, so text still opens ready to type.
+  createPluginRegistration(AnnotationPluginPackage, {}),
   createPluginRegistration(HistoryPluginPackage, {}),
   createPluginRegistration(ExportPluginPackage, {
     defaultFileName: "document-edited.pdf",
