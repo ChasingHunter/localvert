@@ -34,7 +34,7 @@ const ENGINE_ID = "mediabunny";
 
 /** The audio-only formats this file knows how to produce, and the tools
  * that read from them. `extract-audio`'s video/container inputs (mp4, mov,
- * webm) are supported as inputs but never as outputs here. */
+ * webm, mkv) are supported as inputs but never as outputs here. */
 const AUDIO_OUTPUT_FORMATS = new Set<StepFormat>([
   "mp3",
   "wav",
@@ -48,6 +48,7 @@ const AUDIO_INPUT_FORMATS = new Set<StepFormat>([
   "mp4",
   "mov",
   "webm",
+  "mkv",
   "mp3",
   "wav",
   "flac",

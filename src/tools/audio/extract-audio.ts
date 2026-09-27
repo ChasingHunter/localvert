@@ -9,9 +9,8 @@ import {
 /**
  * Phase 3b, the one audio tool with a runtime-selectable output container.
  * `from`/`to` are left unset on the pipeline step, same reasoning as
- * `mp4-to-webm`: this tool accepts mp4/mov/webm (an .mkv drop also sniffs as
- * webm, per that format's own accepted-gap note) and `mediabunny`'s adapter
- * checks the real per-file format in its own `supports()`.
+ * `mp4-to-webm`: this tool accepts mp4/mov/webm/mkv and `mediabunny`'s
+ * adapter checks the real per-file format in its own `supports()`.
  *
  * `produces` stays a fixed `"mp3"` (the default `format`) even though the
  * real output can be m4a/wav/ogg/opus too — `ToolDefinition.produces` has no
@@ -36,7 +35,7 @@ export default defineTool({
     "Extract the audio track from a video file — MP3, M4A, WAV, Ogg or " +
     "Opus. Free and private: runs in your browser, no upload.",
 
-  accepts: ["mp4", "mov", "webm"],
+  accepts: ["mp4", "mov", "webm", "mkv"],
   produces: "mp3",
 
   options: z.object({

@@ -23,7 +23,7 @@ export default defineTool({
     "entirely in your browser. Trim the range, pick frame rate, width and " +
     "colors.",
 
-  accepts: ["mp4", "mov", "webm"],
+  accepts: ["mp4", "mov", "webm", "mkv"],
   produces: "gif",
 
   options: z.object({
