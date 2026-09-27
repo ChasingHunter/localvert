@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EngineId } from "@/lib/registry";
 import {
   classifyLoadFailure,
+  isNetworkFailure,
   isOffline,
   OFFLINE_MESSAGE,
 } from "./engine-load-error";
@@ -71,5 +72,35 @@ describe("isOffline", () => {
   it("is false when navigator is undefined", () => {
     vi.stubGlobal("navigator", undefined);
     expect(isOffline()).toBe(false);
+  });
+});
+
+describe("isNetworkFailure", () => {
+  it("is true for Chromium's 'Failed to fetch'", () => {
+    expect(isNetworkFailure(new TypeError("Failed to fetch"))).toBe(true);
+  });
+
+  it("is true for Firefox's NetworkError wording", () => {
+    expect(
+      isNetworkFailure(
+        new TypeError("NetworkError when attempting to fetch resource"),
+      ),
+    ).toBe(true);
+  });
+
+  it("is true for Safari's 'Load failed'", () => {
+    expect(isNetworkFailure(new TypeError("Load failed"))).toBe(true);
+  });
+
+  it("is false for an unrelated TypeError", () => {
+    expect(isNetworkFailure(new TypeError("x is not a function"))).toBe(false);
+  });
+
+  it("is false for a non-TypeError, even with a matching message", () => {
+    expect(isNetworkFailure(new Error("Failed to fetch"))).toBe(false);
+  });
+
+  it("is false for a non-Error value", () => {
+    expect(isNetworkFailure("Failed to fetch")).toBe(false);
   });
 });

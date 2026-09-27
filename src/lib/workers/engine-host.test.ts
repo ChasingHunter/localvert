@@ -218,6 +218,49 @@ describe("createEngineHost", () => {
       expect(outcome.error.code).toBe("aborted");
     });
 
+    it("maps a run-step network failure (a lazily-fetched wasm asset with no connection) to the offline message", async () => {
+      const adapter = makeAdapter({
+        load: async () => ({
+          run: async () => {
+            throw new TypeError("Failed to fetch");
+          },
+          dispose: () => {},
+        }),
+      });
+      const host = createEngineHost(
+        { canvas: async () => ({ default: adapter }) },
+        () => makeCaps(),
+      );
+      const outcome = await host.run(baseReq());
+      expect(outcome.ok).toBe(false);
+      if (outcome.ok) throw new Error("expected ok:false");
+      expect(outcome.error.code).toBe("offline");
+    });
+
+    it("maps a run-step failure to offline when navigator.onLine is false, regardless of the error's own message", async () => {
+      vi.stubGlobal("navigator", { onLine: false });
+      try {
+        const adapter = makeAdapter({
+          load: async () => ({
+            run: async () => {
+              throw new Error("some other run failure");
+            },
+            dispose: () => {},
+          }),
+        });
+        const host = createEngineHost(
+          { canvas: async () => ({ default: adapter }) },
+          () => makeCaps(),
+        );
+        const outcome = await host.run(baseReq());
+        expect(outcome.ok).toBe(false);
+        if (outcome.ok) throw new Error("expected ok:false");
+        expect(outcome.error.code).toBe("offline");
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
     it("returns ok:false internal for a request with zero steps", async () => {
       const host = createEngineHost({}, () => makeCaps());
       const outcome = await host.run(baseReq({ steps: [] }));

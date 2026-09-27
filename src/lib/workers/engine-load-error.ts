@@ -67,3 +67,24 @@ export function classifyLoadFailure(
 export function isOffline(): boolean {
   return typeof navigator !== "undefined" && navigator.onLine === false;
 }
+
+/**
+ * True for the browser's own "the network request itself never got a
+ * response" errors — as opposed to a request that reached the server and
+ * got back a real HTTP error, or an unrelated bug in this app's own code.
+ * Some engines (e.g. jsquash) fetch their wasm lazily inside `run()` rather
+ * than `load()`, so a never-cached engine going offline mid-run surfaces
+ * here as a plain rejection with no `offline`/`timedOut` flag attached —
+ * this is what lets `engine-host.ts`'s run-step catch recognize that case
+ * and map it to the same friendly offline message as a load failure,
+ * instead of a raw "Failed to fetch" reaching the job store.
+ *
+ * Chromium/V8 rejects with `TypeError: Failed to fetch`; Firefox with
+ * `TypeError: NetworkError when attempting to fetch resource`; Safari with
+ * `TypeError: Load failed`. All three are plain `TypeError`s with no more
+ * specific `DOMException` name to switch on, so this matches on message text.
+ */
+export function isNetworkFailure(e: unknown): boolean {
+  if (!(e instanceof TypeError)) return false;
+  return /failed to fetch|networkerror|load failed/i.test(e.message);
+}

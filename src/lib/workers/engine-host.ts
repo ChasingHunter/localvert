@@ -7,7 +7,11 @@ import type {
 import { EngineError, toEngineError } from "@/lib/engines";
 import { ENGINE_MANIFEST } from "@/lib/engines/manifest";
 import type { Capabilities, EngineId } from "@/lib/registry";
-import { classifyLoadFailure, isOffline } from "./engine-load-error";
+import {
+  classifyLoadFailure,
+  isNetworkFailure,
+  isOffline,
+} from "./engine-load-error";
 import { withIdleTimeout } from "./idle-timeout";
 import type {
   EngineHostApi,
@@ -291,6 +295,27 @@ export function createEngineHost(
             },
           );
         } catch (e) {
+          // Some adapters fetch their wasm lazily on first `run()` (see the
+          // `withIdleTimeout` call above) rather than in `load()`, so a
+          // never-cached engine going offline mid-run rejects here with a
+          // plain "Failed to fetch" `TypeError` instead of surfacing through
+          // `loadEngine`'s own classification. Map that (and the offline
+          // signal itself, in case it fires as something else entirely)
+          // through the same friendly message rather than passing the raw
+          // network error to the job store.
+          if (isOffline() || isNetworkFailure(e)) {
+            return {
+              ok: false,
+              error: serializeEngineError(
+                classifyLoadFailure({
+                  engine: step.engine,
+                  cause: e,
+                  offline: true,
+                  timedOut: false,
+                }),
+              ),
+            };
+          }
           return {
             ok: false,
             error: serializeEngineError(toEngineError(e, step.engine)),
