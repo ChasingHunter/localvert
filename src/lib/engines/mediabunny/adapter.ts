@@ -123,20 +123,36 @@ async function tryOpenOpfsSyncHandle(
   }
 }
 
+/** Tracks the final byte size of an OPFS-backed output as it's written. A
+ * sync access handle's `getSize()` throws `InvalidStateError` once the
+ * handle is closed, so the size has to be computed from the writes
+ * themselves (the highest `position + data.byteLength` seen) rather than
+ * read back from the handle after `close()` runs it. */
+class OpfsSizeTracker {
+  size = 0;
+  record(position: number, byteLength: number): void {
+    this.size = Math.max(this.size, position + byteLength);
+  }
+}
+
 /**
  * Adapts a `FileSystemSyncAccessHandle` into the `WritableStream` mediabunny's
  * `StreamTarget` writes muxed chunks through. Containers seek backward to
  * patch box sizes/lengths as they finalize, hence `chunk.position` — a sync
  * access handle's `write(data, {at})` is what makes that possible without
  * buffering the whole output first (a sequential File System Access
- * `createWritable()` stream cannot do this — see ADR-0010).
+ * `createWritable()` stream cannot do this — see ADR-0010). `sizeTracker`
+ * records the final size as writes happen, since `close()` closes the
+ * handle and any `getSize()` call after that throws.
  */
 function opfsWritable(
   handle: FileSystemSyncAccessHandle,
+  sizeTracker: OpfsSizeTracker,
 ): WritableStream<StreamTargetChunk> {
   return new WritableStream<StreamTargetChunk>({
     write(chunk) {
       handle.write(chunk.data, { at: chunk.position });
+      sizeTracker.record(chunk.position, chunk.data.byteLength);
     },
     close() {
       handle.flush();
@@ -206,58 +222,111 @@ async function runTranscode(task: EngineTask): Promise<EngineResult> {
   const mime = FORMATS.webm.mime;
   const opfsName = `${crypto.randomUUID()}.webm`;
   const syncHandle = await tryOpenOpfsSyncHandle(opfsName);
+  const sizeTracker = new OpfsSizeTracker();
 
   const target = syncHandle
-    ? new StreamTarget(opfsWritable(syncHandle))
+    ? new StreamTarget(opfsWritable(syncHandle, sizeTracker))
     : new BufferTarget();
 
   const output = new Output({ format, target });
 
-  const conversion = await Conversion.init({
-    input,
-    output,
-    video: { codec: videoCodec },
-    audio: audioCodec ? { codec: audioCodec } : { discard: true },
-  });
-  conversion.onProgress = (fraction) => onProgress?.(fraction);
-
-  const onAbort = (): void => {
-    void conversion.cancel();
-  };
-  signal.addEventListener("abort", onAbort);
+  // Everything past this point owns a possibly-open sync access handle and
+  // a possibly-created OPFS file. Any throw (invalid conversion, a decode
+  // error mid-execute, an abort) has to close the handle if it's still open
+  // and delete the partial file — otherwise it leaks in /localvert-tmp/
+  // until the 24h startup sweep, and a still-open handle blocks the very
+  // sweep that would clean it up (OPFS refuses to remove a file with an
+  // open sync access handle).
   try {
-    await conversion.execute();
-  } finally {
-    signal.removeEventListener("abort", onAbort);
-  }
-  signal.throwIfAborted();
+    const conversion = await Conversion.init({
+      input,
+      output,
+      video: { codec: videoCodec },
+      audio: audioCodec ? { codec: audioCodec } : { discard: true },
+    });
 
-  if (syncHandle) {
-    const size = syncHandle.getSize();
-    return {
-      kind: "opfs",
-      path: `${OPFS_TEMP_DIR}/${opfsName}`,
-      mime,
-      size,
+    if (!conversion.isValid) {
+      const reasons = conversion.discardedTracks
+        .map((d) => d.reason)
+        .join(", ");
+      throw new EngineError(
+        "unsupported",
+        `can't produce a valid WebM from this input in this browser` +
+          (reasons ? ` (${reasons})` : ""),
+        { engine: metadata.id },
+      );
+    }
+
+    conversion.onProgress = (fraction) => onProgress?.(fraction);
+
+    const onAbort = (): void => {
+      void conversion.cancel();
     };
-  }
+    signal.addEventListener("abort", onAbort);
+    try {
+      await conversion.execute();
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+    }
+    signal.throwIfAborted();
 
-  const buffer = (target as BufferTarget).buffer;
-  if (!buffer) {
-    throw new EngineError(
-      "encode-failed",
-      "mediabunny produced no output buffer",
-      { engine: metadata.id },
-    );
+    if (syncHandle) {
+      return {
+        kind: "opfs",
+        path: `${OPFS_TEMP_DIR}/${opfsName}`,
+        mime,
+        size: sizeTracker.size,
+      };
+    }
+
+    const buffer = (target as BufferTarget).buffer;
+    if (!buffer) {
+      throw new EngineError(
+        "encode-failed",
+        "mediabunny produced no output buffer",
+        { engine: metadata.id },
+      );
+    }
+    if (buffer.byteLength > MAX_BUFFERED_OUTPUT_BYTES) {
+      throw new EngineError(
+        "unsupported",
+        "output too large for this browser; try a browser with OPFS support",
+        { engine: metadata.id },
+      );
+    }
+    return { kind: "bytes", bytes: buffer, mime };
+  } catch (e) {
+    if (syncHandle) {
+      await cleanupFailedOpfsOutput(syncHandle, opfsName);
+    }
+    throw e;
   }
-  if (buffer.byteLength > MAX_BUFFERED_OUTPUT_BYTES) {
-    throw new EngineError(
-      "unsupported",
-      "output too large for this browser; try a browser with OPFS support",
-      { engine: metadata.id },
-    );
+}
+
+/** Best-effort cleanup for a partial OPFS output after a failed or aborted
+ * transcode: closes the sync access handle if `close()`/`abort()` on the
+ * `StreamTarget`'s writable hasn't already (double-close is a no-op per
+ * spec... but mediabunny may not have torn the writable down at all if the
+ * failure happened before the target ever started writing), then removes
+ * the partial file so it doesn't wait for the 24h sweep. */
+async function cleanupFailedOpfsOutput(
+  handle: FileSystemSyncAccessHandle,
+  name: string,
+): Promise<void> {
+  try {
+    handle.close();
+  } catch {
+    // Already closed by the writable's close()/abort() — fine.
   }
-  return { kind: "bytes", bytes: buffer, mime };
+  try {
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle(OPFS_TEMP_DIR, {
+      create: false,
+    });
+    await dir.removeEntry(name);
+  } catch {
+    // Never created, or already removed — nothing more to do.
+  }
 }
 
 async function load(_ctx: EngineLoadContext): Promise<EngineInstance> {
