@@ -146,7 +146,19 @@ export interface EngineTask {
 }
 
 export type EngineResult =
-  | { kind: "bytes"; bytes: ArrayBuffer; mime: string }
+  | {
+      kind: "bytes";
+      bytes: ArrayBuffer;
+      mime: string;
+      /**
+       * ADR-0013: set when a compress tool's own never-larger-than-input
+       * check (`src/lib/engines/shared/never-larger.ts`) fell back to
+       * returning the input unchanged — surfaced on the job card via
+       * `job-engine.ts`'s `applyResult` and `Job.output.note`. Every other
+       * op leaves this unset.
+       */
+      note?: string;
+    }
   | { kind: "stream"; stream: ReadableStream<Uint8Array>; mime: string }
   | { kind: "opfs"; path: string; mime: string; size: number }
   | { kind: "raster"; image: RasterImage }

@@ -34,6 +34,7 @@ import avifToPng from "@/tools/image/avif-to-png";
 import bmpToJpg from "@/tools/image/bmp-to-jpg";
 import bmpToPng from "@/tools/image/bmp-to-png";
 import compressJpg from "@/tools/image/compress-jpg";
+import compressPng from "@/tools/image/compress-png";
 import compressWebp from "@/tools/image/compress-webp";
 import cropJpg from "@/tools/image/crop-jpg";
 import cropPng from "@/tools/image/crop-png";
@@ -153,6 +154,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   bmpToJpg,
   bmpToPng,
   compressJpg,
+  compressPng,
   compressWebp,
   cropJpg,
   cropPng,

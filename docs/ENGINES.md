@@ -29,7 +29,7 @@ as its codec preference table.
 |---|---|---|---|---|
 | `canvas` | jpg, png, webp, bmp, gif | jpg, png, webp | resize, rotate, crop | adapter ready (0.5a) |
 | `jsquash-jpeg` | jpg | jpg | — | adapter ready |
-| `jsquash-png` | png | png | — | adapter ready |
+| `jsquash-png` | png | png | — | adapter ready; also a single `compress` op (ADR-0013's `compress-png`: oxipng repack, optional image-q palette reduction) outside this decode/transform/encode shape |
 | `jsquash-webp` | webp | webp | — | adapter ready |
 | `jsquash-resize` | — | — | resize | adapter ready |
 | `jsquash-avif` | avif | avif | — | adapter ready |
@@ -271,7 +271,7 @@ see `scripts/embedpdf-deps.test.ts`'s guard and ADR-0009.
 |---|---|---|---|---|---|---|
 | `canvas` | _(native browser API)_ | — | — | 0 | native | no |
 | `jsquash-jpeg` | `@jsquash/jpeg` | 1.6.0 | Apache-2.0 | ~0.4 MiB (dec + enc wasm) | static | no |
-| `jsquash-png` | `@jsquash/png` | 3.1.1 | Apache-2.0 | ~0.2 MiB | static | no |
+| `jsquash-png` | `@jsquash/png` + `@jsquash/oxipng` | 3.1.1 + 2.3.0 | Apache-2.0 (png); MIT (oxipng) | ~0.2 MiB (png) + ~0.16 MiB (oxipng, single-threaded pkg only — see `jsquash-png/adapter.ts`'s `runCompress`) | static | no |
 | `jsquash-webp` | `@jsquash/webp` | 1.5.0 | Apache-2.0 | ~135 KB decode + ~275/338 KB encode (non-SIMD/SIMD variant) | static | no |
 | `jsquash-resize` | `@jsquash/resize` | 2.1.1 | Apache-2.0 | ~34 KB | static | no |
 | `jsquash-avif` | `@jsquash/avif` | 2.1.1 | Apache-2.0 | ~4.4 MiB (dec + enc wasm, single-threaded only) | static | no |

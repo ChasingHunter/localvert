@@ -137,6 +137,10 @@ export function JobCard({
         </ul>
       )}
 
+      {job.status === "done" && job.output?.note && (
+        <p className="text-xs text-ink-muted">{job.output.note}</p>
+      )}
+
       {job.status === "error" && job.error && (
         <p className="text-xs text-danger">{job.error.message}</p>
       )}

@@ -75,6 +75,7 @@ order (decode [+ transform] [+ encode]).
 |---|---|---|---|---|---|
 | `compress-jpg` | JPEG | JPEG | jsquash-jpeg | Yes | Target size (KB) or quality |
 | `compress-webp` | WebP | WebP | jsquash-webp | Yes | Target size (KB) or quality |
+| `compress-png` | PNG | PNG | jsquash-png | Yes | Mode: lossless (oxipng, default) or smaller (image-q palette reduction + oxipng, optional dither). Never bigger than the input |
 | `resize-image-jpg` | JPEG | JPEG | jsquash-jpeg, jsquash-resize | Yes | Width/height, fit, allow upscale |
 | `resize-image-png` | PNG | PNG | jsquash-png, jsquash-resize | Yes | Width/height, fit, allow upscale |
 | `resize-image-webp` | WebP | WebP | jsquash-webp, jsquash-resize | Yes | Width/height, fit, allow upscale |

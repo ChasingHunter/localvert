@@ -29,6 +29,10 @@ export interface Job {
     size: number;
     url: string;
     opfsPath?: string;
+    /** ADR-0013: set when a compress tool's never-larger-than-input check
+     * returned the input unchanged instead of a (would-be-bigger) result —
+     * see `EngineResult`'s `note` field. */
+    note?: string;
   };
   /** One-to-many jobs (ADR-0008, e.g. `split-pdf`): every output file, in
    * the order the engine produced them. `blob` rides alongside `url` so the

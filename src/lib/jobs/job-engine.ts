@@ -402,10 +402,20 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
     const url = createObjectURL(blob);
     outputBlobs.set(id, [{ name, blob }]);
 
+    // ADR-0013: a compress tool's own never-larger-than-input check sets
+    // `note` (bytes results only) when it fell back to the input unchanged.
+    const note = result.kind === "bytes" ? result.note : undefined;
+
     store.getState().update(id, {
       status: "done",
       progress: 1,
-      output: { name, mime: result.mime, size: blob.size, url },
+      output: {
+        name,
+        mime: result.mime,
+        size: blob.size,
+        url,
+        ...(note ? { note } : {}),
+      },
     });
   }
 

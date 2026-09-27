@@ -36,6 +36,7 @@ export const TOOL_LOADERS = {
   "bmp-to-jpg": () => import("./image/bmp-to-jpg"),
   "bmp-to-png": () => import("./image/bmp-to-png"),
   "compress-jpg": () => import("./image/compress-jpg"),
+  "compress-png": () => import("./image/compress-png"),
   "compress-webp": () => import("./image/compress-webp"),
   "crop-jpg": () => import("./image/crop-jpg"),
   "crop-png": () => import("./image/crop-png"),

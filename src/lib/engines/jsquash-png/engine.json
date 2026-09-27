@@ -7,6 +7,11 @@
     {
       "from": "codec/pkg/squoosh_png_bg.wasm",
       "to": "squoosh_png_bg.wasm"
+    },
+    {
+      "from": "codec/pkg/squoosh_oxipng_bg.wasm",
+      "to": "squoosh_oxipng_bg.wasm",
+      "package": "@jsquash/oxipng"
     }
   ],
   "needsIsolation": false,
