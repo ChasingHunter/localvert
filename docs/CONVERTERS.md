@@ -144,6 +144,7 @@ them, so that column reads their own **Arity** instead.
 
 | Slug | From | To | Engine | Batch | Notes |
 |---|---|---|---|---|---|
+| `compress-audio` | MP3, M4A, Ogg, Opus | same format | mediabunny | Yes | Lossy: re-encodes at a lower bitrate (64/96/128 kbps, default 96) with an optional mono downmix. Never bigger than the input |
 | `extract-audio` | MP4, MOV, WebM | MP3 (default), M4A, WAV, Ogg or Opus | mediabunny | Yes | Discards the video track; output format selectable; bitrate/sample rate/channels configurable for lossy targets |
 | `wav-to-mp3` | WAV | MP3 | mediabunny | Yes | Bitrate/sample rate/channels; MP3 uses the LAME wasm encoder (`@mediabunny/mp3-encoder`), no browser encodes MP3 natively |
 | `mp3-to-wav` | MP3 | WAV | mediabunny | Yes | Sample rate/channels only — PCM has no bitrate knob |

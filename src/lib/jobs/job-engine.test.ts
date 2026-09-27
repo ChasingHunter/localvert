@@ -711,3 +711,64 @@ describe("createJobEngine / dispose", () => {
     expect(store.getState().jobs[0]?.status).toBe("cancelled");
   });
 });
+
+describe("createJobEngine / ADR-0013 neverLarger", () => {
+  it("keeps the engine's own result when it's smaller than the input", async () => {
+    const { engine, calls, store } = setup();
+    const tool = makeTool({ neverLarger: true });
+    const file = new File(["hello world"], "a.mp3", { type: "audio/mpeg" }); // 11 bytes
+
+    engine.submit(tool, [{ file, format: "jpg" }], {});
+    calls[0]?.deferred.resolve(bytesResult("hi", "audio/mpeg")); // 2 bytes
+    await flush();
+
+    const job = store.getState().jobs[0];
+    expect(job).toMatchObject({ status: "done" });
+    expect(job?.output?.size).toBe(2);
+    expect(job?.output?.note).toBeUndefined();
+  });
+
+  it("falls back to the original file when the result isn't smaller", async () => {
+    const { engine, calls, store, createObjectURL } = setup();
+    const tool = makeTool({ neverLarger: true });
+    const file = new File(["hi"], "a.mp3", { type: "audio/mpeg" }); // 2 bytes
+
+    engine.submit(tool, [{ file, format: "jpg" }], {});
+    calls[0]?.deferred.resolve(bytesResult("hello world", "audio/mpeg")); // 11 bytes
+    await flush();
+
+    const job = store.getState().jobs[0];
+    expect(job).toMatchObject({ status: "done" });
+    expect(job?.output?.size).toBe(2); // the original file's size, not the result's
+    expect(job?.output?.mime).toBe("audio/mpeg");
+    expect(job?.output?.note).toBeTruthy();
+    expect(createObjectURL).toHaveBeenCalledWith(file);
+  });
+
+  it("falls back on an exact size tie too", async () => {
+    const { engine, calls, store } = setup();
+    const tool = makeTool({ neverLarger: true });
+    const file = new File(["hello"], "a.mp3", { type: "audio/mpeg" }); // 5 bytes
+
+    engine.submit(tool, [{ file, format: "jpg" }], {});
+    calls[0]?.deferred.resolve(bytesResult("world", "audio/mpeg")); // also 5 bytes
+    await flush();
+
+    const job = store.getState().jobs[0];
+    expect(job?.output?.note).toBeTruthy();
+  });
+
+  it("doesn't apply the never-larger fallback when the tool doesn't ask for it", async () => {
+    const { engine, calls, store } = setup();
+    const tool = makeTool(); // neverLarger unset
+    const file = new File(["hi"], "a.mp3", { type: "audio/mpeg" }); // 2 bytes
+
+    engine.submit(tool, [{ file, format: "jpg" }], {});
+    calls[0]?.deferred.resolve(bytesResult("hello world", "image/png")); // 11 bytes
+    await flush();
+
+    const job = store.getState().jobs[0];
+    expect(job?.output?.size).toBe(11);
+    expect(job?.output?.note).toBeUndefined();
+  });
+});

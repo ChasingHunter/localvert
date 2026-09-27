@@ -16,7 +16,7 @@ import {
 import { collectToBlob } from "@/lib/sinks";
 import type { RunStep, WorkerPool, ZipResult } from "@/lib/workers";
 import { zipInWorker } from "@/lib/workers";
-import { readOpfsFile, sweepOpfsTemp } from "./opfs-temp";
+import { deleteOpfsFile, readOpfsFile, sweepOpfsTemp } from "./opfs-temp";
 import type { JobStore } from "./store";
 
 /**
@@ -24,6 +24,14 @@ import type { JobStore } from "./store";
  * them to the worker pool, and mirrors their progress/results into the job
  * store. See docs/ARCHITECTURE.md's diagram — this is the "job engine" box.
  */
+
+/** ADR-0013: shown on the job card when `ToolDefinition.neverLarger`'s
+ * job-engine-level check (see its doc comment) falls back to the original
+ * file — same wording as `src/lib/engines/shared/never-larger.ts`'s own
+ * default message, used by every compress tool that enforces this inside
+ * its own engine adapter instead. */
+const NEVER_LARGER_JOB_NOTE =
+  "Already about as small as it gets — kept the original file.";
 
 export interface SubmitFile {
   file: File;
@@ -331,6 +339,30 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
     const { tool, id, file, parsedOptions, result } = args;
 
     if (result.kind === "opfs") {
+      // ADR-0013: compress-audio's never-larger-than-input check — see
+      // `ToolDefinition.neverLarger`'s doc comment for why this reads the
+      // flag here rather than inside the engine adapter itself. Discards
+      // the OPFS output entirely (never even read into memory) and hands
+      // back the original file unchanged.
+      if (tool.neverLarger && result.size >= file.size) {
+        await deleteOpfsFile(result.path);
+        const name = outputFileName(tool, file.name, parsedOptions);
+        const url = createObjectURL(file);
+        outputBlobs.set(id, [{ name, blob: file }]);
+        store.getState().update(id, {
+          status: "done",
+          progress: 1,
+          output: {
+            name,
+            mime: file.type || result.mime,
+            size: file.size,
+            url,
+            note: NEVER_LARGER_JOB_NOTE,
+          },
+        });
+        return;
+      }
+
       // ADR-0010: a large media output the engine spilled to OPFS instead
       // of holding in memory. `readOpfsFile` hands back a disk-backed
       // `File` (a `Blob` subclass) without reading its bytes here — treated
@@ -398,12 +430,36 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
         ? new Blob([result.bytes], { type: result.mime })
         : await collectToBlob(result.stream, result.mime);
 
+    // ADR-0013: compress-audio's never-larger-than-input check (see
+    // `ToolDefinition.neverLarger`'s doc comment) — a stream/bytes result
+    // that isn't actually smaller than the input is discarded in favour of
+    // the original file unchanged.
+    if (tool.neverLarger && blob.size >= file.size) {
+      const name = outputFileName(tool, file.name, parsedOptions);
+      const url = createObjectURL(file);
+      outputBlobs.set(id, [{ name, blob: file }]);
+      store.getState().update(id, {
+        status: "done",
+        progress: 1,
+        output: {
+          name,
+          mime: file.type || result.mime,
+          size: file.size,
+          url,
+          note: NEVER_LARGER_JOB_NOTE,
+        },
+      });
+      return;
+    }
+
     const name = outputFileName(tool, file.name, parsedOptions);
     const url = createObjectURL(blob);
     outputBlobs.set(id, [{ name, blob }]);
 
-    // ADR-0013: a compress tool's own never-larger-than-input check sets
-    // `note` (bytes results only) when it fell back to the input unchanged.
+    // A compress tool's own never-larger-than-input check (a different
+    // mechanism than the one just above — see each adapter's own
+    // `neverLarger` call) sets `note` (bytes results only) when it fell
+    // back to the input unchanged inside the engine itself.
     const note = result.kind === "bytes" ? result.note : undefined;
 
     store.getState().update(id, {
