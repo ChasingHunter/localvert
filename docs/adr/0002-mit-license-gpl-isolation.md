@@ -15,7 +15,7 @@ Some engines we need are not MIT.
 | `@ffmpeg/core-mt` | **GPL-2.0+** (via x264) | Fallback only: avi, wmv, flv, GIF output |
 | `heic-to` (libheif) | **LGPL-3.0** | HEIC/HEIF from iPhones — a top-requested conversion |
 | `@bentopdf/libreoffice-wasm` | MPL-2.0 | Office to PDF (Phase 4) |
-| `mediabunny` | MIT | The **primary** video and audio path |
+| `mediabunny` | MPL-2.0 (file-level copyleft, same shape as `resvg`) | The **primary** video and audio path |
 
 MPL and LGPL are straightforward here. GPL is the real question: if the
 deployed site "links" GPL code, a strict reading says the whole site must be
@@ -49,7 +49,8 @@ the "combined work" argument is as weak as we can make it:
    and an in-app licenses page list every engine with its license text and a
    link to upstream source. For unmodified binaries, pointing at upstream
    satisfies the GPL source-offer requirement.
-6. **Prefer the permissive path.** mediabunny (MIT) handles all common video
+6. **Prefer the permissive path.** mediabunny (MPL-2.0, file-level copyleft —
+   see ADR-0010) handles all common video
    and audio. ffmpeg is reached only for formats WebCodecs cannot do. Most
    users never download it.
 

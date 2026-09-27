@@ -46,6 +46,8 @@ requires its own ADR and we must publish the modified source.
 | `pdfium` (`@embedpdf/pdfium`, wraps PDFium/Chrome's PDF engine) | 2.15.1 | MIT (wrapper); PDFium itself is BSD-3-Clause / Apache-2.0 (dual, per file) | EmbedPDF contributors; Google (PDFium) | https://github.com/embedpdf/embed-pdf-viewer |
 | `@embedpdf/models`, `@embedpdf/engines` (the PDF editor's engine API and worker-side runner, `EngineRunner`/`WebWorkerEngine`/`PdfEngine`) | 2.15.1 | MIT | EmbedPDF contributors | https://github.com/embedpdf/embed-pdf-viewer |
 | `@embedpdf/core` + `plugin-document-manager`, `plugin-viewport`, `plugin-scroll`, `plugin-render`, `plugin-zoom`, `plugin-thumbnail`, `plugin-selection`, `plugin-interaction-manager`, `plugin-annotation`, `plugin-history`, `plugin-export` (the PDF editor's viewer UI) | 2.15.1 | MIT | EmbedPDF contributors | https://github.com/embedpdf/embed-pdf-viewer |
+| `mediabunny` (WebCodecs container mux/demux for video and audio) | 1.60.0 | MPL-2.0 (file-level copyleft — see below) | Vanilagy | https://github.com/Vanilagy/mediabunny |
+| `@mediabunny/mp3-encoder` (wraps a LAME wasm build; reserved for a future audio slice, not wired into any tool yet) | 1.60.0 | MPL-2.0 (wrapper); LAME itself is LGPL | Vanilagy; the LAME project | https://github.com/Vanilagy/mediabunny |
 
 `jsquash-webp`'s underlying codec is libwebp, Copyright 2010 Google Inc.,
 BSD-3-Clause (`node_modules/@jsquash/webp/codec/LICENSE.codec.md` after
@@ -62,6 +64,17 @@ not the combining application. We ship the unmodified upstream wasm/JS
 build, so this carries no obligation beyond attribution — recorded here
 rather than in the copyleft table below, which is for GPL/LGPL's
 whole-work-level obligations.
+
+`mediabunny` is MPL-2.0, the same file-level copyleft as `resvg` above: it
+only requires that modified *files* of the covered work be published under
+MPL, not the combining application. We ship the unmodified upstream npm
+build, so this carries no obligation beyond attribution. See
+[ADR-0010](adr/0010-media-pipeline.md) (and the corrected mediabunny row in
+[ADR-0002](adr/0002-mit-license-gpl-isolation.md), which previously listed it
+as MIT). `@mediabunny/mp3-encoder` additionally wraps a LAME wasm build
+(LGPL) — reserved for a future audio slice; if and when it's wired into a
+tool, its LGPL source-offer obligation goes in the copyleft table below
+alongside `heic` and `libraw`.
 
 `tracer` (`@image-tracer-ts/core`) is a TypeScript reimplementation of
 [imagetracerjs](https://github.com/jankovicsandras/imagetracerjs), which is
