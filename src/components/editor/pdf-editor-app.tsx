@@ -705,6 +705,27 @@ function Editor({ documentId, fileName, pageCount, textEdit }: EditorProps) {
     });
   }, [selection.provides, documentId]);
 
+  // `selection.provides.copyToClipboard` (called by both the "Copy" button
+  // above and the Ctrl/Cmd+C shortcut below) only EMITS the selected text on
+  // `onCopyToClipboard` -- @embedpdf/plugin-selection never touches the real
+  // Clipboard API itself (confirmed by reading its source: `copyToClipboard`
+  // is `getSelectedText(...).wait(text => this.copyToClipboard$.emit(...))`,
+  // nothing more). Without a listener actually writing that text to
+  // `navigator.clipboard`, "Copy" was a complete no-op: no error, no
+  // rejection, just an empty clipboard forever. This is that listener.
+  useEffect(() => {
+    const provides = selection.provides;
+    if (!provides) return;
+    return provides.onCopyToClipboard(({ text }) => {
+      navigator.clipboard.writeText(text).catch(() => {
+        // Clipboard permission can be denied by the browser/user; there's no
+        // in-app affordance for that failure yet, so it's swallowed rather
+        // than surfaced as a crash -- same as every other `ignore`d task in
+        // this file's EmbedPDF wiring.
+      });
+    });
+  }, [selection.provides]);
+
   const applyActiveTool = useCallback(
     (toolId: string | null) => {
       const provides = annotation.provides;
