@@ -7,11 +7,12 @@ import {
   useDocumentState,
   useRegistry,
 } from "@embedpdf/core/react";
-import type {
-  PdfDocumentObject,
-  PdfWidgetAnnoObject,
-  Rect,
-  SearchResult,
+import {
+  PdfAnnotationSubtype,
+  type PdfDocumentObject,
+  type PdfWidgetAnnoObject,
+  type Rect,
+  type SearchResult,
 } from "@embedpdf/models";
 import { AnnotationPluginPackage } from "@embedpdf/plugin-annotation";
 import {
@@ -86,6 +87,7 @@ import {
 } from "@/lib/editor/draft-store";
 import { flattenExportedForms } from "@/lib/editor/flatten-forms";
 import { flattenRedactedPagesToImages } from "@/lib/editor/flatten-redacted-pages";
+import { arrowKeyNudge } from "@/lib/editor/nudge";
 import {
   createPdfiumWorkerEngine,
   type TextEditClient,
@@ -100,6 +102,11 @@ import {
   matchShortcut,
   SHORTCUTS,
 } from "@/lib/editor/shortcuts";
+import {
+  colorForTool,
+  DEFAULT_TOOL_COLORS,
+  setToolColor,
+} from "@/lib/editor/tool-colors";
 import type { ReplacePageImage } from "@/lib/engines/pdf-lib/adapter";
 import { FormLayer, isFillableWidget } from "./form-layer";
 import { RedactionLayer, type RedactionMark } from "./redaction-layer";
@@ -477,13 +484,78 @@ function Editor({ documentId, fileName, pageCount, textEdit }: EditorProps) {
   // (`annotation.state`), not a locally-tracked mirror -- so it can never
   // drift from what the plugin will actually do on the next pointer event.
   const activeTool = annotation.state.activeToolId;
-  const [color, setColor] = useState("#ffd400");
+  // Per-tool colour defaults (owner-reported fix, 2026-09-27): a single
+  // shared `color` state meant switching tools never changed what the next
+  // annotation actually got -- FreeText's `fontColor` and Highlight's
+  // `color` both read the SAME state, so picking black for text also made
+  // the next highlight black. `tool-colors.ts` keeps one remembered default
+  // per tool id instead.
+  const [toolColors, setToolColors] = useState(DEFAULT_TOOL_COLORS);
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [fontSize, setFontSize] = useState(16);
   const [exporting, setExporting] = useState(false);
   const stampInputRef = useRef<HTMLInputElement | null>(null);
   const [signOpen, setSignOpen] = useState(false);
   const [organizerOpen, setOrganizerOpen] = useState(false);
+
+  // Owner-reported fix, 2026-09-27 -- the style pickers must edit the
+  // SELECTED annotation (not just the next tool's defaults) once one is
+  // selected. `annotationCapability.provides.getSelectedAnnotation()` is a
+  // plain getter, not reactive state (same situation as `history.provides`
+  // below), so `onStateChange` (the STABLE, unscoped capability's own event
+  // -- fires on every selection change too) bumps a tick to force a re-read
+  // on every render, the same trick `historyTick` already uses.
+  const [, setAnnotationStateTick] = useState(0);
+  useEffect(() => {
+    const provides = annotationCapability.provides;
+    if (!provides) return;
+    return provides.onStateChange(() => setAnnotationStateTick((t) => t + 1));
+  }, [annotationCapability.provides]);
+  const selectedAnnotation =
+    annotationCapability.provides?.getSelectedAnnotation() ?? null;
+  const selectedType = selectedAnnotation?.object.type ?? null;
+  const isFreeTextSelected = selectedType === PdfAnnotationSubtype.FREETEXT;
+  // What the colour picker shows: the selected annotation's own colour if
+  // one is selected (FreeText reads `fontColor`, everything else reads
+  // `strokeColor`/`color`), else the active tool's remembered default.
+  const displayColor = selectedAnnotation
+    ? isFreeTextSelected
+      ? ((selectedAnnotation.object as { fontColor?: string }).fontColor ??
+        "#000000")
+      : ((selectedAnnotation.object as { strokeColor?: string; color?: string })
+          .strokeColor ??
+        (selectedAnnotation.object as { color?: string }).color ??
+        "#000000")
+    : colorForTool(toolColors, activeTool);
+  const displayFontSize =
+    selectedAnnotation && isFreeTextSelected
+      ? ((selectedAnnotation.object as { fontSize?: number }).fontSize ??
+        fontSize)
+      : fontSize;
+  const displayStrokeWidth =
+    selectedAnnotation && !isFreeTextSelected
+      ? ((selectedAnnotation.object as { strokeWidth?: number }).strokeWidth ??
+        strokeWidth)
+      : strokeWidth;
+
+  /** Applies a style-picker change: if an annotation is selected, edits it
+   * directly through `AnnotationCapability.updateAnnotation` (cited in
+   * `EMBEDPDF_NOTES.md`'s API notes); the tool's own remembered default is
+   * ALSO updated (via the `patch` callback), so the change also sticks for
+   * the next annotation created with that tool -- matching how every other
+   * PDF editor's style pickers behave. */
+  const applyStyleChange = useCallback(
+    (patch: Record<string, unknown>) => {
+      if (selectedAnnotation) {
+        annotation.provides?.updateAnnotation(
+          selectedAnnotation.object.pageIndex,
+          selectedAnnotation.object.id,
+          patch,
+        );
+      }
+    },
+    [selectedAnnotation, annotation.provides],
+  );
 
   // E6a -- search. Results and the current hit index live here (not inside
   // `SearchBar`) because `renderPage`, below, hands each page's own subset of
@@ -801,9 +873,47 @@ function Editor({ documentId, fileName, pageCount, textEdit }: EditorProps) {
   useEffect(() => {
     const provides = annotationCapability.provides;
     if (!activeTool || !provides) return;
-    const patch = buildToolContext(activeTool, color, strokeWidth, fontSize);
+    const patch = buildToolContext(
+      activeTool,
+      colorForTool(toolColors, activeTool),
+      strokeWidth,
+      fontSize,
+    );
     if (patch) provides.setToolDefaults(activeTool, patch);
-  }, [activeTool, color, strokeWidth, fontSize, annotationCapability.provides]);
+  }, [
+    activeTool,
+    toolColors,
+    strokeWidth,
+    fontSize,
+    annotationCapability.provides,
+  ]);
+
+  // Owner-reported fix, 2026-09-27 -- stamp/signature placement stayed the
+  // active tool after committing (its tool config has no
+  // `selectAfterCreate`/`deactivateToolAfterCreate`, unlike FreeText's),
+  // so the newly placed image could only be dragged after a SEPARATE,
+  // manual switch to the Select tool. Listening for the plugin's own
+  // "create" event (`AnnotationCapability.onAnnotationEvent`, emitted from
+  // `createAnnotation` in the plugin's dist source) and reacting to a STAMP
+  // annotation the same way FreeText's own `selectAfterCreate` behavior
+  // does -- leave placement mode and select the new annotation -- means a
+  // freshly placed stamp is immediately draggable/resizable, no extra click
+  // needed. Registered on the STABLE `annotationCapability.provides`, never
+  // the per-render `annotation.provides`.
+  useEffect(() => {
+    const provides = annotationCapability.provides;
+    if (!provides) return;
+    return provides.onAnnotationEvent((event) => {
+      if (
+        event.type === "create" &&
+        event.documentId === documentId &&
+        event.annotation.type === PdfAnnotationSubtype.STAMP
+      ) {
+        provides.setActiveTool(null);
+        provides.selectAnnotation(event.pageIndex, event.annotation.id);
+      }
+    });
+  }, [annotationCapability.provides, documentId]);
 
   // Shared by both stamp-placement paths — the file-picker "Insert image"
   // tool below, and `SignatureDialog`'s drawn/typed/uploaded PNG — so the
@@ -825,6 +935,22 @@ function Editor({ documentId, fileName, pageCount, textEdit }: EditorProps) {
       annotationCapability.provides?.setToolDefaults("stamp", {
         imageSrc: url,
       });
+      // Owner-reported fix, 2026-09-27 -- "Insert image" always inserted the
+      // SIGNATURE, whatever image was picked. Cause, confirmed in
+      // `@embedpdf/plugin-annotation/dist/index.js`: `AnnotationPlugin
+      // .setActiveTool` no-ops (`if (toolId === docState.activeToolId &&
+      // !context) return;`) when "stamp" is ALREADY the active tool -- which
+      // it is right after placing a signature, since the stamp tool has no
+      // `deactivateToolAfterCreate`. The stamp pointer handler's own
+      // `imageFetchCache` (keyed by `imageSrc`) is only populated in
+      // `onHandlerActiveStart`, which fires on tool ACTIVATION, not on a
+      // `setToolDefaults` call -- so with `setActiveTool` a no-op, that
+      // handler's closure-held `cachedBuffer` kept the PREVIOUS image
+      // forever, and every later placement reused it regardless of the new
+      // `imageSrc`. Deactivating first forces `onHandlerActiveStart` (and
+      // therefore a fresh fetch of the new `imageSrc`) to run every time,
+      // whether or not "stamp" was already active.
+      annotation.provides?.setActiveTool(null);
       annotation.provides?.setActiveTool("stamp");
       // The stamp handler's `onHandlerActiveStart` fetches `imageSrc` only
       // once the tool actually activates, so the PREVIOUS url (already
@@ -875,6 +1001,28 @@ function Editor({ documentId, fileName, pageCount, textEdit }: EditorProps) {
       // then Ctrl+Z would silently delete the whole annotation instead of the
       // "c", and letter shortcuts like "h" would hijack normal typing.
       if (isTypingTarget(e.target)) return;
+
+      // Owner-reported fix, 2026-09-27 -- arrow-key nudge of a selected
+      // annotation. Takes priority over `matchShortcut`'s own arrow-key
+      // bindings (prev/next page) whenever something is selected, the same
+      // way a real editor's canvas shortcuts win over document navigation
+      // while an object is selected. `AnnotationCapability.moveAnnotation`
+      // (unscoped -- cited in `EMBEDPDF_NOTES.md`'s API notes) is the same
+      // update/move API `applyStyleChange` uses for style edits.
+      const selected = annotationCapability.provides?.getSelectedAnnotation();
+      if (selected) {
+        const delta = arrowKeyNudge(e.key, e.shiftKey);
+        if (delta) {
+          e.preventDefault();
+          annotationCapability.provides?.moveAnnotation(
+            selected.object.pageIndex,
+            selected.object.id,
+            delta,
+            "delta",
+          );
+          return;
+        }
+      }
 
       const action = matchShortcut(e);
       if (!action) return;
@@ -941,6 +1089,7 @@ function Editor({ documentId, fileName, pageCount, textEdit }: EditorProps) {
     scroll.provides,
     searchOpen,
     applyActiveTool,
+    annotationCapability.provides,
   ]);
 
   const handleExport = useCallback(async () => {
@@ -1327,8 +1476,20 @@ function Editor({ documentId, fileName, pageCount, textEdit }: EditorProps) {
           <input
             type="color"
             aria-label="Annotation color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
+            value={displayColor}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (selectedAnnotation) {
+                applyStyleChange(
+                  isFreeTextSelected
+                    ? { fontColor: next }
+                    : { color: next, strokeColor: next },
+                );
+              }
+              if (activeTool) {
+                setToolColors((prev) => setToolColor(prev, activeTool, next));
+              }
+            }}
             className="size-8 rounded border border-border"
           />
         </label>
@@ -1340,8 +1501,17 @@ function Editor({ documentId, fileName, pageCount, textEdit }: EditorProps) {
             aria-label="Stroke width"
             min={1}
             max={20}
-            value={strokeWidth}
-            onChange={(e) => setStrokeWidth(Number(e.target.value))}
+            value={displayStrokeWidth}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              setStrokeWidth(next);
+              if (selectedAnnotation && !isFreeTextSelected) {
+                applyStyleChange({
+                  strokeColor: displayColor,
+                  strokeWidth: next,
+                });
+              }
+            }}
             className="w-14 rounded border border-border bg-canvas px-1 py-0.5 text-ink"
           />
         </label>
@@ -1353,8 +1523,14 @@ function Editor({ documentId, fileName, pageCount, textEdit }: EditorProps) {
             aria-label="Font size"
             min={8}
             max={72}
-            value={fontSize}
-            onChange={(e) => setFontSize(Number(e.target.value))}
+            value={displayFontSize}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              setFontSize(next);
+              if (selectedAnnotation && isFreeTextSelected) {
+                applyStyleChange({ fontSize: next });
+              }
+            }}
             className="w-14 rounded border border-border bg-canvas px-1 py-0.5 text-ink"
           />
         </label>
