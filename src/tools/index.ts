@@ -66,7 +66,9 @@ import rotatePdf from "@/tools/pdf/rotate-pdf";
 import sanitizePdf from "@/tools/pdf/sanitize-pdf";
 import splitPdf from "@/tools/pdf/split-pdf";
 import unlockPdf from "@/tools/pdf/unlock-pdf";
+import aviToMp4 from "@/tools/video/avi-to-mp4";
 import compressVideo from "@/tools/video/compress-video";
+import flvToMp4 from "@/tools/video/flv-to-mp4";
 import mkvToMp4 from "@/tools/video/mkv-to-mp4";
 import movToMp4 from "@/tools/video/mov-to-mp4";
 import movToWebm from "@/tools/video/mov-to-webm";
@@ -78,6 +80,7 @@ import rotateVideo from "@/tools/video/rotate-video";
 import trimVideo from "@/tools/video/trim-video";
 import videoToGif from "@/tools/video/video-to-gif";
 import webmToMp4 from "@/tools/video/webm-to-mp4";
+import wmvToMp4 from "@/tools/video/wmv-to-mp4";
 
 export const TOOLS: readonly ToolDefinition[] = [
   extractAudio,
@@ -146,7 +149,9 @@ export const TOOLS: readonly ToolDefinition[] = [
   sanitizePdf,
   splitPdf,
   unlockPdf,
+  aviToMp4,
   compressVideo,
+  flvToMp4,
   mkvToMp4,
   movToMp4,
   movToWebm,
@@ -158,6 +163,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   trimVideo,
   videoToGif,
   webmToMp4,
+  wmvToMp4,
 ];
 
 export const TOOLS_BY_SLUG: ReadonlyMap<string, ToolDefinition> = new Map(
