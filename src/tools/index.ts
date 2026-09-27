@@ -3,12 +3,15 @@ import type { ToolDefinition } from "@/lib/registry";
 import extractAudio from "@/tools/audio/extract-audio";
 import flacToMp3 from "@/tools/audio/flac-to-mp3";
 import m4aToMp3 from "@/tools/audio/m4a-to-mp3";
+import movToMp3 from "@/tools/audio/mov-to-mp3";
 import mp3ToM4a from "@/tools/audio/mp3-to-m4a";
 import mp3ToOgg from "@/tools/audio/mp3-to-ogg";
 import mp3ToWav from "@/tools/audio/mp3-to-wav";
+import mp4ToMp3 from "@/tools/audio/mp4-to-mp3";
 import oggToMp3 from "@/tools/audio/ogg-to-mp3";
 import wavToFlac from "@/tools/audio/wav-to-flac";
 import wavToMp3 from "@/tools/audio/wav-to-mp3";
+import webmToMp3 from "@/tools/audio/webm-to-mp3";
 import csvToJson from "@/tools/data/csv-to-json";
 import csvToXlsx from "@/tools/data/csv-to-xlsx";
 import jsonToCsv from "@/tools/data/json-to-csv";
@@ -98,12 +101,15 @@ export const TOOLS: readonly ToolDefinition[] = [
   extractAudio,
   flacToMp3,
   m4aToMp3,
+  movToMp3,
   mp3ToM4a,
   mp3ToOgg,
   mp3ToWav,
+  mp4ToMp3,
   oggToMp3,
   wavToFlac,
   wavToMp3,
+  webmToMp3,
   csvToJson,
   csvToXlsx,
   jsonToCsv,
