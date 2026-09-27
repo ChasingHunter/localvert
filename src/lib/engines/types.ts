@@ -49,6 +49,28 @@ export interface EngineSourceFile {
   from: string;
   to: string;
   package?: string;
+  /**
+   * Ship this file gzipped (`to` must itself end in `.gz`) instead of
+   * copying it raw — `scripts/sync-engines.ts` compresses it (node `zlib`,
+   * level 9, deterministic) and `scripts/gen-registry.ts` sizes the
+   * compressed bytes, not the source file's. Used for typst's compiler wasm
+   * (28 MB -> ~10 MB) so it ships as a "static" asset without a download-
+   * consent gate — see docs/adr/0011-typst-markdown-to-pdf.md. The adapter
+   * that fetches a `gzip` file is responsible for decompressing it itself
+   * (`DecompressionStream("gzip")`); nothing in `public/_headers`/infra
+   * declares `Content-Encoding` for `/engines/*`.
+   */
+  gzip?: boolean;
+  /**
+   * Apply a named, deterministic source transform to this file while
+   * copying it, instead of copying it byte-for-byte. The only value today
+   * is `"typst-glue"` — `patchTypstGlue` in `scripts/sync-engines.ts`,
+   * replacing the two `new Function(...)` stubs wasm-bindgen's glue embeds
+   * for typst's dummy AccessModel/Registry with a closed lookup table, so
+   * the file runs under this app's CSP (no `unsafe-eval`). See that
+   * function's doc comment and ADR-0011.
+   */
+  patch?: "typst-glue";
 }
 
 /**

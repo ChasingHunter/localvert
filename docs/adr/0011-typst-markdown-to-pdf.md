@@ -50,15 +50,61 @@ without the bundler-unsafe import. The raw compiler's own glue
 assets, loaded via a runtime `import()` with `webpackIgnore`/
 `turbopackIgnore`/`@vite-ignore`, same pattern as `libraw`/`ffmpeg`.
 
-**Ship the engine via `location: "r2"` + `consent: true`**, the same path
-`ffmpeg` (ADR-0002) already established for an engine too large for the
-static-asset budget: no build-time gzip transform of `sync-engines.ts` was
-needed (the brief's first-choice idea), since r2 placement carries no 20 MiB
-ceiling and reuses proven, already-tested plumbing (`upload-r2.ts`,
-`seed-r2-local.ts`, the consent dialog) rather than adding a new
-compress/decompress path to a script whose own module doc comment says it
-must stay simple and self-contained. Total delivered size is ~30.6 MiB
-(28.3 MiB compiler wasm + ~1.9 MiB fonts + ~0.3 MiB cmarker).
+**Ship the engine via `location: "static"`, with the compiler wasm gzipped**
+(`typst_ts_web_compiler_bg.wasm.gz`, ~10.3 MiB vs. ~28.3 MiB raw — under the
+20 MiB static-asset ceiling), decompressed at runtime via
+`DecompressionStream("gzip")` (the adapter checks the first two bytes for the
+gzip magic `1F 8B` and falls back to using the bytes as-is if something
+upstream ever decodes them first — nothing in `public/_headers`/infra
+declares `Content-Encoding` for `/engines/*`, so this is the only decode step
+that exists).
+
+This supersedes this ADR's original decision (`location: "r2"` +
+`consent: true`, the path `ffmpeg`/ADR-0002 established) — not because r2 was
+wrong in itself, but because bringing the engine up under this app's real CSP
+(next section) surfaced that `sync-engines.ts` could gzip one file cheaply
+(a `gzip: true` flag on a `files[]` entry, ~15 lines in `copyOneFile`, sized
+correctly in `gen-registry.ts`'s `resolveAssets` too), which drops the whole
+engine under the static-asset ceiling and removes the download-consent
+prompt entirely — a strictly better outcome for a user converting a markdown
+file, at the cost of one small, general (not typst-specific) `sync-engines`
+feature instead of zero.
+
+**The wasm-bindgen glue must be patched to remove two `new Function(string)`
+calls, or the engine cannot run under this app's CSP at all.**
+`@myriaddreamin/typst-ts-web-compiler`'s glue (`typst_ts_web_compiler.mjs`)
+imports two host functions the wasm module calls, unconditionally, while
+constructing a fresh `TypstCompilerBuilder` — before this adapter ever calls
+`set_access_model`/`add_raw_font` — to build its own *default* ("dummy")
+AccessModel/Registry implementations, via `new Function(body)`/
+`new Function(args, body)`. `script-src` with no `unsafe-eval` (this repo
+never adds that directive — see CLAUDE.md's invariants) blocks that outright:
+"Evaluating a string as JavaScript violates ... 'unsafe-eval'". Grepping the
+real `_bg.wasm`'s string literals confirms the *only* bodies the wasm module
+ever passes to these two imports are five fixed dummy-method strings — never
+markdown, never anything derived from the file being compiled — so
+`scripts/sync-engines.ts`'s `patchTypstGlue` (applied at sync time via a
+`patch: "typst-glue"` flag on the `.mjs` file entry, the same generic-flag
+shape as `gzip`) rewrites those two import functions into a closed lookup
+over exactly those five `(args, body)` pairs, mapped to pre-written static
+functions, and fails closed (throws) on anything else. It also asserts the
+regex it matches on found **exactly one** instance of each import before
+trusting the patch, and that the patched output contains zero remaining
+`new Function(` — so a typst-ts upgrade that reshapes this glue fails
+`pnpm sync-engines` loudly instead of shipping an unpatched (CSP-broken) or
+silently-wrong (regex-missed) copy.
+
+Fixing the CSP failure surfaced a second, independent bug this ADR also
+fixes: `runTranscode`'s original `finally { builder.free(); }` double-frees
+the builder. `TypstCompilerBuilder.build()`'s own generated JS calls
+`this.__destroy_into_raw()` (zeroing the wrapper's pointer) before handing
+ownership to the compiler it returns — the same operation `free()` performs
+— and this package's generated `free()` doesn't guard against an
+already-zeroed pointer, so calling it again panics ("null pointer passed to
+rust") instead of being a no-op. The fix is a `builderConsumed` flag set
+immediately before calling `build()`, so the outer `finally` only calls
+`builder.free()` if `build()` was never reached (e.g. `set_access_model`/
+`add_raw_font` threw first).
 
 **Vendor `cmarker` 0.1.8 and the Libertinus Serif / DejaVu Sans Mono fonts
 under `vendor/`** rather than fetching them from `packages.typst.org` /
@@ -98,14 +144,18 @@ never abort the compile with a file-not-found error.
 
 ## Consequences
 
-- The engine only ever gets real integration coverage through
-  `e2e/markdown.spec.ts` (a live `wrangler dev` run, R2-backed), not a vitest
-  browser test — mirroring `ffmpeg`, the only other `r2`-located engine in
-  this repo, which likewise has no `adapter.browser.test.ts`: there is no
-  local R2 route inside vitest's Vite dev server, only inside `wrangler dev`
-  (seeded by `scripts/seed-r2-local.ts`). `src/lib/engines/typst/
-  template.test.ts` and `no-bundled-glue.test.ts` cover template generation,
-  option mapping and the bundling guard at the unit level instead.
+- Now that the engine is `location: "static"`, it gets real integration
+  coverage from both `src/lib/engines/typst/adapter.browser.test.ts` (a real
+  worker, real wasm, real gzip decompression, real patched glue — see that
+  file's doc comment for why it goes through `createWorkerPool`/
+  `spawnEngineWorker` rather than calling the adapter directly) and
+  `e2e/markdown.spec.ts` (the real built `out/`, real CSP headers from
+  `public/_headers` — the only place the `patchTypstGlue`/`unsafe-eval`
+  fix is actually proven, since vitest's browser-mode dev server sets no
+  CSP header at all). `template.test.ts` and `no-bundled-glue.test.ts` still
+  cover template generation, option mapping and the bundling guard at the
+  unit level; `scripts/typst-glue-patch.test.ts` covers the glue patch
+  itself, including against the real installed package.
 - A future typst.ts upgrade that changes `compiler.mjs`'s internal wiring
   (the exact `set_access_model`/`snapshot`/`get_artifact` call shapes this
   adapter copied) needs re-verifying against the new version's source — this
@@ -132,11 +182,9 @@ never abort the compile with a file-not-found error.
   therefore any registry at all) unnecessary. Simpler, and it also reads as a
   more literal compliance with the brief's "never use
   `withPackageRegistry`/`FetchPackageRegistry`" instruction.
-- **Gzip-compressed static delivery** (`typst_ts_web_compiler_bg.wasm.gz`
-  under the 20 MiB static-asset ceiling, decompressed at runtime via
-  `DecompressionStream`) — the brief's suggested first try. Not implemented:
-  `r2` placement has no size ceiling at all and reuses the already-built,
-  already-tested consent/upload/seed pipeline `ffmpeg` proved out, at the
-  cost of one more consent prompt for a user who wants this specific
-  conversion — a smaller cost than adding a new compression transform to
-  `sync-engines.ts`.
+- **`r2` + `consent: true`** (this ADR's original decision) — reused
+  `ffmpeg`'s proven upload/seed/consent plumbing instead of adding gzip
+  support to `sync-engines.ts`. Superseded once the CSP fix (above) was
+  already touching `sync-engines.ts`'s per-file transform machinery anyway,
+  at which point gzipping one file became a small addition rather than a new
+  path, and the consent-free result was strictly better for the user.

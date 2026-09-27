@@ -173,6 +173,35 @@ async function fetchBytes(url: string): Promise<Uint8Array> {
 }
 
 /**
+ * Same as `fetchBytes`, plus gzip decompression: the compiler wasm ships as
+ * `typst_ts_web_compiler_bg.wasm.gz` (ADR-0011) so it fits the "static"
+ * asset tier (~10 MB gzipped vs. ~28 MB raw) without a download-consent
+ * gate, but nothing in `public/_headers`/`infra` declares `Content-Encoding`
+ * for `/engines/*` — the browser never auto-decodes it, so this adapter
+ * does. Detected by magic bytes rather than trusting the `.gz` extension:
+ * `1F 8B` is gzip; `\0asm` (`00 61 73 6D`) means something upstream (a CDN,
+ * a future infra change) already decoded it, in which case the raw bytes
+ * are used as-is.
+ */
+async function fetchGzippedBytes(url: string): Promise<Uint8Array> {
+  const bytes = await fetchBytes(url);
+  if (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    const stream = new Response(
+      bytes.slice().buffer as ArrayBuffer,
+    ).body?.pipeThrough(new DecompressionStream("gzip"));
+    if (!stream) {
+      throw new EngineError(
+        "internal",
+        `no response body stream to decompress for "${url}"`,
+        { engine: metadata.id },
+      );
+    }
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  return bytes;
+}
+
+/**
  * Loaded once per worker: the compiled wasm module, the glue's exported
  * `TypstCompilerBuilder`, and every font/cmarker file's raw bytes. A fresh
  * `TypstCompilerBuilder`/`TypstCompiler` is still built per `run()` call
@@ -187,8 +216,8 @@ interface TypstLoaded {
 }
 
 async function load(ctx: EngineLoadContext): Promise<EngineInstance> {
-  const wasmBytes = await fetchBytes(
-    `${ctx.baseUrl}typst_ts_web_compiler_bg.wasm`,
+  const wasmBytes = await fetchGzippedBytes(
+    `${ctx.baseUrl}typst_ts_web_compiler_bg.wasm.gz`,
   );
   // @vite-ignore — vitest's browser mode is Vite-powered; same reasoning as
   // the two directives below, for the bundler this file's own tests run
@@ -284,6 +313,15 @@ async function runTranscode(
   signal.throwIfAborted();
 
   const builder = new loaded.TypstCompilerBuilder();
+  // `builder.build()` (below) consumes the builder on the Rust side — its
+  // own generated JS calls `this.__destroy_into_raw()` internally, same as
+  // `free()` does, zeroing out the wrapper's pointer — so once `build()` has
+  // been *called* (whether it resolves or rejects), calling `builder.free()`
+  // again is a double-free: wasm-bindgen's generated `free()` doesn't guard
+  // against an already-zeroed pointer, so a second call panics ("null
+  // pointer passed to rust") instead of being a harmless no-op. This flag is
+  // what makes the outer `finally` below skip that second call.
+  let builderConsumed = false;
   try {
     await builder.set_access_model(
       accessModel,
@@ -300,6 +338,7 @@ async function runTranscode(
     signal.throwIfAborted();
     onProgress?.(0.5);
 
+    builderConsumed = true;
     const compiler = await builder.build();
     try {
       const world = compiler.snapshot(undefined, MAIN_PATH, undefined);
@@ -330,7 +369,7 @@ async function runTranscode(
       compiler.free();
     }
   } finally {
-    builder.free();
+    if (!builderConsumed) builder.free();
   }
 }
 

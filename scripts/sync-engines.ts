@@ -36,17 +36,18 @@
  */
 
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { gzipSync } from "node:zlib";
 
 /**
  * Every regular file under `dir`, recursively, as POSIX-style paths relative
@@ -83,7 +84,153 @@ export interface SourceFile {
   /** Overrides the engine's own `package` for this one file — see
    * `EngineSourceFile`'s doc comment in `src/lib/engines/types.ts`. */
   package?: string;
+  /** Ship this file gzipped — see `EngineSourceFile.gzip`'s doc comment. */
+  gzip?: boolean;
+  /** Apply `patchTypstGlue` while copying — see `EngineSourceFile.patch`'s
+   * doc comment. */
+  patch?: "typst-glue";
 }
+
+// ---------------------------------------------------------------------------
+// typst glue patch (ADR-0011): CSP-safe replacement for wasm-bindgen's
+// `new Function(...)` stubs
+// ---------------------------------------------------------------------------
+
+/**
+ * `@myriaddreamin/typst-ts-web-compiler`'s wasm-bindgen glue
+ * (`typst_ts_web_compiler.mjs`) imports two host functions the wasm module
+ * calls, unconditionally, while constructing a fresh `TypstCompilerBuilder`
+ * — before our own adapter ever calls `set_access_model`/`withPackageRegistry`
+ * — to build its *default* ("dummy") AccessModel/Registry implementations:
+ *
+ * ```js
+ * imports.wbg.__wbg_new_no_args_XXXXXXXX = function(arg0, arg1) {
+ *   const ret = new Function(getStringFromWasm0(arg0, arg1));
+ *   return addHeapObject(ret);
+ * };
+ * imports.wbg.__wbg_new_with_args_XXXXXXXX = function(arg0, arg1, arg2, arg3) {
+ *   const ret = new Function(getStringFromWasm0(arg0, arg1), getStringFromWasm0(arg2, arg3));
+ *   return addHeapObject(ret);
+ * };
+ * ```
+ *
+ * `new Function(string)` is a string-eval sink — CSP's `script-src` (no
+ * `unsafe-eval`) blocks it outright, which is what actually fails today
+ * ("Evaluating a string as JavaScript violates ... 'unsafe-eval'"). The
+ * *only* strings the wasm module ever passes to these two imports (verified
+ * by grepping the real `_bg.wasm`'s string literals: `"return 0"`,
+ * `"return true"`, `"path"`/`"return path"`, and two `Dummy
+ * AccessModel`/`Dummy Registry` throw-stubs) are five fixed dummy-method
+ * bodies — never markdown, never anything derived from the file being
+ * compiled. This patch replaces the two import functions' bodies with a
+ * closed lookup over exactly those five (args, body) pairs, each mapped to a
+ * pre-written static function, and made to *fail closed*: any other body
+ * throws instead of silently doing nothing, so a typst-ts upgrade that adds
+ * a sixth dummy stub breaks the build loudly (in `assertPatchedTypstGlue`,
+ * and again at runtime if that somehow slipped through) instead of shipping
+ * a compiler that quietly can't ever hit that new stub.
+ *
+ * Regex-matched on the stable generated-name shape
+ * (`__wbg_new_no_args_[0-9a-f]+`/`__wbg_new_with_args_[0-9a-f]+`) rather than
+ * today's exact hex suffix, which wasm-bindgen regenerates on every typst-ts
+ * build. `syncEngines` asserts each regex matches **exactly once** before
+ * trusting the patch — see `assertPatchedTypstGlue`.
+ */
+const NO_ARGS_IMPORT_RE =
+  /imports\.wbg\.(__wbg_new_no_args_[0-9a-f]+) = function\(arg0, arg1\) \{\n\s*const ret = new Function\(getStringFromWasm0\(arg0, arg1\)\);\n\s*return addHeapObject\(ret\);\n\s*\};/;
+
+const WITH_ARGS_IMPORT_RE =
+  /imports\.wbg\.(__wbg_new_with_args_[0-9a-f]+) = function\(arg0, arg1, arg2, arg3\) \{\n\s*const ret = new Function\(getStringFromWasm0\(arg0, arg1\), getStringFromWasm0\(arg2, arg3\)\);\n\s*return addHeapObject\(ret\);\n\s*\};/;
+
+/** Inserted once, right before the first patched import, so both patched
+ * assignments below can call it. Plain string switches over the five known
+ * dummy bodies typst-ts's wasm actually requests — no `new Function`, no
+ * `eval`, nothing string-evaluated. */
+const SAFE_FUNCTION_PREAMBLE = `
+// --- localvert: CSP-safe replacement for wasm-bindgen's Function-constructor
+// stubs (see scripts/sync-engines.ts's patchTypstGlue) ---
+function __localvertSafeFunctionNoArgs(body) {
+    switch (body) {
+        case "return 0": return () => 0;
+        case "return true": return () => true;
+        case "throw new Error('Dummy AccessModel, please initialize compiler with withAccessModel()')":
+            return () => { throw new Error("Dummy AccessModel, please initialize compiler with withAccessModel()"); };
+        case "throw new Error('Dummy Registry, please initialize compiler with withPackageRegistry()')":
+            return () => { throw new Error("Dummy Registry, please initialize compiler with withPackageRegistry()"); };
+        default:
+            throw new Error("localvert: refusing to evaluate a string as code: " + body.slice(0, 80));
+    }
+}
+function __localvertSafeFunctionWithArgs(args, body) {
+    if (args === "path" && body === "return path") return (path) => path;
+    throw new Error("localvert: refusing to evaluate a string as code: " + body.slice(0, 80));
+}
+`;
+
+/**
+ * Applies the transform described above to `source` (the raw
+ * `typst_ts_web_compiler.mjs` text). Throws (fail closed) if either import
+ * doesn't match **exactly once** — a typst-ts upgrade that changes this
+ * glue's shape must fail `pnpm sync-engines` loudly rather than ship
+ * unpatched. Also asserts the *output* contains no `new Function(` at all,
+ * as a second, independent guard.
+ */
+export function patchTypstGlue(source: string): string {
+  const fail = (message: string): never => {
+    throw new Error(`[sync-engines] patchTypstGlue: ${message}`);
+  };
+
+  const noArgsMatches = source.match(new RegExp(NO_ARGS_IMPORT_RE, "g"));
+  if (noArgsMatches === null || noArgsMatches.length !== 1) {
+    fail(
+      `expected exactly one __wbg_new_no_args_* import, found ${noArgsMatches?.length ?? 0} — typst-ts glue shape changed, patch needs updating`,
+    );
+  }
+  const withArgsMatches = source.match(new RegExp(WITH_ARGS_IMPORT_RE, "g"));
+  if (withArgsMatches === null || withArgsMatches.length !== 1) {
+    fail(
+      `expected exactly one __wbg_new_with_args_* import, found ${withArgsMatches?.length ?? 0} — typst-ts glue shape changed, patch needs updating`,
+    );
+  }
+
+  const noArgsMatch = source.match(NO_ARGS_IMPORT_RE);
+  if (!noArgsMatch)
+    fail("__wbg_new_no_args_* did not match on the second pass");
+  const [, noArgsName] = noArgsMatch as RegExpMatchArray;
+
+  let patched = source.replace(
+    NO_ARGS_IMPORT_RE,
+    `${SAFE_FUNCTION_PREAMBLE}imports.wbg.${noArgsName} = function(arg0, arg1) {
+    const ret = __localvertSafeFunctionNoArgs(getStringFromWasm0(arg0, arg1));
+    return addHeapObject(ret);
+};`,
+  );
+
+  const withArgsMatch = patched.match(WITH_ARGS_IMPORT_RE);
+  if (!withArgsMatch)
+    fail("__wbg_new_with_args_* did not match on the second pass");
+  const [, withArgsName] = withArgsMatch as RegExpMatchArray;
+
+  patched = patched.replace(
+    WITH_ARGS_IMPORT_RE,
+    `imports.wbg.${withArgsName} = function(arg0, arg1, arg2, arg3) {
+    const ret = __localvertSafeFunctionWithArgs(getStringFromWasm0(arg0, arg1), getStringFromWasm0(arg2, arg3));
+    return addHeapObject(ret);
+};`,
+  );
+
+  if (patched.includes("new Function(")) {
+    fail('patched output still contains "new Function(" — patch is incomplete');
+  }
+
+  return patched;
+}
+
+/** Dispatch table for `SourceFile.patch` — the only named transform today is
+ * `"typst-glue"`. */
+const PATCHES: Record<"typst-glue", (source: string) => string> = {
+  "typst-glue": patchTypstGlue,
+};
 
 /**
  * The handful of `engine.json` fields this script reads. Not the full
@@ -172,11 +319,21 @@ function readEngineSource(dir: string, id: string): EngineSource {
     if (file.package !== undefined && typeof file.package !== "string") {
       fail(`"files[${i}].package" must be a string`);
     }
+    if (file.gzip !== undefined && typeof file.gzip !== "boolean") {
+      fail(`"files[${i}].gzip" must be a boolean`);
+    }
+    if (file.patch !== undefined && file.patch !== "typst-glue") {
+      fail(`"files[${i}].patch" must be "typst-glue" if present`);
+    }
     return {
       from: file.from as string,
       to: file.to as string,
       ...(file.package !== undefined
         ? { package: file.package as string }
+        : {}),
+      ...(file.gzip !== undefined ? { gzip: file.gzip as boolean } : {}),
+      ...(file.patch !== undefined
+        ? { patch: file.patch as "typst-glue" }
         : {}),
     };
   });
@@ -270,18 +427,33 @@ function copyOneFile(
   engineId: string,
   location: "static" | "r2",
   staticLimitBytes: number,
+  transform?: Pick<SourceFile, "gzip" | "patch">,
 ): SyncedFile {
   const destPath = join(dest, ...to.split("/"));
   mkdirSync(dirname(destPath), { recursive: true });
-  copyFileSync(srcPath, destPath);
-  const bytes = statSync(destPath).size;
 
-  if (location === "static" && bytes > staticLimitBytes) {
-    fail(
-      `${engineId}/${to} is ${mib(bytes)} MiB; static assets are capped at 25 MiB by Cloudflare — set location to r2`,
+  let bytes: Buffer = readFileSync(srcPath);
+  if (transform?.patch !== undefined) {
+    bytes = Buffer.from(
+      PATCHES[transform.patch](bytes.toString("utf8")),
+      "utf8",
     );
   }
-  return { path: to, bytes };
+  if (transform?.gzip === true) {
+    // Deterministic: same input bytes always produce the same gzip output
+    // (node's zlib doesn't embed a timestamp at this level — mtime defaults
+    // to 0 unless a Gzip-specific option sets it).
+    bytes = gzipSync(bytes, { level: 9 });
+  }
+  writeFileSync(destPath, bytes);
+  const size = statSync(destPath).size;
+
+  if (location === "static" && size > staticLimitBytes) {
+    fail(
+      `${engineId}/${to} is ${mib(size)} MiB; static assets are capped at 25 MiB by Cloudflare — set location to r2`,
+    );
+  }
+  return { path: to, bytes: size };
 }
 
 /**
@@ -359,6 +531,7 @@ function copyEngineFiles(
         source.id,
         source.location,
         staticLimitBytes,
+        { gzip: fileSource.gzip, patch: fileSource.patch },
       ),
     );
   }

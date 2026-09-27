@@ -2,13 +2,19 @@ import { readFileSync } from "node:fs";
 import { test as base, expect } from "@playwright/test";
 
 /**
- * Live end-to-end run of the typst engine (ADR-0011): `location: "r2"`,
- * ~30 MB (compiler wasm + vendored fonts/cmarker), fetched through
- * `wrangler dev`'s local R2 simulation (seeded by `scripts/seed-r2-local.ts`)
- * behind the same download-consent gate `e2e/legacy-video.spec.ts` exercises
- * for ffmpeg — see that file's doc comment for why an r2/consent engine's
- * real exercise lives in e2e rather than a vitest browser test (no local R2
- * route exists outside `wrangler dev`).
+ * Live end-to-end run of the typst engine (ADR-0011): `location: "static"`,
+ * served straight from this origin's `public/engines/typst@<version>/` —
+ * no `wrangler dev` R2 simulation, no download-consent gate, unlike
+ * `e2e/legacy-video.spec.ts`'s ffmpeg. The compiler wasm ships gzipped
+ * (`typst_ts_web_compiler_bg.wasm.gz`, ~10 MB vs. ~28 MB raw — comfortably
+ * under the "static" asset tier without a consent prompt); the adapter
+ * decompresses it itself (`DecompressionStream`), since nothing in
+ * `public/_headers`/infra declares `Content-Encoding` for `/engines/*`. The
+ * wasm-bindgen glue is patched at sync time (`scripts/sync-engines.ts`'s
+ * `patchTypstGlue`) to replace two `new Function(string)` stubs with a
+ * closed lookup table, so the compiler runs under this app's real CSP (no
+ * `unsafe-eval`) — this test's `cspGuard` fixture below is what actually
+ * proves that.
  */
 function fixturePath(name: string): string {
   return `e2e/fixtures/${name}`;
@@ -73,14 +79,14 @@ const test = base.extend<Fixtures>({
 });
 
 test.describe("markdown to pdf (typst engine, ADR-0011)", () => {
-  test("gates the typst download behind consent, then converts a real markdown file to pdf", async ({
+  test("converts a real markdown file to pdf with no consent prompt", async ({
     page,
   }) => {
-    // Real wasm fetch (~30 MB from local R2 sim) + a real typst compile.
+    // Real ~10 MB gzipped wasm fetch + decompress + a real typst compile.
     test.setTimeout(120_000);
     const engineRequests: { url: string; status: number }[] = [];
     page.on("response", (response) => {
-      if (response.url().includes("/engines/xl/typst@")) {
+      if (response.url().includes("/engines/typst@")) {
         engineRequests.push({ url: response.url(), status: response.status() });
       }
     });
@@ -91,23 +97,29 @@ test.describe("markdown to pdf (typst engine, ADR-0011)", () => {
       .locator('input[type="file"]')
       .setInputFiles(fixturePath("sample.md"));
 
-    const dialog = page.getByRole("dialog", {
-      name: "Download the typst engine?",
-    });
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "Download and convert" }).click();
-    await expect(dialog).toBeHidden();
+    // No download-consent dialog for a "static" engine — see this file's
+    // top doc comment. The download link appearing at all is proof the
+    // conversion ran straight through, unprompted.
+    await expect(page.getByRole("dialog", { name: /download/i })).toHaveCount(
+      0,
+    );
 
     const downloadLink = page.getByRole("link", { name: "Download" });
     await expect(downloadLink).toBeVisible({ timeout: 60_000 });
 
     expect(
       engineRequests.length,
-      "the typst engine must be fetched from this origin's /engines/xl/ prefix",
+      "the typst engine must be fetched from this origin's /engines/ prefix",
     ).toBeGreaterThan(0);
     for (const req of engineRequests) {
-      // 206 is a legitimate success here too: a range-capable R2 read.
-      expect([200, 206], `${req.url} should succeed`).toContain(req.status);
+      // 307 shows up as its own `response` event for a same-origin redirect
+      // hop (e.g. Cloudflare Workers static-asset serving normalizing a
+      // path) — the browser follows it automatically to a 200/206, so it's
+      // not itself a failure.
+      expect(
+        [200, 206, 307],
+        `${req.url} should succeed`,
+      ).toContain(req.status);
     }
 
     const downloadPromise = page.waitForEvent("download");

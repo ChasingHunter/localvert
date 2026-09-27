@@ -104,6 +104,16 @@ ADR-0011) and committed verbatim, alongside each one's own license file under
 "unmodified upstream build" rule as every npm-sourced engine above, just
 without npm as the delivery mechanism.
 
+**Modified:** `typst-ts-web-compiler`'s wasm-bindgen glue
+(`typst_ts_web_compiler.mjs`) is not shipped verbatim. Apache-2.0 permits
+modification (§4), and `scripts/sync-engines.ts`'s `patchTypstGlue` rewrites
+exactly two generated import functions — replacing their `new Function(...)`
+string-eval calls with a closed lookup table over the five fixed dummy-method
+bodies the wasm module ever actually requests — so the module runs under
+this app's CSP (`script-src` has no `unsafe-eval`, and never will — see
+CLAUDE.md's invariants). See ADR-0011 for the mechanism and why it's provably
+safe (the wasm never passes anything else to those two imports).
+
 ## Copyleft engines
 
 Engines under GPL or LGPL, listed separately because they carry obligations

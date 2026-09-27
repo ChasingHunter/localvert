@@ -1,19 +1,20 @@
 {
   "id": "typst",
   "license": "Apache-2.0 (typst.ts + typst compiler) + MIT (cmarker) + OFL-1.1 (Libertinus Serif) + Bitstream Vera (DejaVu Sans Mono)",
-  "location": "r2",
+  "location": "static",
   "needsIsolation": false,
   "heavy": true,
-  "consent": true,
   "package": "@myriaddreamin/typst-ts-web-compiler",
   "files": [
     {
       "from": "pkg/typst_ts_web_compiler_bg.wasm",
-      "to": "typst_ts_web_compiler_bg.wasm"
+      "to": "typst_ts_web_compiler_bg.wasm.gz",
+      "gzip": true
     },
     {
       "from": "pkg/typst_ts_web_compiler.mjs",
-      "to": "typst_ts_web_compiler.mjs"
+      "to": "typst_ts_web_compiler.mjs",
+      "patch": "typst-glue"
     },
     {
       "from": "vendor/typst-fonts/LibertinusSerif-Regular.otf",
