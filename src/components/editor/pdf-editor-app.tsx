@@ -7,7 +7,7 @@ import {
   useDocumentState,
   useRegistry,
 } from "@embedpdf/core/react";
-import type { PdfWidgetAnnoObject, Rect } from "@embedpdf/models";
+import type { PdfWidgetAnnoObject, Rect, SearchResult } from "@embedpdf/models";
 import { AnnotationPluginPackage } from "@embedpdf/plugin-annotation";
 import {
   AnnotationLayer,
@@ -33,7 +33,10 @@ import { RenderLayer } from "@embedpdf/plugin-render/react";
 import { ScrollPluginPackage } from "@embedpdf/plugin-scroll";
 import { Scroller, useScroll } from "@embedpdf/plugin-scroll/react";
 import { SelectionPluginPackage } from "@embedpdf/plugin-selection";
-import { SelectionLayer } from "@embedpdf/plugin-selection/react";
+import {
+  SelectionLayer,
+  useSelectionCapability,
+} from "@embedpdf/plugin-selection/react";
 import { ThumbnailPluginPackage } from "@embedpdf/plugin-thumbnail";
 import { ThumbImg, ThumbnailsPane } from "@embedpdf/plugin-thumbnail/react";
 import { ViewportPluginPackage } from "@embedpdf/plugin-viewport";
@@ -44,12 +47,14 @@ import {
   Eraser,
   Highlighter,
   ImagePlus,
+  Keyboard,
   LayoutGrid,
   type LucideIcon,
   Minus,
   MousePointer2,
   PenLine,
   Redo2,
+  Search as SearchIcon,
   Signature,
   Square as SquareIcon,
   Strikethrough,
@@ -70,9 +75,15 @@ import { flattenExportedForms } from "@/lib/editor/flatten-forms";
 import { flattenRedactedPagesToImages } from "@/lib/editor/flatten-redacted-pages";
 import { createPdfiumWorkerEngine } from "@/lib/editor/pdfium-engine";
 import { sanitizeExportedPdf } from "@/lib/editor/sanitize-export";
+import {
+  isTypingTarget,
+  matchShortcut,
+  SHORTCUTS,
+} from "@/lib/editor/shortcuts";
 import type { ReplacePageImage } from "@/lib/engines/pdf-lib/adapter";
 import { FormLayer, isFillableWidget } from "./form-layer";
 import { RedactionLayer, type RedactionMark } from "./redaction-layer";
+import { SearchBar, SearchHighlightLayer } from "./search-bar";
 
 /**
  * The PDF editor's app-mode UI (ADR-0009), built on `@embedpdf/core`'s
@@ -341,6 +352,7 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
   const zoom = useZoom(documentId);
   const scroll = useScroll(documentId);
   const documentManager = useDocumentManagerCapability();
+  const selection = useSelectionCapability();
 
   // E4a -- true redaction. `registry.getEngine()` is the same bare `PdfEngine`
   // `FormLayer` already reads this way (see that file's doc comment) --
@@ -363,6 +375,23 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
   const stampInputRef = useRef<HTMLInputElement | null>(null);
   const [signOpen, setSignOpen] = useState(false);
   const [organizerOpen, setOrganizerOpen] = useState(false);
+
+  // E6a -- search. Results and the current hit index live here (not inside
+  // `SearchBar`) because `renderPage`, below, hands each page's own subset of
+  // hits to that page's `SearchHighlightLayer` -- a single source of truth
+  // both the search bar's "n of m" counter and every page's overlay read
+  // from.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchCurrentIndex, setSearchCurrentIndex] = useState(0);
+  const handleSearchResultsChange = useCallback(
+    (results: SearchResult[], currentIndex: number) => {
+      setSearchResults(results);
+      setSearchCurrentIndex(currentIndex);
+    },
+    [],
+  );
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   // E2a — form filling. Tracks which page indexes currently have at least
   // one fillable widget, reported up by each page's `FormLayer` once it
@@ -546,6 +575,21 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
     return provides.onHistoryChange(() => setHistoryTick((t) => t + 1));
   }, [history.provides]);
 
+  // E6a -- tracks whether there's a live text selection on THIS document, so
+  // the toolbar's "Copy" button only appears while there's something to
+  // copy. `selection.provides` has no reactive state of its own (same
+  // situation as `history.provides.canUndo()` above), so this subscribes to
+  // `onSelectionChange` and filters to this document's events.
+  const [hasSelection, setHasSelection] = useState(false);
+  useEffect(() => {
+    const provides = selection.provides;
+    if (!provides) return;
+    return provides.onSelectionChange((event) => {
+      if (event.documentId !== documentId) return;
+      setHasSelection(event.selection !== null);
+    });
+  }, [selection.provides, documentId]);
+
   const applyActiveTool = useCallback(
     (toolId: string | null) => {
       const provides = annotation.provides;
@@ -645,39 +689,87 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
     [history.provides],
   );
 
+  // E6a -- the full shortcut table (`src/lib/editor/shortcuts.ts`) replaces
+  // this effect's old hand-rolled undo/redo-only handler. `matchShortcut` is
+  // pure (key in, action out); everything DOM/plugin-specific -- reading
+  // `e.target`, dispatching to a capability -- stays here.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      const mod = e.ctrlKey || e.metaKey;
-      if (!mod) return;
       // A FreeText annotation opens its own contenteditable region on create
-      // (`editAfterCreate`, above). While that's focused, Ctrl+Z/Ctrl+Shift+Z
-      // must stay native browser text-undo (reverting typed characters), not
-      // our history plugin's document-level undo -- otherwise typing "abc"
+      // (`editAfterCreate`, above). While that's focused (or any other text
+      // input/textarea/contenteditable is), every shortcut here must stay
+      // native browser behavior (e.g. Ctrl+Z reverting typed characters, not
+      // our history plugin's document-level undo) -- otherwise typing "abc"
       // then Ctrl+Z would silently delete the whole annotation instead of the
-      // "c", and the plugin's own undo stack would never see the keystroke.
-      const target = e.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
-      if (e.key.toLowerCase() === "z" && e.shiftKey) {
-        e.preventDefault();
-        handleRedo();
-      } else if (e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        handleUndo();
-      } else if (e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        handleRedo();
+      // "c", and letter shortcuts like "h" would hijack normal typing.
+      if (isTypingTarget(e.target)) return;
+
+      const action = matchShortcut(e);
+      if (!action) return;
+
+      switch (action.kind) {
+        case "search":
+          e.preventDefault();
+          setSearchOpen(true);
+          break;
+        case "undo":
+          e.preventDefault();
+          handleUndo();
+          break;
+        case "redo":
+          e.preventDefault();
+          handleRedo();
+          break;
+        case "copy":
+          // No preventDefault: letting the browser's own copy proceed too is
+          // harmless (there's no separate text selection outside the PDF
+          // viewer to conflict with), and this keeps native copy working
+          // anywhere else on the page this handler doesn't otherwise reach.
+          selection.provides?.copyToClipboard(documentId);
+          break;
+        case "zoomIn":
+          e.preventDefault();
+          zoom.provides?.zoomIn();
+          break;
+        case "zoomOut":
+          e.preventDefault();
+          zoom.provides?.zoomOut();
+          break;
+        case "zoomReset":
+          e.preventDefault();
+          zoom.provides?.requestZoom(ZoomMode.FitWidth);
+          break;
+        case "nextPage":
+          e.preventDefault();
+          scroll.provides?.scrollToNextPage();
+          break;
+        case "previousPage":
+          e.preventDefault();
+          scroll.provides?.scrollToPreviousPage();
+          break;
+        case "escape":
+          e.preventDefault();
+          if (searchOpen) setSearchOpen(false);
+          else applyActiveTool(null);
+          break;
+        case "activateTool":
+          e.preventDefault();
+          applyActiveTool(action.toolId === "select" ? null : action.toolId);
+          break;
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleUndo, handleRedo]);
+  }, [
+    handleUndo,
+    handleRedo,
+    selection.provides,
+    documentId,
+    zoom.provides,
+    scroll.provides,
+    searchOpen,
+    applyActiveTool,
+  ]);
 
   const handleExport = useCallback(async () => {
     if (!exportProvides) return;
@@ -781,6 +873,12 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
             onAddMark={addMark}
             onRemoveMark={removeMark}
           />
+          <SearchHighlightLayer
+            documentId={documentId}
+            pageIndex={layout.pageIndex}
+            results={searchResults}
+            currentIndex={searchCurrentIndex}
+          />
         </PagePointerProvider>
       </div>
     ),
@@ -792,6 +890,8 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
       handleWidgetsLoaded,
       addMark,
       removeMark,
+      searchResults,
+      searchCurrentIndex,
     ],
   );
 
@@ -857,6 +957,27 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
           <LayoutGrid aria-hidden="true" />
         </Button>
 
+        <Button
+          type="button"
+          variant={searchOpen ? "default" : "outline"}
+          size="icon"
+          aria-label="Find in document"
+          aria-pressed={searchOpen}
+          onClick={() => setSearchOpen((open) => !open)}
+        >
+          <SearchIcon aria-hidden="true" />
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label="Keyboard shortcuts"
+          onClick={() => setShortcutsOpen(true)}
+        >
+          <Keyboard aria-hidden="true" />
+        </Button>
+
         <label className="flex items-center gap-1 text-xs text-ink-muted">
           Color
           <input
@@ -916,6 +1037,16 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
           >
             <ZoomIn aria-hidden="true" />
           </Button>
+          {hasSelection && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => selection.provides?.copyToClipboard(documentId)}
+            >
+              Copy
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -959,6 +1090,18 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
           </Button>
         </div>
       </div>
+
+      <SearchBar
+        documentId={documentId}
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        onResultsChange={handleSearchResultsChange}
+      />
+
+      <KeyboardShortcutsPopover
+        open={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
+      />
 
       {redactMode && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface p-2">
@@ -1098,6 +1241,63 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
         </Viewport>
       </div>
     </div>
+  );
+}
+
+interface KeyboardShortcutsPopoverProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+/** Lists every entry in `SHORTCUTS` (`src/lib/editor/shortcuts.ts`) — the
+ * exact same table the keydown handler above dispatches from, so this popover
+ * can never drift out of sync with what's actually wired up. Same native
+ * `<dialog>` choice as `ApplyRedactionsDialog`/`SignatureDialog`. */
+function KeyboardShortcutsPopover({
+  open,
+  onClose,
+}: KeyboardShortcutsPopoverProps) {
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    else if (!open && dialog.open) dialog.close();
+  }, [open]);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      aria-label="Keyboard shortcuts"
+      className="rounded-md border border-border bg-surface p-4 text-ink backdrop:bg-black/50"
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+    >
+      <div className="flex max-w-sm flex-col gap-3">
+        <p className="text-sm font-medium">Keyboard shortcuts</p>
+        <ul className="flex flex-col gap-1 text-sm text-ink-muted">
+          {SHORTCUTS.map((s) => (
+            <li
+              key={s.label}
+              className="flex items-center justify-between gap-4"
+            >
+              <span>{s.label}</span>
+              <kbd className="rounded border border-border bg-canvas px-1.5 py-0.5 font-mono text-xs">
+                {s.keys}
+              </kbd>
+            </li>
+          ))}
+        </ul>
+        <div className="flex justify-end">
+          <Button type="button" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+    </dialog>
   );
 }
 
