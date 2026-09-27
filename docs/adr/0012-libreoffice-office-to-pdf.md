@@ -106,6 +106,33 @@ not part of this slice.
   is not exercised as a real constraint yet, but the field is now honestly
   populated for the day something does read it.
 
+## Addendum (2026-09-27): CSP-safe embind, following the typst-glue pattern
+
+`soffice.js` (built without `-sDYNAMIC_EXECUTION=0`) turned out to embed two
+runtime code-generation sites — embind's `craftInvokerFunction` (the generic
+invoker factory behind every bound class method, constructor and free
+function) and the emval `__emval_get_method_caller` — both routed through
+`newFunc(Function, args)`, i.e. `new Function(...)`. CSP's `script-src` (no
+`unsafe-eval`, invariant 1) blocks that outright: the first bound-class-method
+call during LibreOfficeKit init threw `EvalError: Evaluating a string as
+JavaScript violates ... 'unsafe-eval'`, surfacing to the user as a generic
+"WASM initialization timeout".
+
+Following ADR-0011's precedent for typst-ts's wasm-bindgen glue, `scripts/
+sync-engines.ts`'s `patchLibreOfficeEmbind` replaces both functions' exact
+source with eval-free closures that reproduce the generated bodies'
+semantics — arg-count check, wire-type conversion, destructor bookkeeping,
+return conversion, and (for emval) the pointer-packet reads and construct/
+call dispatch — matched and applied while copying `soffice.js` in `pnpm
+sync-engines`, not hand-edited in the vendored file. Unlike typst's patch
+(a closed lookup over five fixed dummy bodies), this one can't enumerate the
+call sites in advance — embind and emval invoke these for every bound class
+method the C++ side registers, with arbitrary argument shapes — so the
+replacement has to be a general, correct reimplementation of Emscripten's own
+`-sDYNAMIC_EXECUTION=0` invoker, not a fixed table. See
+`docs/THIRD_PARTY_LICENSES.md` for the MPL-2.0 note this creates (`soffice.js`
+is now modified, not shipped verbatim).
+
 ## Alternatives considered
 
 - **mammoth / docx-preview (JS-only docx renderers).** Rejected: coverage is

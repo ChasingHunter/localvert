@@ -94,14 +94,22 @@ copyleft table below.
 `libreoffice` (`@bentopdf/libreoffice-wasm`) is MPL-2.0, the same file-level
 copyleft as `resvg`/`mediabunny` above: it only requires that modified *files*
 of the covered work (LibreOffice core, compiled to wasm) be published under
-MPL, not the combining application. We ship the unmodified upstream wasm/JS
-build, so this carries no obligation beyond attribution and the source link
-above — recorded here rather than in the copyleft table below, which is for
-GPL/LGPL's whole-work-level obligations. See
-[ADR-0012](adr/0012-libreoffice-office-to-pdf.md) for this package's
-provenance risk (single, anonymous npm maintainer; no repository or README) and
-why we still ship it: sandboxed in its own worker, and `connect-src 'self'`
-means it cannot exfiltrate anything even if it wanted to.
+MPL, not the combining application. **Modified, not shipped verbatim**:
+`scripts/sync-engines.ts`'s `patchLibreOfficeEmbind` replaces embind's two
+runtime code-generation sites in `soffice.js` (`craftInvokerFunction` and the
+`__emval_get_method_caller` method caller) — replacing their
+`new Function(...)`-based invoker construction with the eval-free closures
+Emscripten itself emits under `-sDYNAMIC_EXECUTION=0` — so the module runs
+under this app's CSP (`script-src` has no `unsafe-eval`, and never will — see
+CLAUDE.md's invariants). Because this modifies a file of the covered work, the
+plain-JS `soffice.js` we serve publicly *is* that modified source, satisfying
+MPL-2.0's file-level obligation directly (no separate source offer needed
+beyond what's already served); the source link above remains for the rest of
+the unmodified build. See ADR-0012 for the mechanism, and the same ADR for
+this package's provenance risk (single, anonymous npm maintainer; no
+repository or README) and why we still ship it: sandboxed in its own worker,
+and `connect-src 'self'` means it cannot exfiltrate anything even if it
+wanted to.
 
 `tracer` (`@image-tracer-ts/core`) is a TypeScript reimplementation of
 [imagetracerjs](https://github.com/jankovicsandras/imagetracerjs), which is
