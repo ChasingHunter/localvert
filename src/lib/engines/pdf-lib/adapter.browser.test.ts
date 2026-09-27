@@ -1157,7 +1157,11 @@ describe("pdf-lib adapter", () => {
       );
       if (result.kind !== "bytes") throw new Error("expected bytes result");
 
-      const reopened = await PDFDocument.load(result.bytes);
+      // `updateMetadata: false`: pdf-lib's default load stamps its own
+      // Producer/Creator, which would mask whether sanitize removed them.
+      const reopened = await PDFDocument.load(result.bytes, {
+        updateMetadata: false,
+      });
       expect(reopened.getTitle()).toBeUndefined();
       expect(reopened.getAuthor()).toBeUndefined();
       expect(reopened.getProducer()).toBeUndefined();
@@ -1244,7 +1248,7 @@ describe("pdf-lib adapter", () => {
       const sizes = await pageSizes(result.bytes);
       expect(sizes).toEqual([
         [150, 150],
-        [595.28, 841.89], // default A4 blank, no previous page to inherit yet
+        [150, 150], // blank inherits the previous plan entry's page size
         [300, 300],
         [100, 100],
       ]);
