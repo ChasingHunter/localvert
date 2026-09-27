@@ -140,8 +140,12 @@ describe("handle", () => {
     const response = await handle(request, env, ctx, fakeCache());
 
     expect(response.status).toBe(404);
+    // `range` must be `undefined` for a plain GET with no `Range` header —
+    // see the doc comment above `hasRangeHeader` in index.ts for why this
+    // matters (a Miniflare-local-only quirk, found via the libreoffice
+    // engine's nested worker load).
     expect(get).toHaveBeenCalledWith(ENGINE_KEY, {
-      range: request.headers,
+      range: undefined,
       onlyIf: request.headers,
     });
     expect(assetsFetch).not.toHaveBeenCalled();

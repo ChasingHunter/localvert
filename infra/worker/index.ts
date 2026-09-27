@@ -124,8 +124,20 @@ export async function handle(
     if (cached) return cached;
   }
 
+  // `range` is only ever passed when the client actually sent a `Range`
+  // header. Passing `request.headers` through unconditionally used to work
+  // against real R2 (which itself only honors an actual `Range` header) but
+  // broke against `wrangler dev --local`'s Miniflare R2 simulator, which
+  // synthesizes a bogus range (`Content-Range: bytes NaN-<size-1>/<size>`)
+  // for a plain GET with no `Range` header at all — found via the
+  // libreoffice engine's nested `new Worker(...)` load (ADR-0012), the first
+  // consumer of an r2-hosted classic worker script: Chrome's worker-script
+  // fetch algorithm rejects that malformed partial response outright
+  // (`net::ERR_BLOCKED_BY_RESPONSE`), where a plain `fetch()`/`import()`
+  // consumer (every other r2 engine so far) tolerated it silently.
+  const hasRangeHeader = request.headers.has("Range");
   const object = await env.ENGINES.get(key, {
-    range: request.headers,
+    range: hasRangeHeader ? request.headers : undefined,
     onlyIf: request.headers,
   });
 
