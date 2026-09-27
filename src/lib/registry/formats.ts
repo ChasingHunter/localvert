@@ -523,6 +523,121 @@ export const FORMATS = {
       [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
     ],
   },
+  docx: {
+    label: "Word Document",
+    ext: ["docx"],
+    mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    category: "document",
+    // Same ZIP-container signature as xlsx above — every OOXML format
+    // shares it. `sniffFormat` resolves a real .docx to `zip` first (`zip`
+    // is declared earlier); `refineFormat` promotes it by extension.
+    magic: [
+      [{ offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] }],
+      [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
+    ],
+  },
+  pptx: {
+    label: "PowerPoint Presentation",
+    ext: ["pptx"],
+    mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    category: "document",
+    // Same ZIP-container signature — see docx above.
+    magic: [
+      [{ offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] }],
+      [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
+    ],
+  },
+  odt: {
+    label: "OpenDocument Text",
+    ext: ["odt"],
+    mime: "application/vnd.oasis.opendocument.text",
+    category: "document",
+    // ODF documents are ZIP containers too — same signature, same
+    // extension-refine pattern as the OOXML formats above.
+    magic: [
+      [{ offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] }],
+      [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
+    ],
+  },
+  ods: {
+    label: "OpenDocument Spreadsheet",
+    ext: ["ods"],
+    mime: "application/vnd.oasis.opendocument.spreadsheet",
+    category: "document",
+    magic: [
+      [{ offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] }],
+      [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
+    ],
+  },
+  odp: {
+    label: "OpenDocument Presentation",
+    ext: ["odp"],
+    mime: "application/vnd.oasis.opendocument.presentation",
+    category: "document",
+    magic: [
+      [{ offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] }],
+      [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
+    ],
+  },
+  doc: {
+    label: "Word 97-2003 Document",
+    ext: ["doc"],
+    mime: "application/msword",
+    category: "document",
+    // Legacy Office formats (doc/xls/ppt) are all OLE Compound File Binary
+    // containers — the same fixed CFB signature for every one of them; the
+    // stream inside names the real format, which this offset+bytes-only
+    // scheme can't read. `sniffFormat` resolves a real .doc/.xls/.ppt to
+    // `doc` first (declared earliest of the three); `refineFormat` promotes
+    // it by extension, same pattern as the ZIP-based formats above.
+    magic: [
+      [
+        {
+          offset: 0,
+          bytes: [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1],
+        },
+      ],
+    ],
+  },
+  xls: {
+    label: "Excel 97-2003 Workbook",
+    ext: ["xls"],
+    mime: "application/vnd.ms-excel",
+    category: "document",
+    // Same CFB signature as doc above — see that format's comment.
+    magic: [
+      [
+        {
+          offset: 0,
+          bytes: [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1],
+        },
+      ],
+    ],
+  },
+  ppt: {
+    label: "PowerPoint 97-2003 Presentation",
+    ext: ["ppt"],
+    mime: "application/vnd.ms-powerpoint",
+    category: "document",
+    // Same CFB signature as doc above — see that format's comment.
+    magic: [
+      [
+        {
+          offset: 0,
+          bytes: [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1],
+        },
+      ],
+    ],
+  },
+  rtf: {
+    label: "Rich Text Format",
+    ext: ["rtf"],
+    mime: "application/rtf",
+    category: "document",
+    // RTF's own control-word header, unambiguous among this table's other
+    // formats.
+    magic: [[{ offset: 0, bytes: ascii("{\\rtf") }]],
+  },
 } as const satisfies Record<string, FormatSpec>;
 
 export type FormatId = keyof typeof FORMATS;
@@ -658,11 +773,21 @@ export function refineFormat(
       : sniffed;
   }
   // See the `xlsx` format comment above: it's a ZIP container, so a real
-  // .xlsx file always sniffs as `zip` first.
+  // .xlsx file always sniffs as `zip` first. Every other OOXML/ODF office
+  // format shares the same signature — promote by extension the same way.
   if (sniffed === "zip") {
-    return (FORMATS.xlsx.ext as readonly string[]).includes(ext)
-      ? "xlsx"
-      : sniffed;
+    const zipFormats = ["xlsx", "docx", "pptx", "odt", "ods", "odp"] as const;
+    for (const id of zipFormats) {
+      if ((FORMATS[id].ext as readonly string[]).includes(ext)) return id;
+    }
+    return sniffed;
+  }
+  // See the `doc` format comment above: doc/xls/ppt share the same OLE CFB
+  // signature, so a real .xls/.ppt file always sniffs as `doc` first.
+  if (sniffed === "doc") {
+    if ((FORMATS.xls.ext as readonly string[]).includes(ext)) return "xls";
+    if ((FORMATS.ppt.ext as readonly string[]).includes(ext)) return "ppt";
+    return sniffed;
   }
   return sniffed;
 }

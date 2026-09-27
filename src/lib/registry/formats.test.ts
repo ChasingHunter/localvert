@@ -58,11 +58,21 @@ const ALTERNATIVES = (
   // first), by design. The mkv-specific upgrade path is covered by
   // `refineFormat`'s own describe block below instead.
   .filter(({ id }) => id !== "mkv")
-  // Same shape as mkv/webm above: xlsx shares zip's magic byte-for-byte
-  // (see xlsx's own comment in formats.ts) and always sniffs as "zip"
-  // (declared first); its upgrade path is covered by `refineFormat`'s own
-  // describe block instead.
-  .filter(({ id }) => id !== "xlsx");
+  // Same shape as mkv/webm above: xlsx and every other OOXML/ODF office
+  // format share zip's magic byte-for-byte (see xlsx's own comment in
+  // formats.ts) and always sniff as "zip" (declared first); their upgrade
+  // paths are covered by `refineFormat`'s own describe block instead.
+  .filter(
+    ({ id }) =>
+      !(["xlsx", "docx", "pptx", "odt", "ods", "odp"] as FormatId[]).includes(
+        id,
+      ),
+  )
+  // Same shape again: xls/ppt share doc's OLE CFB magic byte-for-byte (see
+  // doc's own comment in formats.ts) and always sniff as "doc" (declared
+  // first); their upgrade paths are covered by `refineFormat`'s own describe
+  // block instead.
+  .filter(({ id }) => !(["xls", "ppt"] as FormatId[]).includes(id));
 
 describe("sniffFormat", () => {
   it.each(ALTERNATIVES)("matches $name", ({ id, alternative }) => {
@@ -172,8 +182,31 @@ describe("refineFormat", () => {
 
   it("leaves a zip sniff alone for a plain .zip name or an unrelated one", () => {
     expect(refineFormat("zip", "archive.zip")).toBe("zip");
-    expect(refineFormat("zip", "archive.docx")).toBe("zip");
+    expect(refineFormat("zip", "archive.xyz")).toBe("zip");
     expect(refineFormat("zip", "noext")).toBe("zip");
+  });
+
+  it.each([
+    ["docx", "report.docx"],
+    ["pptx", "deck.pptx"],
+    ["odt", "letter.odt"],
+    ["ods", "sheet.ods"],
+    ["odp", "slides.odp"],
+  ] as const)("upgrades a zip sniff to %s for a %s filename", (id, name) => {
+    expect(sniffFormat(headerFor(FORMATS[id].magic[0]))).toBe("zip");
+    expect(refineFormat("zip", name)).toBe(id);
+  });
+
+  it("upgrades a doc sniff to xls/ppt by extension", () => {
+    expect(sniffFormat(headerFor(FORMATS.doc.magic[0]))).toBe("doc");
+    expect(refineFormat("doc", "book.xls")).toBe("xls");
+    expect(refineFormat("doc", "deck.ppt")).toBe("ppt");
+  });
+
+  it("leaves a doc sniff alone for a plain .doc name or an unrelated one", () => {
+    expect(refineFormat("doc", "report.doc")).toBe("doc");
+    expect(refineFormat("doc", "report.xyz")).toBe("doc");
+    expect(refineFormat("doc", "noext")).toBe("doc");
   });
 });
 
