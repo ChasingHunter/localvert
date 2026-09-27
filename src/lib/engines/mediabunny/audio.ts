@@ -1,12 +1,12 @@
 /**
  * Audio transcode via mediabunny (ADR-0010, extended for Phase 3b), covering
  * both "extract the audio track from a video container" and "re-encode one
- * audio container/codec as another". Shares its shape with `adapter.ts`'s
- * `runTranscode` (same `Conversion`/OPFS/`BufferTarget`-fallback plumbing),
- * but lives in its own file so this slice doesn't collide with the parallel
- * `output.ts` refactor of that plumbing — see this file's own OPFS helpers
- * below, a deliberate small duplication rather than an import of
- * `adapter.ts`'s private (unexported) versions.
+ * audio container/codec as another". Drives the same `Conversion` machinery
+ * as every video op, through the shared `runConversion()` helper in
+ * `output.ts` — this file's own job is picking the output container/codec
+ * (`outputPlan`/`pickAudioCodec`) and mapping each tool's zod options onto
+ * `Conversion`'s audio options (`bitrateOf`/`sampleRateOf`/
+ * `numberOfChannelsOf`).
  *
  * `video: { discard: true }` is passed for every conversion here, audio-only
  * inputs included — harmless (there's no video track to discard) and it
@@ -15,39 +15,22 @@
  */
 import { registerMp3Encoder } from "@mediabunny/mp3-encoder";
 import {
-  ALL_FORMATS,
   type AudioCodec,
-  BlobSource,
-  BufferTarget,
-  Conversion,
   canEncodeAudio,
   FlacOutputFormat,
-  Input,
   Mp3OutputFormat,
   Mp4OutputFormat,
   OggOutputFormat,
-  Output,
   type OutputFormat,
-  StreamTarget,
-  type StreamTargetChunk,
   WavOutputFormat,
 } from "mediabunny";
 import type { Operation, StepFormat } from "@/lib/registry";
 import { FORMATS } from "@/lib/registry";
-import { EngineError, toEngineError } from "../errors";
-import type { EngineInput, EngineResult, EngineTask } from "../types";
+import { EngineError } from "../errors";
+import type { EngineResult, EngineTask } from "../types";
+import { runConversion } from "./output";
 
 const ENGINE_ID = "mediabunny";
-
-/** Duplicated from adapter.ts's own `OPFS_TEMP_DIR` literal — see that
- * file's doc comment on why the directory name is a literal, not an
- * import, at this layer. Keep the two in sync if the convention changes. */
-const OPFS_TEMP_DIR = "localvert-tmp";
-
-/** Same cap as adapter.ts's `MAX_BUFFERED_OUTPUT_BYTES` — audio output is
- * far smaller than video in practice, but the fallback still needs a firm
- * ceiling rather than an unbounded in-memory accumulation. */
-const MAX_BUFFERED_OUTPUT_BYTES = 300 * 1024 * 1024;
 
 /** The audio-only formats this file knows how to produce, and the tools
  * that read from them. `extract-audio`'s video/container inputs (mp4, mov,
@@ -173,106 +156,6 @@ async function pickAudioCodec(
   return null;
 }
 
-function inputToBlob(input: EngineInput): Blob {
-  switch (input.kind) {
-    case "blob":
-      return input.blob;
-    case "bytes":
-      return new Blob([input.bytes]);
-    case "opfs":
-      throw new EngineError(
-        "unsupported",
-        "mediabunny engine does not read OPFS inputs",
-        { engine: ENGINE_ID },
-      );
-    case "raster":
-      throw new EngineError(
-        "internal",
-        "mediabunny expected a bytes/blob input, got a raster",
-        { engine: ENGINE_ID },
-      );
-  }
-}
-
-/** Structural subset of `FileSystemSyncAccessHandle` — duplicated from
- * adapter.ts's identical local interface; see that file's doc comment for
- * why it's declared locally rather than referencing the DOM lib type. */
-interface OpfsSyncAccessHandle {
-  write(buffer: BufferSource, options?: { at?: number }): number;
-  flush(): void;
-  close(): void;
-  getSize(): number;
-}
-
-interface FileHandleWithSyncAccess {
-  createSyncAccessHandle?(): Promise<OpfsSyncAccessHandle>;
-}
-
-async function tryOpenOpfsSyncHandle(
-  name: string,
-): Promise<OpfsSyncAccessHandle | null> {
-  try {
-    if (!("storage" in navigator) || !navigator.storage.getDirectory) {
-      return null;
-    }
-    const root = await navigator.storage.getDirectory();
-    const dir = await root.getDirectoryHandle(OPFS_TEMP_DIR, { create: true });
-    const fileHandle = (await dir.getFileHandle(name, {
-      create: true,
-    })) as FileSystemFileHandle & FileHandleWithSyncAccess;
-    if (typeof fileHandle.createSyncAccessHandle !== "function") return null;
-    return await fileHandle.createSyncAccessHandle();
-  } catch {
-    return null;
-  }
-}
-
-class OpfsSizeTracker {
-  size = 0;
-  record(position: number, byteLength: number): void {
-    this.size = Math.max(this.size, position + byteLength);
-  }
-}
-
-function opfsWritable(
-  handle: OpfsSyncAccessHandle,
-  sizeTracker: OpfsSizeTracker,
-): WritableStream<StreamTargetChunk> {
-  return new WritableStream<StreamTargetChunk>({
-    write(chunk) {
-      handle.write(chunk.data, { at: chunk.position });
-      sizeTracker.record(chunk.position, chunk.data.byteLength);
-    },
-    close() {
-      handle.flush();
-      handle.close();
-    },
-    abort() {
-      handle.close();
-    },
-  });
-}
-
-async function cleanupFailedOpfsOutput(
-  handle: OpfsSyncAccessHandle,
-  name: string,
-): Promise<void> {
-  try {
-    handle.close();
-  } catch {
-    // Already closed by the writable's close()/abort() — fine.
-  }
-  try {
-    const root = await navigator.storage.getDirectory();
-    const dir = await root.getDirectoryHandle(OPFS_TEMP_DIR, {
-      create: false,
-    });
-    await dir.removeEntry(name);
-  } catch {
-    // Never created, or already removed — nothing more to do.
-  }
-}
-
 /**
  * All three of these read a tool's already-zod-validated options object.
  * The shared option fields (`_shared-options.ts`'s `audioBitrateSelect` /
@@ -331,7 +214,7 @@ export function chosenOutputFormat(task: EngineTask): StepFormat {
 export async function runAudioTranscode(
   task: EngineTask,
 ): Promise<EngineResult> {
-  const { signal, onProgress } = task;
+  const { signal } = task;
   signal.throwIfAborted();
 
   const outputFormat = chosenOutputFormat(task);
@@ -346,100 +229,20 @@ export async function runAudioTranscode(
   }
   signal.throwIfAborted();
 
-  const blob = inputToBlob(task.input);
-  const input = new Input({
-    source: new BlobSource(blob),
-    formats: ALL_FORMATS,
+  return runConversion({
+    task,
+    engineId: ENGINE_ID,
+    format,
+    // `runConversion`'s `ext` is a bare extension (no dot) — mediabunny's
+    // own `fileExtension` getter always includes the leading dot.
+    ext: format.fileExtension.slice(1),
+    mime,
+    video: { discard: true },
+    audio: {
+      codec,
+      bitrate: bitrateOf(task.options),
+      sampleRate: sampleRateOf(task.options),
+      numberOfChannels: numberOfChannelsOf(task.options),
+    },
   });
-
-  const opfsName = `${crypto.randomUUID()}${format.fileExtension}`;
-  // Same test-only escape hatch as adapter.ts's `runTranscode` — never set
-  // by a real tool's options schema.
-  const forceBufferTarget = task.options.__forceBufferTarget === true;
-  const syncHandle = forceBufferTarget
-    ? null
-    : await tryOpenOpfsSyncHandle(opfsName);
-  const sizeTracker = new OpfsSizeTracker();
-
-  const target = syncHandle
-    ? new StreamTarget(opfsWritable(syncHandle, sizeTracker))
-    : new BufferTarget();
-
-  const output = new Output({ format, target });
-
-  try {
-    const conversion = await Conversion.init({
-      input,
-      output,
-      video: { discard: true },
-      audio: {
-        codec,
-        bitrate: bitrateOf(task.options),
-        sampleRate: sampleRateOf(task.options),
-        numberOfChannels: numberOfChannelsOf(task.options),
-      },
-    });
-
-    if (!conversion.isValid) {
-      const reasons = conversion.discardedTracks
-        .map((d) => d.reason)
-        .join(", ");
-      throw new EngineError(
-        "unsupported",
-        `can't produce a valid ${outputFormat} from this input in this browser` +
-          (reasons ? ` (${reasons})` : ""),
-        { engine: ENGINE_ID },
-      );
-    }
-
-    conversion.onProgress = (fraction) => onProgress?.(fraction);
-
-    const onAbort = (): void => {
-      void conversion.cancel();
-    };
-    signal.addEventListener("abort", onAbort);
-    try {
-      await conversion.execute();
-    } finally {
-      signal.removeEventListener("abort", onAbort);
-    }
-    signal.throwIfAborted();
-
-    if (syncHandle) {
-      return {
-        kind: "opfs",
-        path: `${OPFS_TEMP_DIR}/${opfsName}`,
-        mime,
-        size: sizeTracker.size,
-      };
-    }
-
-    const buffer = (target as BufferTarget).buffer;
-    if (!buffer) {
-      throw new EngineError(
-        "encode-failed",
-        "mediabunny produced no output buffer",
-        { engine: ENGINE_ID },
-      );
-    }
-    if (buffer.byteLength > MAX_BUFFERED_OUTPUT_BYTES) {
-      throw new EngineError(
-        "unsupported",
-        "output too large for this browser; try a browser with OPFS support",
-        { engine: ENGINE_ID },
-      );
-    }
-    return { kind: "bytes", bytes: buffer, mime };
-  } catch (e) {
-    if (syncHandle) {
-      await cleanupFailedOpfsOutput(syncHandle, opfsName);
-    }
-    if (signal.aborted) {
-      throw new EngineError("aborted", "transcode aborted", {
-        engine: ENGINE_ID,
-        cause: e,
-      });
-    }
-    throw toEngineError(e, ENGINE_ID);
-  }
 }
