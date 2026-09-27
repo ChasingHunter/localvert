@@ -99,6 +99,7 @@ import pdfToJpg from "@/tools/pdf/pdf-to-jpg";
 import pdfToPng from "@/tools/pdf/pdf-to-png";
 import pdfToSearchablePdf from "@/tools/pdf/pdf-to-searchable-pdf";
 import pdfToText from "@/tools/pdf/pdf-to-text";
+import pdfToWord from "@/tools/pdf/pdf-to-word";
 import pngToPdf from "@/tools/pdf/png-to-pdf";
 import protectPdf from "@/tools/pdf/protect-pdf";
 import reorderPdfPages from "@/tools/pdf/reorder-pdf-pages";
@@ -223,6 +224,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   pdfToPng,
   pdfToSearchablePdf,
   pdfToText,
+  pdfToWord,
   pngToPdf,
   protectPdf,
   reorderPdfPages,

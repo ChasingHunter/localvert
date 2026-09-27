@@ -101,6 +101,7 @@ export const TOOL_LOADERS = {
   "pdf-to-png": () => import("./pdf/pdf-to-png"),
   "pdf-to-searchable-pdf": () => import("./pdf/pdf-to-searchable-pdf"),
   "pdf-to-text": () => import("./pdf/pdf-to-text"),
+  "pdf-to-word": () => import("./pdf/pdf-to-word"),
   "png-to-pdf": () => import("./pdf/png-to-pdf"),
   "protect-pdf": () => import("./pdf/protect-pdf"),
   "reorder-pdf-pages": () => import("./pdf/reorder-pdf-pages"),
