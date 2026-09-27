@@ -141,6 +141,18 @@ export type Operation =
   | "extractText"
   | "ocr"
   /**
+   * pdf -> json, `pdf-to-word`'s first step (`pdfjs/adapter.ts`'s
+   * `runExtractLayout`): reconstructs the document's structure — pages of
+   * paragraphs of styled runs, headings inferred from relative font size —
+   * as plain JSON data, no DOM. The second step (`docx` engine's own
+   * `transcode` op) reads that JSON and writes a `.docx`. Two steps because
+   * the shape produced here (a `LayoutDocument`, see
+   * `src/lib/engines/shared/pdf-layout.ts`) has no byte-for-byte format of
+   * its own to hand between engines other than "JSON" — same reasoning as
+   * `epub-to-pdf`'s epub -> html -> pdf pipeline.
+   */
+  | "extractLayout"
+  /**
    * Composite op, `tesseract` only: pdf -> pdf, render each page (via a
    * dynamically-imported `pdfjs` adapter instance), OCR each page (this
    * adapter's own `ocr` machinery, reused in-process) and merge the

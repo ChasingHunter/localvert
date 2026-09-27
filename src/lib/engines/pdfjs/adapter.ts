@@ -13,6 +13,16 @@ import { FORMATS, parsePageRange } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
 import { ENGINE_MANIFEST } from "../manifest";
+import {
+  detectBold,
+  detectItalic,
+  dominantBodySize,
+  groupItemsIntoLines,
+  groupLinesIntoParagraphs,
+  type LayoutDocument,
+  type LayoutPage,
+  type RawItem,
+} from "../shared/pdf-layout";
 import type {
   EngineAdapter,
   EngineInput,
@@ -61,6 +71,7 @@ function supports(
   if (input !== "pdf") return false;
   if (op === "render") return output === "jpg" || output === "png";
   if (op === "extractText") return output === "txt";
+  if (op === "extractLayout") return output === "json";
   return false;
 }
 
@@ -268,6 +279,8 @@ async function run(
         return await runRender(task, pdfjsLib, baseUrl);
       case "extractText":
         return await runExtractText(task, pdfjsLib, baseUrl);
+      case "extractLayout":
+        return await runExtractLayout(task, pdfjsLib, baseUrl);
       default:
         throw new EngineError(
           "unsupported",
@@ -614,6 +627,207 @@ async function runExtractText(
       kind: "bytes",
       bytes: outBytes.buffer,
       mime: FORMATS.txt.mime,
+    };
+  } finally {
+    await loadingTask.destroy();
+  }
+}
+
+/**
+ * `pdfjs-dist`'s public `.d.ts` types `PDFPageProxy.commonObjs`/`.objs` as a
+ * `PDFObjects` whose `get`/`has` are fully public and documented (unlike
+ * `CanvasFactory`/`FilterFactory` above, which aren't exported types at
+ * all) — but the *values* stored in `commonObjs` (translated `Font`
+ * instances) carry no exported type of their own. `.name` (the font's real
+ * PDF base font name, e.g. "ArialMT,Bold" or a subsetted
+ * "ABCDEF+Helvetica-Oblique" — set from the font dictionary's own
+ * `/BaseFont`, confirmed by reading `Font`'s constructor in the published
+ * `pdf.worker.mjs`) and `.bold`/`.italic` (booleans pdf.js itself derives
+ * with the exact same keyword regex this file's own `detectBold`/
+ * `detectItalic` use, but — confirmed by reading `fallbackToSystemFont` in
+ * the same file — only computed for a font with **no embedded font
+ * program**, i.e. a system-fallback font) are read off it here as a plain,
+ * loosely-typed shape rather than importing a nonexistent type for it.
+ */
+interface TranslatedFontShape {
+  name?: string;
+  bold?: boolean;
+  italic?: boolean;
+}
+
+/**
+ * Resolves one page's `commonObjs` entry for `fontName` (pdf.js's own
+ * `TextItem.fontName`, which is also the key `commonObjs` uses for that same
+ * font — see `runExtractLayout`'s doc comment) into a bold/italic verdict.
+ * `page.commonObjs` is populated as a side effect of `getOperatorList()`
+ * processing the content stream's `Tf` (set-font) operators — every font a
+ * page's text actually uses is guaranteed resolved into `commonObjs` by the
+ * time that call's own promise settles, since the evaluator awaits each
+ * font's load before it can emit the show-text ops that follow it in the
+ * same stream. `has()`/`get()` are still defensive (never throw): a font
+ * this document's cross-reference table can't resolve at all falls back to
+ * "neither bold nor italic" rather than failing the whole page.
+ */
+function resolveFontStyle(
+  commonObjs: { has(id: string): boolean; get(id: string): unknown },
+  fontName: string,
+): { bold: boolean; italic: boolean } {
+  if (!commonObjs.has(fontName)) return { bold: false, italic: false };
+  const font = commonObjs.get(fontName) as TranslatedFontShape;
+  const name = font.name ?? "";
+  return {
+    bold: font.bold === true || detectBold(name),
+    italic: font.italic === true || detectItalic(name),
+  };
+}
+
+/**
+ * extractLayout (pdf -> json, `pdf-to-word`'s first step): reconstructs each
+ * selected page's text into `LayoutPage`s (paragraphs of styled runs, see
+ * `../shared/pdf-layout.ts`) and serialises the whole `LayoutDocument` as
+ * JSON bytes — the `docx` engine's own `transcode` op reads that JSON back
+ * and writes the actual `.docx`. This op never rasterises a page (no
+ * `CanvasFactory`, same as `runExtractText`) but does call
+ * `page.getOperatorList()` per page purely to populate `page.commonObjs`
+ * with the fonts that page's text uses (see `resolveFontStyle`) — its own
+ * return value is otherwise unused, since this op ships no image support
+ * (see this file's own `runExtractLayout`-adjacent note in
+ * docs/adr/0014-pdf-to-word.md for why).
+ *
+ * Body size (what every heading ratio in `classifyHeading` is measured
+ * against) can only be known after every selected page's sizes are in hand,
+ * so this runs in two passes: collect every page's raw items first, then
+ * compute `dominantBodySize` once over the whole selection, then group each
+ * page's items into lines/paragraphs against that one shared body size —
+ * never per-page, or a page that's *entirely* a large-font pull-quote would
+ * mistake its own oversized text for "normal" and demote a real heading on
+ * the very next page.
+ */
+async function runExtractLayout(
+  task: EngineTask,
+  pdfjsLib: typeof PdfjsNS,
+  baseUrl: string,
+): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  const bytes = new Uint8Array(await inputToArrayBuffer(input));
+  signal.throwIfAborted();
+
+  const loadingTask = pdfjsLib.getDocument({
+    data: bytes,
+    disableFontFace: true,
+    useSystemFonts: false,
+    useWorkerFetch: false,
+    cMapUrl: `${baseUrl}cmaps/`,
+    cMapPacked: true,
+    standardFontDataUrl: `${baseUrl}standard_fonts/`,
+    stopAtErrors: true,
+  });
+
+  try {
+    let doc: PdfjsNS.PDFDocumentProxy;
+    try {
+      doc = await loadingTask.promise;
+    } catch (e) {
+      if (e instanceof pdfjsLib.PasswordException) {
+        throw new EngineError(
+          "unsupported",
+          "This PDF is password-protected — unlock it first",
+          { engine: metadata.id, cause: e },
+        );
+      }
+      throw new EngineError("decode-failed", "failed to parse PDF", {
+        engine: metadata.id,
+        cause: e,
+      });
+    }
+
+    signal.throwIfAborted();
+
+    const pagesSpec = typeof options.pages === "string" ? options.pages : "";
+    const indices = parsePageRange(pagesSpec, doc.numPages);
+    if (indices.length === 0) {
+      throw new EngineError(
+        "internal",
+        "extractLayout produced no output pages",
+        { engine: metadata.id },
+      );
+    }
+    if (indices.length > MAX_PAGES) {
+      throw new EngineError(
+        "unsupported",
+        `extractLayout is capped at ${MAX_PAGES} pages per job; this selection has ${indices.length}`,
+        { engine: metadata.id },
+      );
+    }
+
+    const pagesRawItems: RawItem[][] = [];
+    const sizeSamples: { sizePt: number; length: number }[] = [];
+
+    for (let i = 0; i < indices.length; i++) {
+      signal.throwIfAborted();
+      const pageIndex = indices[i];
+      if (pageIndex === undefined) continue; // unreachable: i < indices.length
+      const pageNumber = pageIndex + 1; // pdf.js pages are 1-based
+
+      const page = await doc.getPage(pageNumber);
+      try {
+        // Discarded — called only to populate `page.commonObjs` with this
+        // page's fonts before `resolveFontStyle` reads them. See this
+        // function's own doc comment.
+        await page.getOperatorList();
+        signal.throwIfAborted();
+
+        const textContent = await page.getTextContent();
+        const styleCache = new Map<
+          string,
+          { bold: boolean; italic: boolean }
+        >();
+        const rawItems: RawItem[] = [];
+        for (const item of textContent.items) {
+          if (!("str" in item)) continue; // TextMarkedContent -- not real text
+          let style = styleCache.get(item.fontName);
+          if (!style) {
+            style = resolveFontStyle(page.commonObjs, item.fontName);
+            styleCache.set(item.fontName, style);
+          }
+          const sizePt = Math.abs(item.transform[3]) || Math.abs(item.height);
+          const rawItem: RawItem = {
+            text: item.str,
+            x: item.transform[4],
+            y: item.transform[5],
+            sizePt,
+            bold: style.bold,
+            italic: style.italic,
+            hasEOL: item.hasEOL,
+          };
+          rawItems.push(rawItem);
+          if (sizePt > 0 && item.str.trim() !== "") {
+            sizeSamples.push({ sizePt, length: item.str.length });
+          }
+        }
+        pagesRawItems.push(rawItems);
+      } finally {
+        page.cleanup();
+      }
+      onProgress?.(((i + 1) / indices.length) * 0.9);
+    }
+
+    const bodySizePt = dominantBodySize(sizeSamples);
+    const pages: LayoutPage[] = pagesRawItems.map((rawItems) => {
+      const lines = groupItemsIntoLines(rawItems);
+      const paragraphs = groupLinesIntoParagraphs(lines, bodySizePt);
+      return { paragraphs };
+    });
+    const layoutDoc: LayoutDocument = { pages };
+
+    onProgress?.(1);
+    const json = JSON.stringify(layoutDoc);
+    return {
+      kind: "bytes",
+      bytes: new TextEncoder().encode(json).buffer,
+      mime: FORMATS.json.mime,
     };
   } finally {
     await loadingTask.destroy();

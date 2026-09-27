@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ENGINE_MANIFEST } from "@/lib/engines/manifest";
 import { sniffFormat } from "@/lib/registry";
 import { isEngineError } from "../errors";
+import type { LayoutDocument } from "../shared/pdf-layout";
 import type { EngineInput, EngineTask } from "../types";
 import adapter from "./adapter";
 
@@ -71,6 +72,45 @@ async function buildTestPdf(
   return bytes.slice().buffer;
 }
 
+/**
+ * A one-page PDF for `extractLayout`: a large bold title, then a smaller
+ * plain-body paragraph, then an italic line — enough to exercise heading
+ * classification (title vs. body size ratio) and the bold/italic
+ * `resolveFontStyle` path (via `page.commonObjs`, populated by the adapter's
+ * own `getOperatorList()` call — see `runExtractLayout`'s doc comment) in
+ * one document.
+ */
+async function buildLayoutTestPdf(): Promise<ArrayBuffer> {
+  const doc = await PDFDocument.create();
+  const regular = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const italic = await doc.embedFont(StandardFonts.HelveticaOblique);
+  const page = doc.addPage([300, 300]);
+  page.drawText("Big Title", {
+    x: 20,
+    y: 260,
+    size: 24,
+    font: bold,
+    color: rgb(0, 0, 0),
+  });
+  page.drawText("This is a body paragraph.", {
+    x: 20,
+    y: 200,
+    size: 11,
+    font: regular,
+    color: rgb(0, 0, 0),
+  });
+  page.drawText("An italic line.", {
+    x: 20,
+    y: 160,
+    size: 11,
+    font: italic,
+    color: rgb(0, 0, 0),
+  });
+  const bytes = await doc.save();
+  return bytes.slice().buffer;
+}
+
 async function buildEncryptedPdf(): Promise<ArrayBuffer> {
   const doc = await PDFDocument.create();
   doc.addPage([100, 100]);
@@ -112,6 +152,14 @@ describe("pdfjs adapter", () => {
 
     it("rejects extractText to a non-txt output", () => {
       expect(adapter.supports("extractText", "pdf", "png")).toBe(false);
+    });
+
+    it("accepts extractLayout from pdf to json", () => {
+      expect(adapter.supports("extractLayout", "pdf", "json")).toBe(true);
+    });
+
+    it("rejects extractLayout to a non-json output", () => {
+      expect(adapter.supports("extractLayout", "pdf", "txt")).toBe(false);
     });
   });
 
@@ -421,6 +469,123 @@ describe("pdfjs adapter", () => {
 
         await expect(
           instance.run(textTask({ input: bytesInput(encrypted) })),
+        ).rejects.toSatisfy(
+          (e: unknown) => isEngineError(e) && e.code === "unsupported",
+        );
+      },
+      TIMEOUT,
+    );
+  });
+
+  describe("run: extractLayout", () => {
+    function layoutTask(overrides: Partial<EngineTask> = {}): EngineTask {
+      return baseTask({
+        op: "extractLayout",
+        outputFormat: "json",
+        ...overrides,
+      });
+    }
+
+    async function runLayout(pdf: ArrayBuffer): Promise<LayoutDocument> {
+      const instance = await adapter.load({
+        baseUrl: baseUrl(),
+        capabilities: {} as never,
+      });
+      const result = await instance.run(layoutTask({ input: bytesInput(pdf) }));
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(result.mime).toBe("application/json");
+      return JSON.parse(
+        new TextDecoder().decode(result.bytes),
+      ) as LayoutDocument;
+    }
+
+    it(
+      "reconstructs paragraphs, promotes the large bold line to a heading, " +
+        "and marks the italic line",
+      async () => {
+        const pdf = await buildLayoutTestPdf();
+        const layout = await runLayout(pdf);
+
+        expect(layout.pages).toHaveLength(1);
+        const paragraphs = layout.pages[0]?.paragraphs ?? [];
+        const allText = paragraphs
+          .flatMap((p) => p.runs.map((r) => r.text))
+          .join(" ");
+        expect(allText).toContain("Big Title");
+        expect(allText).toContain("This is a body paragraph.");
+        expect(allText).toContain("An italic line.");
+
+        const title = paragraphs.find((p) =>
+          p.runs.some((r) => r.text.includes("Big Title")),
+        );
+        expect(title?.heading).toBeGreaterThan(0);
+        expect(title?.runs.some((r) => r.bold)).toBe(true);
+
+        const body = paragraphs.find((p) =>
+          p.runs.some((r) => r.text.includes("body paragraph")),
+        );
+        expect(body?.heading).toBe(0);
+
+        const italicPara = paragraphs.find((p) =>
+          p.runs.some((r) => r.text.includes("italic line")),
+        );
+        expect(italicPara?.runs.some((r) => r.italic)).toBe(true);
+      },
+      TIMEOUT,
+    );
+
+    it(
+      "produces one LayoutPage per selected page, in page order",
+      async () => {
+        const pdf = await buildTestPdf(200, 300); // 2 pages, "Page 1"/"Page 2"
+        const layout = await runLayout(pdf);
+
+        expect(layout.pages).toHaveLength(2);
+        const textOf = (i: number) =>
+          layout.pages[i]?.paragraphs
+            .flatMap((p) => p.runs.map((r) => r.text))
+            .join("");
+        expect(textOf(0)).toContain("Page 1");
+        expect(textOf(1)).toContain("Page 2");
+      },
+      TIMEOUT,
+    );
+
+    it(
+      '"pages" selects a subset — "2" extracts only the second page',
+      async () => {
+        const pdf = await buildTestPdf(120, 120); // 2 pages, "Page 1"/"Page 2"
+        const instance = await adapter.load({
+          baseUrl: baseUrl(),
+          capabilities: {} as never,
+        });
+        const result = await instance.run(
+          layoutTask({ input: bytesInput(pdf), options: { pages: "2" } }),
+        );
+        if (result.kind !== "bytes") throw new Error("expected bytes result");
+        const subset = JSON.parse(
+          new TextDecoder().decode(result.bytes),
+        ) as LayoutDocument;
+        expect(subset.pages).toHaveLength(1);
+        const text = subset.pages[0]?.paragraphs
+          .flatMap((p) => p.runs.map((r) => r.text))
+          .join("");
+        expect(text).toContain("Page 2");
+      },
+      TIMEOUT,
+    );
+
+    it(
+      "throws EngineError('unsupported') for a password-protected PDF",
+      async () => {
+        const instance = await adapter.load({
+          baseUrl: baseUrl(),
+          capabilities: {} as never,
+        });
+        const encrypted = await buildEncryptedPdf();
+
+        await expect(
+          instance.run(layoutTask({ input: bytesInput(encrypted) })),
         ).rejects.toSatisfy(
           (e: unknown) => isEngineError(e) && e.code === "unsupported",
         );
