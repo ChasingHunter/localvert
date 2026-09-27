@@ -25,6 +25,10 @@ const DECODE_PREFERENCE: Partial<Record<FormatId, readonly string[]>> = {
   jxl: ["jsquash-jxl"],
   bmp: ["canvas"],
   gif: ["canvas"],
+  // Vista+ ICO entries are just PNG bytes; legacy DIB entries are decoded
+  // by hand — see `../engines/canvas/ico.ts`. Both live behind the "canvas"
+  // engine id since there's no separate wasm/native surface involved.
+  ico: ["canvas"],
   heic: ["heic"],
   svg: ["resvg"],
   tiff: ["utif"],
@@ -41,6 +45,10 @@ const ENCODE_PREFERENCE: Partial<Record<FormatId, readonly string[]>> = {
   // Tracing (outlines, not pixels) is the only encoder to svg — see
   // `../engines/tracer/adapter.ts`.
   svg: ["tracer"],
+  // Pure-TS writers, no wasm — `../engines/canvas/{bmp,gif,ico}.ts`.
+  bmp: ["canvas"],
+  gif: ["canvas"],
+  ico: ["canvas"],
 };
 
 export type ImageTransform = "resize" | "rotate" | "crop";

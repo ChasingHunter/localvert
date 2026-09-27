@@ -117,7 +117,23 @@ describe("canvas adapter", () => {
     });
 
     it("rejects encode with a non-encodable output", () => {
-      expect(adapter.supports("encode", "raster", "gif")).toBe(false);
+      expect(adapter.supports("encode", "raster", "pdf")).toBe(false);
+    });
+
+    it("accepts decode for ico -> raster", () => {
+      expect(adapter.supports("decode", "ico", "raster")).toBe(true);
+    });
+
+    it("accepts encode for raster -> bmp/gif/ico", () => {
+      for (const output of ["bmp", "gif", "ico"] as const) {
+        expect(adapter.supports("encode", "raster", output)).toBe(true);
+      }
+    });
+
+    it("rejects transcode into bmp/gif/ico (no single-blob browser path)", () => {
+      for (const output of ["bmp", "gif", "ico"] as const) {
+        expect(adapter.supports("transcode", "png", output)).toBe(false);
+      }
     });
 
     it("accepts resize/rotate/crop for raster -> raster", () => {
@@ -424,6 +440,141 @@ describe("canvas adapter", () => {
       expect(data[0]).toBeLessThan(30);
       expect(data[1]).toBeLessThan(30);
       expect(data[2]).toBeLessThan(30);
+    });
+  });
+
+  describe("bmp / gif / ico encode", () => {
+    it("encodes bmp and decodes it back with matching dimensions", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const image = await rasterOf(20, 10);
+
+      const encoded = await instance.run(
+        baseTask({
+          op: "encode",
+          input: { kind: "raster", image },
+          inputFormat: "raster",
+          outputFormat: "bmp",
+        }),
+      );
+      if (encoded.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(sniffFormat(new Uint8Array(encoded.bytes))).toBe("bmp");
+
+      const outBitmap = await createImageBitmap(
+        new Blob([encoded.bytes], { type: encoded.mime }),
+      );
+      expect(outBitmap.width).toBe(20);
+      expect(outBitmap.height).toBe(10);
+      outBitmap.close();
+    });
+
+    it("encodes a fully transparent-corner image to 32-bit bmp (round-trips alpha)", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const canvas = new OffscreenCanvas(4, 4);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("no 2d context in test setup");
+      ctx.fillStyle = "#3366ff";
+      ctx.fillRect(0, 0, 4, 4);
+      ctx.clearRect(0, 0, 1, 1);
+      const { data, width, height } = ctx.getImageData(0, 0, 4, 4);
+
+      const encoded = await instance.run(
+        baseTask({
+          op: "encode",
+          input: { kind: "raster", image: { width, height, data } },
+          inputFormat: "raster",
+          outputFormat: "bmp",
+        }),
+      );
+      if (encoded.kind !== "bytes") throw new Error("expected a bytes result");
+      // 32-bit BI_BITFIELDS: biBitCount at file offset 28.
+      const view = new DataView(encoded.bytes);
+      expect(view.getUint16(28, true)).toBe(32);
+    });
+
+    it("encodes gif and decodes it back with matching dimensions", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const image = await rasterOf(16, 16);
+
+      const encoded = await instance.run(
+        baseTask({
+          op: "encode",
+          input: { kind: "raster", image },
+          inputFormat: "raster",
+          outputFormat: "gif",
+        }),
+      );
+      if (encoded.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(sniffFormat(new Uint8Array(encoded.bytes))).toBe("gif");
+
+      const outBitmap = await createImageBitmap(
+        new Blob([encoded.bytes], { type: encoded.mime }),
+      );
+      expect(outBitmap.width).toBe(16);
+      expect(outBitmap.height).toBe(16);
+      outBitmap.close();
+    });
+
+    it("encodes ico with the default favicon preset (16/32/48) and decodes the largest entry back", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const image = await rasterOf(100, 50); // non-square: exercises the fit-in-square padding
+
+      const encoded = await instance.run(
+        baseTask({
+          op: "encode",
+          input: { kind: "raster", image },
+          inputFormat: "raster",
+          outputFormat: "ico",
+        }),
+      );
+      if (encoded.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(sniffFormat(new Uint8Array(encoded.bytes))).toBe("ico");
+
+      const decoded = await instance.run(
+        baseTask({
+          op: "decode",
+          input: { kind: "bytes", bytes: encoded.bytes },
+          inputFormat: "ico",
+          outputFormat: "raster",
+        }),
+      );
+      if (decoded.kind !== "raster")
+        throw new Error("expected a raster result");
+      // The largest favicon entry (48x48) is the one picked.
+      expect(decoded.image.width).toBe(48);
+      expect(decoded.image.height).toBe(48);
+    });
+
+    it("encodes ico with the 'single' preset as one 256x256 entry", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const image = await rasterOf(10, 10);
+
+      const encoded = await instance.run(
+        baseTask({
+          op: "encode",
+          input: { kind: "raster", image },
+          inputFormat: "raster",
+          outputFormat: "ico",
+          options: { sizes: "single" },
+        }),
+      );
+      if (encoded.kind !== "bytes") throw new Error("expected a bytes result");
+      const view = new DataView(encoded.bytes);
+      expect(view.getUint16(4, true)).toBe(1); // one ICONDIRENTRY
     });
   });
 

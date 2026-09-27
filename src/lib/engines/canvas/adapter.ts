@@ -12,7 +12,19 @@ import type {
   EngineTask,
   RasterImage,
 } from "../types";
+import { encodeBmp } from "./bmp";
 import meta from "./engine.json";
+import { encodeGif } from "./gif";
+import {
+  buildIcoContainer,
+  decodeIcoDib,
+  extractIcoEntryBytes,
+  type IcoEncodeEntry,
+  icoSizesForPreset,
+  isPngIcoEntry,
+  parseIcoDirectory,
+  pickLargestIcoEntry,
+} from "./ico";
 
 /**
  * `engine.json` is the single source of truth for this adapter's metadata,
@@ -28,11 +40,46 @@ const metadata = meta as Pick<
   "id" | "version" | "license" | "location" | "needsIsolation" | "heavy"
 >;
 
-/** Formats `<canvas>` can both decode from and encode to — every `transcode`
- * pair is one of these on each side, and `decode`/`encode` reuse the same
- * lists individually. */
-const DECODABLE: readonly FormatId[] = ["jpg", "png", "webp", "bmp", "gif"];
-const ENCODABLE: readonly FormatId[] = ["jpg", "png", "webp"];
+/**
+ * Formats `<canvas>` can both decode from and encode to through a single
+ * `OffscreenCanvas.convertToBlob` round trip — what `transcode` (decode +
+ * encode in one step, no raster ever leaves this adapter) supports.
+ */
+const TRANSCODE_DECODABLE: readonly FormatId[] = [
+  "jpg",
+  "png",
+  "webp",
+  "bmp",
+  "gif",
+];
+const TRANSCODE_ENCODABLE: readonly FormatId[] = ["jpg", "png", "webp"];
+
+/**
+ * Formats the standalone `decode`/`encode` ops support — a superset of the
+ * `transcode` lists above. `bmp`/`gif`/`ico` decode/encode go through this
+ * adapter's own pure-TS code (`bmp.ts`/`gif.ts`/`ico.ts`), not
+ * `convertToBlob`, which the browser has no support for on any of the
+ * three — see `runEncode`'s and `runDecode`'s special cases below. `ico`
+ * decode never goes through `runTranscode`'s single-blob shortcut (it needs
+ * its own directory parsing first), which is why it's absent from
+ * `TRANSCODE_DECODABLE` but present here.
+ */
+const DECODABLE: readonly FormatId[] = [
+  "jpg",
+  "png",
+  "webp",
+  "bmp",
+  "gif",
+  "ico",
+];
+const ENCODABLE: readonly FormatId[] = [
+  "jpg",
+  "png",
+  "webp",
+  "bmp",
+  "gif",
+  "ico",
+];
 
 function supports(
   op: Operation,
@@ -44,8 +91,8 @@ function supports(
       return (
         input !== "raster" &&
         output !== "raster" &&
-        DECODABLE.includes(input) &&
-        ENCODABLE.includes(output)
+        TRANSCODE_DECODABLE.includes(input) &&
+        TRANSCODE_ENCODABLE.includes(output)
       );
     case "decode":
       return (
@@ -226,8 +273,12 @@ async function runTranscode(task: EngineTask): Promise<EngineResult> {
 
 /** decode: a real format's bytes -> `RasterImage`. */
 async function runDecode(task: EngineTask): Promise<EngineResult> {
-  const { input, signal, onProgress } = task;
+  const { input, inputFormat, signal, onProgress } = task;
   signal.throwIfAborted();
+
+  if (inputFormat === "ico") {
+    return await runDecodeIco(task);
+  }
 
   const blob = inputToBlob(input);
 
@@ -265,6 +316,61 @@ async function runDecode(task: EngineTask): Promise<EngineResult> {
   }
 }
 
+/**
+ * decode: ICO bytes -> `RasterImage`. Parses the ICONDIR to find every
+ * embedded size, picks the largest, and decodes just that one entry — a PNG
+ * entry (Vista+ format) through the ordinary `createImageBitmap` path, a
+ * legacy DIB entry through `decodeIcoDib`'s hand-rolled pixel decode (see
+ * that function's doc comment for why `createImageBitmap` can't be reused
+ * here: standalone BMP decoders don't know ICO's doubled-height/AND-mask
+ * convention).
+ */
+async function runDecodeIco(task: EngineTask): Promise<EngineResult> {
+  const { input, signal, onProgress } = task;
+
+  const blob = inputToBlob(input);
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  signal.throwIfAborted();
+
+  const entries = parseIcoDirectory(bytes);
+  const chosen = pickLargestIcoEntry(entries);
+  const entryBytes = extractIcoEntryBytes(bytes, chosen);
+  onProgress?.(0.3);
+
+  if (isPngIcoEntry(entryBytes)) {
+    let bitmap: ImageBitmap;
+    try {
+      bitmap = await createImageBitmap(
+        new Blob([new Uint8Array(entryBytes)], { type: "image/png" }),
+        { imageOrientation: "from-image", premultiplyAlpha: "none" },
+      );
+    } catch (e) {
+      throw new EngineError(
+        "decode-failed",
+        "failed to decode ico's embedded png entry",
+        { engine: metadata.id, cause: e },
+      );
+    }
+    try {
+      const ctx = newContext(bitmap.width, bitmap.height);
+      ctx.drawImage(bitmap, 0, 0);
+      const { data, width, height } = ctx.getImageData(
+        0,
+        0,
+        ctx.canvas.width,
+        ctx.canvas.height,
+      );
+      onProgress?.(1);
+      return { kind: "raster", image: { width, height, data } };
+    } finally {
+      bitmap.close();
+    }
+  }
+
+  onProgress?.(1);
+  return { kind: "raster", image: decodeIcoDib(entryBytes) };
+}
+
 /** encode: `RasterImage` -> a real format's bytes. */
 async function runEncode(task: EngineTask): Promise<EngineResult> {
   const { input, outputFormat, options, signal, onProgress } = task;
@@ -279,6 +385,32 @@ async function runEncode(task: EngineTask): Promise<EngineResult> {
   }
 
   const image = inputToRaster(input);
+
+  // bmp/gif/ico have no browser-native `convertToBlob` support — each is a
+  // pure-TS writer instead (`bmp.ts`/`gif.ts`/`ico.ts`), operating on the
+  // raster directly rather than through an `OffscreenCanvas`.
+  if (outputFormat === "bmp") {
+    const bytes = encodeBmp(image);
+    onProgress?.(1);
+    return {
+      kind: "bytes",
+      bytes: bytes.buffer as ArrayBuffer,
+      mime: FORMATS.bmp.mime,
+    };
+  }
+  if (outputFormat === "gif") {
+    const bytes = encodeGif(image);
+    onProgress?.(1);
+    return {
+      kind: "bytes",
+      bytes: bytes.buffer as ArrayBuffer,
+      mime: FORMATS.gif.mime,
+    };
+  }
+  if (outputFormat === "ico") {
+    return await runEncodeIco(image, options, signal, onProgress);
+  }
+
   const ctx = newContext(image.width, image.height);
   const imageData = new ImageData(image.data, image.width, image.height);
 
@@ -308,6 +440,64 @@ async function runEncode(task: EngineTask): Promise<EngineResult> {
   onProgress?.(0.5);
 
   return await encodeCanvas(ctx.canvas, outputFormat, options, onProgress);
+}
+
+/**
+ * encode: `RasterImage` -> ICO, Vista+ format (PNG-compressed entries) at
+ * every size in `options.sizes`'s preset (`icoSizesForPreset`). A
+ * non-square source is fit inside each size's square, scaled by
+ * `computeResizeDims`'s existing "contain" math (the same math `runResize`
+ * uses, so this and a plain resize agree on scale), and centered over a
+ * transparent background rather than cropped or stretched.
+ */
+async function runEncodeIco(
+  image: RasterImage,
+  options: Readonly<Record<string, unknown>>,
+  signal: AbortSignal,
+  onProgress: ((fraction: number) => void) | undefined,
+): Promise<EngineResult> {
+  const preset = typeof options.sizes === "string" ? options.sizes : "favicon";
+  const sizes = icoSizesForPreset(preset);
+
+  const sourceBitmap = await createImageBitmap(
+    new ImageData(image.data, image.width, image.height),
+  );
+  try {
+    const entries: IcoEncodeEntry[] = [];
+    for (const size of sizes) {
+      signal.throwIfAborted();
+
+      const dims = computeResizeDims(image.width, image.height, {
+        width: size,
+        height: size,
+        fit: "contain",
+        allowUpscale: true,
+      });
+      const offsetX = Math.floor((size - dims.width) / 2);
+      const offsetY = Math.floor((size - dims.height) / 2);
+
+      const ctx = newContext(size, size);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      // The canvas starts fully transparent — no fill needed before
+      // compositing, unlike jpg's opaque background.
+      ctx.drawImage(sourceBitmap, offsetX, offsetY, dims.width, dims.height);
+
+      const pngBlob = await ctx.canvas.convertToBlob({ type: "image/png" });
+      const png = new Uint8Array(await pngBlob.arrayBuffer());
+      entries.push({ size, png });
+      onProgress?.(entries.length / sizes.length);
+    }
+
+    const bytes = buildIcoContainer(entries);
+    return {
+      kind: "bytes",
+      bytes: bytes.buffer as ArrayBuffer,
+      mime: FORMATS.ico.mime,
+    };
+  } finally {
+    sourceBitmap.close();
+  }
 }
 
 /** Shared `convertToBlob` + arrayBuffer step for `runTranscode`/`runEncode`. */

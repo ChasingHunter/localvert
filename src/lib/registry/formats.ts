@@ -97,6 +97,20 @@ export const FORMATS = {
     category: "image",
     magic: [[{ offset: 0, bytes: ascii("BM") }]],
   },
+  ico: {
+    label: "ICO",
+    // "image/x-icon" is the mime this format is served/sniffed under.
+    // "image/vnd.microsoft.icon" is a real IANA-registered alternative some
+    // encoders use, but `FormatSpec.mime` only carries one value, and
+    // neither sniffing nor encoding here reads it for anything but the
+    // outgoing Blob's `type` — which one is "canonical" doesn't affect
+    // behavior.
+    ext: ["ico"],
+    mime: "image/x-icon",
+    category: "image",
+    // ICONDIR header: reserved (2 bytes, always 0) + type (2 bytes, 1 = icon).
+    magic: [[{ offset: 0, bytes: [0x00, 0x00, 0x01, 0x00] }]],
+  },
   raw: {
     label: "Camera RAW",
     ext: [
