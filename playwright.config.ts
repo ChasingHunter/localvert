@@ -44,7 +44,11 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 
   webServer: {
-    command: `pnpm exec wrangler dev --config infra/wrangler.jsonc --port ${port} --local`,
+    // Seeds `wrangler dev --local`'s R2 simulation from `.engines-r2/`
+    // (gitignored, populated by `pnpm build`'s `sync-engines` step) before
+    // the server starts — see scripts/seed-r2-local.ts's doc comment. A
+    // no-op until an r2-hosted engine (ffmpeg) exists to seed.
+    command: `node scripts/seed-r2-local.ts && pnpm exec wrangler dev --config infra/wrangler.jsonc --port ${port} --local`,
     url: `http://localhost:${port}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
