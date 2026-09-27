@@ -66,7 +66,9 @@ function supports(
     // route to this adapter the same way every other op does.
     op === "replacePagesWithImages" ||
     op === "sanitize" ||
-    op === "organize"
+    op === "organize" ||
+    op === "watermark" ||
+    op === "addPageNumbers"
   );
 }
 
@@ -161,6 +163,10 @@ async function run(task: EngineTask): Promise<EngineResult> {
         return await runSanitize(task);
       case "organize":
         return await runOrganize(task);
+      case "watermark":
+        return await runWatermark(task);
+      case "addPageNumbers":
+        return await runAddPageNumbers(task);
       default:
         throw new EngineError(
           "unsupported",
@@ -1325,6 +1331,344 @@ async function runOrganize(task: EngineTask): Promise<EngineResult> {
   }
 
   const outBytes = await outDoc.save();
+  return {
+    kind: "bytes",
+    bytes: outBytes.slice().buffer,
+    mime: FORMATS.pdf.mime,
+  };
+}
+
+type QuarterTurn = 0 | 90 | 180 | 270;
+
+/** `page.getRotation().angle` down to one of the four page-rotation values a
+ * viewer actually renders -- a malformed `/Rotate` (not a multiple of 90) is
+ * vanishingly rare, but falls back to 0 rather than propagating a fractional
+ * angle into the trig-free integer maths below. */
+function toQuarterTurn(angle: number): QuarterTurn {
+  const normalized = ((angle % 360) + 360) % 360;
+  return normalized === 90 || normalized === 180 || normalized === 270
+    ? normalized
+    : 0;
+}
+
+/**
+ * Both `watermark` and `addPageNumbers` want to place text at a position
+ * that looks right to the *viewer* -- "centered", "bottom-right corner" --
+ * regardless of the page's own `/Rotate`. A viewer displays a page's content
+ * stream (drawn in the page's own, unrotated coordinate space) rotated
+ * `rotation` degrees clockwise, so a point this function is asked to draw at
+ * *display* coordinates `(dx, dy)` (origin bottom-left of what the viewer
+ * shows, same convention as content space) has to land somewhere else in
+ * content space for that rotation to bring it to `(dx, dy)`.
+ *
+ * Derived by tracking where each of a `boxWidth` x `boxHeight` box's four
+ * corners physically ends up after rotating the sheet `rotation` degrees
+ * clockwise, then inverting: e.g. at `rotation: 90`, the content-space
+ * origin `(0, 0)` ends up at display `(0, boxWidth)`, which inverts to
+ * `x = boxWidth - dy, y = dx`. `rotation: 0` is the identity. Callers then
+ * add the box's own `x`/`y` origin (a `/CropBox` need not start at `(0,
+ * 0)`) on top of this function's result.
+ */
+function displayToContent(
+  dx: number,
+  dy: number,
+  boxWidth: number,
+  boxHeight: number,
+  rotation: QuarterTurn,
+): { x: number; y: number } {
+  switch (rotation) {
+    case 90:
+      return { x: boxWidth - dy, y: dx };
+    case 180:
+      return { x: boxWidth - dx, y: boxHeight - dy };
+    case 270:
+      return { x: dy, y: boxHeight - dx };
+    default:
+      return { x: dx, y: dy };
+  }
+}
+
+/** A rotated page's *displayed* width/height -- swapped from the page's own
+ * (unrotated) box dimensions whenever the viewer turns it a quarter turn. */
+function displaySize(
+  boxWidth: number,
+  boxHeight: number,
+  rotation: QuarterTurn,
+): { width: number; height: number } {
+  return rotation === 90 || rotation === 270
+    ? { width: boxHeight, height: boxWidth }
+    : { width: boxWidth, height: boxHeight };
+}
+
+const WATERMARK_COLORS: Record<string, [number, number, number]> = {
+  gray: [0.5, 0.5, 0.5],
+  red: [0.82, 0.1, 0.1],
+  blue: [0.1, 0.35, 0.82],
+  black: [0, 0, 0],
+};
+
+/**
+ * Every distinct character in `text` that Helvetica's WinAnsi encoding
+ * (`@cantoo/pdf-lib`'s only encoding for a non-Symbol/ZapfDingbats standard
+ * font) has no glyph for. `@cantoo/pdf-lib` itself never throws on this --
+ * `StandardFontEmbedder.encodeTextAsGlyphs` silently swaps an unencodable
+ * character for `"?"` -- so left unchecked, a watermark with (say) CJK text
+ * would save without error and come back as a page full of question marks.
+ * `canEncodeUnicodeCodePoint` is the same check that embedder itself makes
+ * internally; imported from the package's own `standard-fonts` entry point
+ * (its public, documented subpath) rather than reimplementing the WinAnsi
+ * table by hand.
+ */
+function unsupportedWinAnsiChars(
+  encodings: { WinAnsi: { canEncodeUnicodeCodePoint(cp: number): boolean } },
+  text: string,
+): string[] {
+  const bad = new Set<string>();
+  for (const ch of text) {
+    const codePoint = ch.codePointAt(0);
+    if (
+      codePoint !== undefined &&
+      !encodings.WinAnsi.canEncodeUnicodeCodePoint(codePoint)
+    ) {
+      bad.add(ch);
+    }
+  }
+  return Array.from(bad);
+}
+
+/**
+ * watermark (pdf -> pdf, `watermark-pdf`): stamps `options.text` on every
+ * page in `options.pages` (blank = every page), diagonal (45 deg) or
+ * horizontal, opacity/size/color/position all user-chosen. The text itself
+ * is drawn rotated by `displayAngle + rotation` (see `displayToContent`'s
+ * doc comment) so the *net* rotation the viewer shows -- the draw rotation
+ * minus the page's own clockwise `/Rotate` -- always comes out to
+ * `displayAngle`, keeping the mark diagonal/horizontal from the viewer's
+ * seat no matter how the page itself is rotated. Centering is computed
+ * against the page's `/CropBox` (falls back to `/MediaBox` when absent --
+ * `getCropBox()`'s own default), including its own `x`/`y` origin, rather
+ * than assuming every box starts at `(0, 0)`.
+ */
+async function runWatermark(task: EngineTask): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  const text = typeof options.text === "string" ? options.text : "";
+  if (text.trim() === "") {
+    throw new EngineError("internal", "watermark requires text", {
+      engine: metadata.id,
+    });
+  }
+
+  const { Encodings } = await import("@cantoo/pdf-lib/standard-fonts");
+  const unsupported = unsupportedWinAnsiChars(Encodings, text);
+  if (unsupported.length > 0) {
+    throw new EngineError(
+      "unsupported",
+      `The watermark font can't render: ${unsupported.join(", ")} -- try different text`,
+      { engine: metadata.id },
+    );
+  }
+
+  const bytes = await inputToArrayBuffer(input);
+  signal.throwIfAborted();
+
+  const mod = await import("@cantoo/pdf-lib");
+  const doc = await loadPdf(mod, bytes);
+
+  const pagesSpec = typeof options.pages === "string" ? options.pages : "";
+  const indices = parsePageRange(pagesSpec, doc.getPageCount());
+
+  const fontSize = typeof options.fontSize === "number" ? options.fontSize : 48;
+  const rawOpacity =
+    typeof options.opacity === "number" ? options.opacity : 0.25;
+  const opacity = Math.min(1, Math.max(0.05, rawOpacity));
+  const displayAngle = options.angle === "horizontal" ? 0 : 45;
+  const colorKey =
+    typeof options.color === "string" && options.color in WATERMARK_COLORS
+      ? options.color
+      : "gray";
+  const rgbTriple: [number, number, number] = WATERMARK_COLORS[colorKey] ?? [
+    0.5, 0.5, 0.5,
+  ];
+  const [r, g, b] = rgbTriple;
+  const position =
+    options.position === "top" || options.position === "bottom"
+      ? options.position
+      : "center";
+
+  const font = await doc.embedFont(mod.StandardFonts.Helvetica);
+  const textWidth = font.widthOfTextAtSize(text, fontSize);
+  const margin = 36;
+
+  const pages = doc.getPages();
+  for (const index of indices) {
+    signal.throwIfAborted();
+    const page = pages[index];
+    if (!page) continue; // unreachable: indices are validated against doc.getPageCount()
+
+    const rotation = toQuarterTurn(page.getRotation().angle);
+    const box = page.getCropBox();
+    const { width: dispW, height: dispH } = displaySize(
+      box.width,
+      box.height,
+      rotation,
+    );
+
+    const dy =
+      position === "top"
+        ? dispH - margin - fontSize
+        : position === "bottom"
+          ? margin
+          : dispH / 2;
+    const dx = dispW / 2 - textWidth / 2;
+
+    const { x, y } = displayToContent(dx, dy, box.width, box.height, rotation);
+
+    page.drawText(text, {
+      x: x + box.x,
+      y: y + box.y,
+      size: fontSize,
+      font,
+      color: mod.rgb(r, g, b),
+      opacity,
+      rotate: mod.degrees(displayAngle + rotation),
+    });
+  }
+  onProgress?.(1);
+
+  const outBytes = await doc.save();
+  return {
+    kind: "bytes",
+    bytes: outBytes.slice().buffer,
+    mime: FORMATS.pdf.mime,
+  };
+}
+
+type PageNumberFormat = "1" | "Page 1" | "Page 1 of N" | "1 / N";
+type PageNumberPosition =
+  | "bottom-center"
+  | "bottom-right"
+  | "bottom-left"
+  | "top-center"
+  | "top-right"
+  | "top-left";
+
+function formatPageNumber(
+  format: PageNumberFormat,
+  n: number,
+  total: number,
+): string {
+  switch (format) {
+    case "Page 1":
+      return `Page ${n}`;
+    case "Page 1 of N":
+      return `Page ${n} of ${total}`;
+    case "1 / N":
+      return `${n} / ${total}`;
+    default:
+      return `${n}`;
+  }
+}
+
+/**
+ * addPageNumbers (pdf -> pdf, `add-page-numbers`): draws a label at one of
+ * six corner/edge positions on every page in `options.pages` (blank = every
+ * page). Numbering always counts every page in the document
+ * (`options.startAt + index`, `index` the page's own 0-based position) even
+ * when `options.pages` only selects some of them -- so numbering a 10-page
+ * document's pages 5-10 still labels them "5".."10", not "1".."6". `total`
+ * (for the "of N" formats) is `startAt + pageCount - 1`, the number the
+ * *last* page in the document would carry, not the count of *labeled*
+ * pages. Position/rotation handling shares `displayToContent`/`displaySize`
+ * with `runWatermark` -- see that function's doc comment -- with
+ * `displayAngle` always `0` (a page number reads upright, never diagonal),
+ * so the draw rotation is just the page's own `rotation`, canceling it out
+ * exactly.
+ */
+async function runAddPageNumbers(task: EngineTask): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  const bytes = await inputToArrayBuffer(input);
+  signal.throwIfAborted();
+
+  const mod = await import("@cantoo/pdf-lib");
+  const doc = await loadPdf(mod, bytes);
+  const pageCount = doc.getPageCount();
+
+  const pagesSpec = typeof options.pages === "string" ? options.pages : "";
+  const selected = new Set(parsePageRange(pagesSpec, pageCount));
+
+  const position: PageNumberPosition =
+    options.position === "bottom-right" ||
+    options.position === "bottom-left" ||
+    options.position === "top-center" ||
+    options.position === "top-right" ||
+    options.position === "top-left"
+      ? options.position
+      : "bottom-center";
+  const format: PageNumberFormat =
+    options.format === "Page 1" ||
+    options.format === "Page 1 of N" ||
+    options.format === "1 / N"
+      ? options.format
+      : "1";
+  const startAt =
+    typeof options.startAt === "number" &&
+    Number.isInteger(options.startAt) &&
+    options.startAt >= 1
+      ? options.startAt
+      : 1;
+  const fontSize = typeof options.fontSize === "number" ? options.fontSize : 11;
+  const margin = typeof options.margin === "number" ? options.margin : 24;
+
+  const font = await doc.embedFont(mod.StandardFonts.Helvetica);
+  const total = startAt + pageCount - 1;
+  const isTop = position.startsWith("top");
+  const isRight = position.endsWith("right");
+  const isCenter = position.endsWith("center");
+
+  const pages = doc.getPages();
+  for (let index = 0; index < pages.length; index++) {
+    signal.throwIfAborted();
+    if (!selected.has(index)) continue;
+    const page = pages[index];
+    if (!page) continue; // unreachable: guarded by `index < pages.length`
+
+    const number = startAt + index;
+    const label = formatPageNumber(format, number, total);
+    const textWidth = font.widthOfTextAtSize(label, fontSize);
+
+    const rotation = toQuarterTurn(page.getRotation().angle);
+    const box = page.getCropBox();
+    const { width: dispW, height: dispH } = displaySize(
+      box.width,
+      box.height,
+      rotation,
+    );
+
+    const dy = isTop ? dispH - margin - fontSize : margin;
+    const dx = isCenter
+      ? dispW / 2 - textWidth / 2
+      : isRight
+        ? dispW - margin - textWidth
+        : margin;
+
+    const { x, y } = displayToContent(dx, dy, box.width, box.height, rotation);
+
+    page.drawText(label, {
+      x: x + box.x,
+      y: y + box.y,
+      size: fontSize,
+      font,
+      color: mod.rgb(0, 0, 0),
+      rotate: mod.degrees(rotation),
+    });
+    onProgress?.((index + 1) / pages.length);
+  }
+
+  const outBytes = await doc.save();
   return {
     kind: "bytes",
     bytes: outBytes.slice().buffer,

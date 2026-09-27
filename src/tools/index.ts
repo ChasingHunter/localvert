@@ -100,6 +100,7 @@ import rotatePdf from "@/tools/pdf/rotate-pdf";
 import sanitizePdf from "@/tools/pdf/sanitize-pdf";
 import splitPdf from "@/tools/pdf/split-pdf";
 import unlockPdf from "@/tools/pdf/unlock-pdf";
+import watermarkPdf from "@/tools/pdf/watermark-pdf";
 import aviToMp4 from "@/tools/video/avi-to-mp4";
 import compressVideo from "@/tools/video/compress-video";
 import flvToMp4 from "@/tools/video/flv-to-mp4";
@@ -217,6 +218,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   sanitizePdf,
   splitPdf,
   unlockPdf,
+  watermarkPdf,
   aviToMp4,
   compressVideo,
   flvToMp4,

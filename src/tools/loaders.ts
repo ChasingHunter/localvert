@@ -102,6 +102,7 @@ export const TOOL_LOADERS = {
   "sanitize-pdf": () => import("./pdf/sanitize-pdf"),
   "split-pdf": () => import("./pdf/split-pdf"),
   "unlock-pdf": () => import("./pdf/unlock-pdf"),
+  "watermark-pdf": () => import("./pdf/watermark-pdf"),
   "avi-to-mp4": () => import("./video/avi-to-mp4"),
   "compress-video": () => import("./video/compress-video"),
   "flv-to-mp4": () => import("./video/flv-to-mp4"),
