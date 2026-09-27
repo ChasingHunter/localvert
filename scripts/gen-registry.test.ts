@@ -225,6 +225,7 @@ describe("parseEngineMeta", () => {
       needsIsolation: false,
       heavy: false,
       kind: "job",
+      consent: false,
       package: "@acme/foo",
       files: [{ from: "foo.wasm", to: "foo.wasm" }],
     });
@@ -248,6 +249,7 @@ describe("parseEngineMeta", () => {
       needsIsolation: false,
       heavy: false,
       kind: "job",
+      consent: false,
     });
   });
 
@@ -424,6 +426,7 @@ describe("parseEngineMeta", () => {
       needsIsolation: false,
       heavy: false,
       kind: "job",
+      consent: false,
     });
   });
 
@@ -445,6 +448,7 @@ describe("parseEngineMeta", () => {
       needsIsolation: false,
       heavy: false,
       kind: "job",
+      consent: false,
     });
   });
 
