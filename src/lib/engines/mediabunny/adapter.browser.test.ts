@@ -1,7 +1,10 @@
 import {
   ALL_FORMATS,
+  AudioBufferSource,
+  BlobSource,
   BufferTarget,
   CanvasSource,
+  canEncodeAudio,
   canEncodeVideo,
   Input,
   Mp4OutputFormat,
@@ -28,9 +31,21 @@ const EBML_MAGIC = [0x1a, 0x45, 0xdf, 0xa3];
 // supports it, but the whole video-encoding suite still gates on it rather
 // than assuming so.
 const canEncodeAvc = await canEncodeVideo("avc");
+const canEncodeAacAudio = await canEncodeAudio("aac");
 
 function hasEbmlMagic(bytes: Uint8Array): boolean {
   return EBML_MAGIC.every((b, i) => bytes[i] === b);
+}
+
+function hasFtypMagic(bytes: Uint8Array): boolean {
+  // ISO-BMFF "ftyp" box at offset 4 — same signature `FORMATS.mp4`/`.mov`
+  // sniff on (src/lib/registry/formats.ts).
+  return (
+    bytes[4] === 0x66 &&
+    bytes[5] === 0x74 &&
+    bytes[6] === 0x79 &&
+    bytes[7] === 0x70
+  );
 }
 
 /**
@@ -74,6 +89,63 @@ async function buildTestMp4(): Promise<Blob> {
   return new Blob([buffer], { type: "video/mp4" });
 }
 
+/**
+ * Same shape as `buildTestMp4`, plus a sine-wave `AudioBufferSource` track —
+ * used by tests that need a real audio track to check (mute-video's "no
+ * audio track" assertion) or a real duration to trim.
+ */
+async function buildTestMp4WithAudio(durationSeconds: number): Promise<Blob> {
+  const canvas = new OffscreenCanvas(WIDTH, HEIGHT);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d context in test setup");
+
+  const target = new BufferTarget();
+  const output = new Output({ format: new Mp4OutputFormat(), target });
+
+  const videoSource = new CanvasSource(canvas, {
+    codec: "avc",
+    quality: QUALITY_LOW,
+  });
+  output.addVideoTrack(videoSource);
+
+  const audioSource = new AudioBufferSource({
+    codec: "aac",
+    bitrate: QUALITY_LOW,
+  });
+  output.addAudioTrack(audioSource);
+
+  await output.start();
+
+  const frameCount = Math.round(durationSeconds * FPS);
+  for (let i = 0; i < frameCount; i++) {
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.fillStyle = "#3366ff";
+    ctx.fillRect((i * 10) % WIDTH, HEIGHT / 2 - 20, 40, 40);
+    await videoSource.add(i / FPS, 1 / FPS);
+  }
+  videoSource.close();
+
+  const sampleRate = 48000;
+  const audioBuffer = new AudioBuffer({
+    length: Math.round(durationSeconds * sampleRate),
+    numberOfChannels: 1,
+    sampleRate,
+  });
+  const channel = audioBuffer.getChannelData(0);
+  for (let i = 0; i < channel.length; i++) {
+    channel[i] = Math.sin((2 * Math.PI * 440 * i) / sampleRate) * 0.2;
+  }
+  await audioSource.add(audioBuffer);
+  audioSource.close();
+
+  await output.finalize();
+
+  const buffer = target.buffer;
+  if (!buffer) throw new Error("test MP4+audio builder produced no buffer");
+  return new Blob([buffer], { type: "video/mp4" });
+}
+
 describe("mediabunny adapter", () => {
   it("carries the metadata defineEngine validated", () => {
     expect(adapter.id).toBe("mediabunny");
@@ -81,11 +153,17 @@ describe("mediabunny adapter", () => {
   });
 
   describe("supports", () => {
-    it("accepts mp4/mov -> webm transcode only", () => {
+    it("accepts transcode between any two video containers", () => {
+      // Widened from the original mp4/mov -> webm-only check (Phase 3a's
+      // only tool at the time): every container conversion and edit tool
+      // this adapter now drives is one `transcode` step between two of the
+      // four containers it knows how to write (video.ts's `VideoContainer`).
       expect(adapter.supports("transcode", "mp4", "webm")).toBe(true);
       expect(adapter.supports("transcode", "mov", "webm")).toBe(true);
-      expect(adapter.supports("transcode", "mp4", "mov")).toBe(false);
+      expect(adapter.supports("transcode", "mp4", "mov")).toBe(true);
+      expect(adapter.supports("transcode", "webm", "mkv")).toBe(true);
       expect(adapter.supports("decode", "mp4", "webm")).toBe(false);
+      expect(adapter.supports("transcode", "jpg", "png")).toBe(false);
     });
   });
 
@@ -248,4 +326,117 @@ describe("mediabunny adapter", () => {
       }
     });
   });
+
+  // Phase 3a: container conversion and edit tools, all driven through the
+  // same `runVideo` dispatch as the `transcode` suite above, just with
+  // different `task.options` shapes (see `adapter.ts`'s `runVideo` doc
+  // comment) and, for webm -> mp4, the opposite codec crossing (vp9-or-vp8
+  // + opus decoded, avc + aac re-encoded).
+  describe.skipIf(!canEncodeAvc || !canEncodeAacAudio)(
+    "video edit tools",
+    () => {
+      // `__forceBufferTarget` (see `output.ts`) keeps every result a plain
+      // in-memory `bytes` result, so these tests can read the output back
+      // directly instead of round-tripping through OPFS — the OPFS path
+      // itself is already covered by the `transcode` suite above.
+      async function runOne(
+        blob: Blob,
+        outputFormat: "mp4" | "webm",
+        options: Record<string, unknown> = {},
+        inputFormat: "mp4" | "webm" = "mp4",
+      ) {
+        const pool = createWorkerPool({
+          size: 1,
+          spawn: spawnEngineWorker,
+          isHeavy: (engine) => ENGINE_MANIFEST[engine].heavy,
+        });
+        try {
+          return await pool.run({
+            jobId: `mediabunny-video-tool-${outputFormat}-${JSON.stringify(options)}`,
+            input: { kind: "blob", blob },
+            steps: [
+              {
+                engine: "mediabunny" as const,
+                baseUrl: ENGINE_MANIFEST.mediabunny.baseUrl,
+                op: "transcode" as const,
+                inputFormat,
+                outputFormat,
+              },
+            ],
+            options: { ...options, __forceBufferTarget: true },
+          });
+        } finally {
+          pool.destroy();
+        }
+      }
+
+      it("trims a 3s clip down to ~1s", async () => {
+        const blob = await buildTestMp4WithAudio(3);
+        const result = await runOne(blob, "mp4", { start: 0, end: 1 });
+        expect(result.kind).toBe("bytes");
+        if (result.kind !== "bytes") throw new Error("unreachable");
+
+        const readBack = new Input({
+          source: new BlobSource(new Blob([result.bytes])),
+          formats: ALL_FORMATS,
+        });
+        const duration = await readBack.computeDuration();
+        // Generous tolerance: encoder key-frame boundaries can nudge a trim's
+        // exact output duration by a fraction of a second.
+        expect(duration).toBeGreaterThan(0.5);
+        expect(duration).toBeLessThan(1.5);
+      });
+
+      it("mutes a clip: no audio track in the output", async () => {
+        const blob = await buildTestMp4WithAudio(1);
+        const result = await runOne(blob, "mp4", { mute: true });
+        expect(result.kind).toBe("bytes");
+        if (result.kind !== "bytes") throw new Error("unreachable");
+
+        const readBack = new Input({
+          source: new BlobSource(new Blob([result.bytes])),
+          formats: ALL_FORMATS,
+        });
+        const audioTracks = await readBack.getAudioTracks();
+        expect(audioTracks.length).toBe(0);
+      });
+
+      it("resizes 320x240 down to 160x120", async () => {
+        const blob = await buildTestMp4();
+        const result = await runOne(blob, "mp4", {
+          preset: "custom",
+          width: 160,
+          height: 120,
+          fit: "fill",
+        });
+        expect(result.kind).toBe("bytes");
+        if (result.kind !== "bytes") throw new Error("unreachable");
+
+        const readBack = new Input({
+          source: new BlobSource(new Blob([result.bytes])),
+          formats: ALL_FORMATS,
+        });
+        const [videoTrack] = await readBack.getVideoTracks();
+        if (!videoTrack) throw new Error("no video track in resized output");
+        expect(videoTrack.displayWidth).toBe(160);
+        expect(videoTrack.displayHeight).toBe(120);
+      });
+
+      it("webm -> mp4 container conversion produces an ftyp-magic file", async () => {
+        // Source must itself be webm for this pair — reuse the mp4/mov ->
+        // webm transcode this file already drives, then feed its result back
+        // in as the next test's input.
+        const source = await buildTestMp4();
+        const toWebm = await runOne(source, "webm");
+        if (toWebm.kind !== "bytes") throw new Error("unreachable");
+        const webmBlob = new Blob([toWebm.bytes], { type: "video/webm" });
+
+        const result = await runOne(webmBlob, "mp4", {}, "webm");
+        expect(result.kind).toBe("bytes");
+        if (result.kind !== "bytes") throw new Error("unreachable");
+        const header = new Uint8Array(result.bytes.slice(0, 12));
+        expect(hasFtypMagic(header)).toBe(true);
+      });
+    },
+  );
 });

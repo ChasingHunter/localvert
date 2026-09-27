@@ -1,37 +1,23 @@
 /**
- * Video transcode via mediabunny (ADR-0010), which wraps native WebCodecs —
- * no wasm codec of its own, hence `location: "bundled"` (pure JS, ships
- * inside this adapter's own dynamic-imported worker chunk, same as `psd`).
+ * Video ops via mediabunny (ADR-0010), which wraps native WebCodecs — no
+ * wasm codec of its own, hence `location: "bundled"` (pure JS, ships inside
+ * this adapter's own dynamic-imported worker chunk, same as `psd`).
  *
- * Input reads incrementally from the dropped `File` via `BlobSource` — never
- * a full read. Output prefers OPFS (`FileSystemSyncAccessHandle`, worker-only)
- * through a `StreamTarget`, so a multi-hundred-MB transcode never has to sit
- * fully in the worker heap; a `BufferTarget` fallback (in-memory, size-capped)
- * covers the browsers/modes where OPFS isn't available. See ADR-0010 for the
- * full design and why `StreamTarget`'s non-sequential writes specifically
- * need a sync access handle rather than a sequential `createWritable()`.
+ * This file is a thin dispatcher: `supports()` says which op/container pairs
+ * it handles, `run()` switches on `task.op` and delegates to `runVideo()`,
+ * which maps the tool's own options onto mediabunny's `Conversion` options
+ * (via `video.ts`) and drives the run through the shared `runConversion()`
+ * helper (`output.ts` — OPFS `StreamTarget` + `BufferTarget` fallback +
+ * `isValid` check + abort/cleanup, extracted here because every video op
+ * needs the exact same plumbing, container conversion or in-place edit
+ * alike). See ADR-0010 for the full output-target design.
  */
-import {
-  ALL_FORMATS,
-  BlobSource,
-  BufferTarget,
-  Conversion,
-  canEncodeAudio,
-  canEncodeVideo,
-  Input,
-  Output,
-  StreamTarget,
-  type StreamTargetChunk,
-  WebMOutputFormat,
-} from "mediabunny";
 import type { Operation, StepFormat } from "@/lib/registry";
-import { FORMATS } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
 import { ENGINE_MANIFEST } from "../manifest";
 import type {
   EngineAdapter,
-  EngineInput,
   EngineInstance,
   EngineLoadContext,
   EngineResult,
@@ -39,6 +25,20 @@ import type {
 } from "../types";
 import meta from "./engine.json";
 import { runToGif } from "./gif";
+import { runConversion } from "./output";
+import {
+  isVideoContainer,
+  outputFormatFor,
+  pickAudioCodec,
+  pickVideoCodec,
+  type QualityPreset,
+  qualityForPreset,
+  type ResizeOptions,
+  type ResizePreset,
+  resizeToVideoOptions,
+  rotationFor,
+  validateTrim,
+} from "./video";
 
 const metadata = {
   ...(meta as Pick<
@@ -52,20 +52,13 @@ const metadata = {
 >;
 
 /**
- * ADR-0010's temp directory, duplicated as a literal here rather than
- * imported from `@/lib/jobs/opfs-temp`: engines are a lower layer than
- * `jobs`, which orchestrates them, and this adapter only ever needs the
- * directory name, not any of that module's main-thread-oriented helpers
- * (`readOpfsFile`/`sweepOpfsTemp`). Keep the literal in sync with that file's
- * `OPFS_TEMP_DIR` if the convention ever changes.
+ * `transcode` covers every video tool in this slice: plain container
+ * conversion (webm-to-mp4, mov-to-mp4, …) and every in-place edit
+ * (trim/mute/resize/compress/rotate — same container in and out) both boil
+ * down to "run one mediabunny `Conversion`", just with different `video`/
+ * `audio`/`trim` options built from `task.options`. Both sides of the pair
+ * must be one of the four containers this adapter knows how to write.
  */
-const OPFS_TEMP_DIR = "localvert-tmp";
-
-/** In-memory output cap when OPFS isn't available (ADR-0010's fallback) —
- * past this, a multi-hundred-MB accumulation risks the worker's heap rather
- * than failing cleanly. */
-const MAX_BUFFERED_OUTPUT_BYTES = 300 * 1024 * 1024;
-
 function supports(
   op: Operation,
   input: StepFormat,
@@ -73,147 +66,17 @@ function supports(
 ): boolean {
   return (
     (op === "transcode" &&
-      (input === "mp4" || input === "mov") &&
-      output === "webm") ||
-    (op === "toGif" &&
-      (input === "mp4" || input === "mov" || input === "webm") &&
-      output === "gif")
+      isVideoContainer(input) &&
+      isVideoContainer(output)) ||
+    (op === "toGif" && isVideoContainer(input) && output === "gif")
   );
-}
-
-/** Reads `task.input` down to a `Blob` — `BlobSource` reads it incrementally
- * from there, so this never materializes the file's bytes itself. */
-function inputToBlob(input: EngineInput): Blob {
-  switch (input.kind) {
-    case "blob":
-      return input.blob;
-    case "bytes":
-      return new Blob([input.bytes]);
-    case "opfs":
-      throw new EngineError(
-        "unsupported",
-        "mediabunny engine does not read OPFS inputs",
-        { engine: metadata.id },
-      );
-    case "raster":
-      throw new EngineError(
-        "internal",
-        "mediabunny expected a bytes/blob input, got a raster",
-        { engine: metadata.id },
-      );
-  }
-}
-
-/**
- * Structural subset of the DOM's `FileSystemSyncAccessHandle` (a
- * dedicated-worker-only global) that this adapter uses. Declared locally
- * instead of referencing that lib type by name: `tsconfig.worker.json`
- * (`WebWorker` lib, what this file actually runs under) declares it, but
- * `tsconfig.browser-tests.json` (`DOM` lib, so browser tests can call
- * OffscreenCanvas/etc. on vitest's real-browser instance directly) does
- * not — and this file is typechecked under both, since adapter.browser.test.ts
- * imports it. A structural type checks under either.
- */
-interface OpfsSyncAccessHandle {
-  write(buffer: BufferSource, options?: { at?: number }): number;
-  flush(): void;
-  close(): void;
-  getSize(): number;
-}
-
-/** The subset of `FileSystemFileHandle` this adapter needs beyond what
- * `DOM` lib already declares — same reasoning as `OpfsSyncAccessHandle`
- * above; `createSyncAccessHandle` itself isn't in `DOM` lib's version of
- * the interface. */
-interface FileHandleWithSyncAccess {
-  createSyncAccessHandle?(): Promise<OpfsSyncAccessHandle>;
-}
-
-/** True when `navigator.storage.getDirectory()` and, critically, dedicated-
- * worker-only `createSyncAccessHandle()` are both available — probed by
- * trying to open a handle rather than feature-testing the method name,
- * since a private-mode Safari can advertise the API but throw on use. */
-async function tryOpenOpfsSyncHandle(
-  name: string,
-): Promise<OpfsSyncAccessHandle | null> {
-  try {
-    if (!("storage" in navigator) || !navigator.storage.getDirectory) {
-      return null;
-    }
-    const root = await navigator.storage.getDirectory();
-    const dir = await root.getDirectoryHandle(OPFS_TEMP_DIR, { create: true });
-    const fileHandle = (await dir.getFileHandle(name, {
-      create: true,
-    })) as FileSystemFileHandle & FileHandleWithSyncAccess;
-    // `createSyncAccessHandle` exists only in a dedicated worker context —
-    // absent (or throws) on the main thread and in some private modes.
-    if (typeof fileHandle.createSyncAccessHandle !== "function") return null;
-    return await fileHandle.createSyncAccessHandle();
-  } catch {
-    return null;
-  }
-}
-
-/** Tracks the final byte size of an OPFS-backed output as it's written. A
- * sync access handle's `getSize()` throws `InvalidStateError` once the
- * handle is closed, so the size has to be computed from the writes
- * themselves (the highest `position + data.byteLength` seen) rather than
- * read back from the handle after `close()` runs it. */
-class OpfsSizeTracker {
-  size = 0;
-  record(position: number, byteLength: number): void {
-    this.size = Math.max(this.size, position + byteLength);
-  }
-}
-
-/**
- * Adapts a `FileSystemSyncAccessHandle` into the `WritableStream` mediabunny's
- * `StreamTarget` writes muxed chunks through. Containers seek backward to
- * patch box sizes/lengths as they finalize, hence `chunk.position` — a sync
- * access handle's `write(data, {at})` is what makes that possible without
- * buffering the whole output first (a sequential File System Access
- * `createWritable()` stream cannot do this — see ADR-0010). `sizeTracker`
- * records the final size as writes happen, since `close()` closes the
- * handle and any `getSize()` call after that throws.
- */
-function opfsWritable(
-  handle: OpfsSyncAccessHandle,
-  sizeTracker: OpfsSizeTracker,
-): WritableStream<StreamTargetChunk> {
-  return new WritableStream<StreamTargetChunk>({
-    write(chunk) {
-      handle.write(chunk.data, { at: chunk.position });
-      sizeTracker.record(chunk.position, chunk.data.byteLength);
-    },
-    close() {
-      handle.flush();
-      handle.close();
-    },
-    abort() {
-      handle.close();
-    },
-  });
-}
-
-/** Picks the first video codec this browser can actually encode, VP9 first —
- * ADR-0010's capability probe. Returns `null` if neither works, which the
- * caller turns into a clear "your browser can't encode video/webm" error
- * rather than an opaque failure partway through a long transcode. */
-async function pickVideoCodec(): Promise<"vp9" | "vp8" | null> {
-  if (await canEncodeVideo("vp9")) return "vp9";
-  if (await canEncodeVideo("vp8")) return "vp8";
-  return null;
-}
-
-async function pickAudioCodec(): Promise<"opus" | null> {
-  return (await canEncodeAudio("opus")) ? "opus" : null;
 }
 
 async function run(task: EngineTask): Promise<EngineResult> {
   try {
     switch (task.op) {
       case "transcode":
-        return await runTranscode(task);
+        return await runVideo(task);
       case "toGif": {
         const { bytes, mime } = await runToGif(task, metadata.id);
         return { kind: "bytes", bytes: bytes.buffer as ArrayBuffer, mime };
@@ -230,158 +93,116 @@ async function run(task: EngineTask): Promise<EngineResult> {
   }
 }
 
-/** transcode: mp4/mov -> webm (VP9-or-VP8 video + Opus audio), streamed
- * through OPFS when available, buffered in memory (size-capped) otherwise. */
-async function runTranscode(task: EngineTask): Promise<EngineResult> {
-  const { signal, onProgress } = task;
+/**
+ * Builds the `Conversion` options for one video task from `task.options`
+ * (the tool's own parsed zod options, shaped differently per tool — a
+ * container-conversion tool has none of these; `trim-video` has
+ * `start`/`end`; `mute-video` sets `audio.discard`; etc.) and runs it
+ * through the shared `runConversion` helper. `task.outputFormat` names the
+ * output container directly (set by each tool's pipeline step, or falling
+ * back to the file's own sniffed format for a `produces: "same"` edit tool)
+ * — no per-tool switch needed here.
+ */
+async function runVideo(task: EngineTask): Promise<EngineResult> {
+  const { signal } = task;
   signal.throwIfAborted();
 
-  const videoCodec = await pickVideoCodec();
-  if (!videoCodec) {
+  const container = task.outputFormat;
+  if (!isVideoContainer(container)) {
     throw new EngineError(
       "unsupported",
-      "your browser can't encode video/webm",
+      `mediabunny cannot write output format "${container}"`,
       { engine: metadata.id },
     );
   }
-  const audioCodec = await pickAudioCodec();
+
+  // Every video tool's options land here as one flat shape — each tool
+  // schema only ever sets the subset of these keys its own option form
+  // exposes (see each tool file), so the fields below are read
+  // independently rather than assuming any particular tool set all of
+  // them. `preset`/`width`/`height`/`fit` come from `resize-video`;
+  // `maxHeight` from `compress-video` (a coarser "cap the resolution"
+  // knob, expressed as the same preset vocabulary); `mute` from
+  // `mute-video`; `rotate` from `rotate-video`; `start`/`end` from
+  // `trim-video`; `quality` from every container-conversion and
+  // `compress-video` tool.
+  const opts = task.options as {
+    quality?: QualityPreset;
+    mute?: boolean;
+    preset?: ResizePreset | "custom";
+    width?: number;
+    height?: number;
+    fit?: "fill" | "contain" | "cover";
+    maxHeight?: ResizePreset | "none";
+    rotate?: "90" | "180" | "270";
+    start?: number;
+    end?: number;
+  };
+
+  const videoCodec = await pickVideoCodec(container);
+  if (!videoCodec) {
+    throw new EngineError(
+      "unsupported",
+      `your browser can't encode video/${container}`,
+      { engine: metadata.id },
+    );
+  }
   signal.throwIfAborted();
 
-  const blob = inputToBlob(task.input);
-  const input = new Input({
-    source: new BlobSource(blob),
-    formats: ALL_FORMATS,
+  const audioCodec = opts.mute ? null : await pickAudioCodec(container);
+  signal.throwIfAborted();
+
+  const { format, ext, mime } = outputFormatFor(container);
+
+  let resize: ResizeOptions | undefined;
+  if (opts.preset) {
+    resize =
+      opts.preset === "custom"
+        ? { width: opts.width, height: opts.height, fit: opts.fit }
+        : { preset: opts.preset, fit: opts.fit };
+  } else if (opts.maxHeight && opts.maxHeight !== "none") {
+    resize = { preset: opts.maxHeight };
+  }
+
+  const video = {
+    codec: videoCodec,
+    ...(resize ? resizeToVideoOptions(resize) : {}),
+    ...(opts.quality ? { quality: qualityForPreset(opts.quality) } : {}),
+    ...(opts.rotate
+      ? { rotate: rotationFor(Number(opts.rotate) as 90 | 180 | 270) }
+      : {}),
+  };
+
+  const audio = opts.mute
+    ? { discard: true as const }
+    : audioCodec
+      ? { codec: audioCodec }
+      : { discard: true as const };
+
+  let trim: { start?: number; end?: number } | undefined;
+  if (opts.start !== undefined || opts.end !== undefined) {
+    const start = opts.start ?? 0;
+    if (opts.end !== undefined) {
+      const validation = validateTrim(start, opts.end);
+      if (!validation.ok) {
+        throw new EngineError("unsupported", validation.message, {
+          engine: metadata.id,
+        });
+      }
+    }
+    trim = { start, end: opts.end };
+  }
+
+  return runConversion({
+    task,
+    engineId: metadata.id,
+    format,
+    ext,
+    mime,
+    video,
+    audio,
+    trim,
   });
-  const format = new WebMOutputFormat();
-
-  const mime = FORMATS.webm.mime;
-  const opfsName = `${crypto.randomUUID()}.webm`;
-  // Test-only escape hatch for ADR-0010's `BufferTarget` fallback: forces it
-  // even in a real dedicated worker where OPFS is genuinely available, so
-  // adapter.browser.test.ts can exercise that path deterministically rather
-  // than needing a browser/mode that actually lacks OPFS. Never set by any
-  // real tool — `task.options` is the tool's parsed zod options object, and
-  // no tool schema declares this key.
-  const forceBufferTarget = task.options.__forceBufferTarget === true;
-  const syncHandle = forceBufferTarget
-    ? null
-    : await tryOpenOpfsSyncHandle(opfsName);
-  const sizeTracker = new OpfsSizeTracker();
-
-  const target = syncHandle
-    ? new StreamTarget(opfsWritable(syncHandle, sizeTracker))
-    : new BufferTarget();
-
-  const output = new Output({ format, target });
-
-  // Everything past this point owns a possibly-open sync access handle and
-  // a possibly-created OPFS file. Any throw (invalid conversion, a decode
-  // error mid-execute, an abort) has to close the handle if it's still open
-  // and delete the partial file — otherwise it leaks in /localvert-tmp/
-  // until the 24h startup sweep, and a still-open handle blocks the very
-  // sweep that would clean it up (OPFS refuses to remove a file with an
-  // open sync access handle).
-  try {
-    const conversion = await Conversion.init({
-      input,
-      output,
-      video: { codec: videoCodec },
-      audio: audioCodec ? { codec: audioCodec } : { discard: true },
-    });
-
-    if (!conversion.isValid) {
-      const reasons = conversion.discardedTracks
-        .map((d) => d.reason)
-        .join(", ");
-      throw new EngineError(
-        "unsupported",
-        `can't produce a valid WebM from this input in this browser` +
-          (reasons ? ` (${reasons})` : ""),
-        { engine: metadata.id },
-      );
-    }
-
-    conversion.onProgress = (fraction) => onProgress?.(fraction);
-
-    const onAbort = (): void => {
-      void conversion.cancel();
-    };
-    signal.addEventListener("abort", onAbort);
-    try {
-      await conversion.execute();
-    } finally {
-      signal.removeEventListener("abort", onAbort);
-    }
-    signal.throwIfAborted();
-
-    if (syncHandle) {
-      return {
-        kind: "opfs",
-        path: `${OPFS_TEMP_DIR}/${opfsName}`,
-        mime,
-        size: sizeTracker.size,
-      };
-    }
-
-    const buffer = (target as BufferTarget).buffer;
-    if (!buffer) {
-      throw new EngineError(
-        "encode-failed",
-        "mediabunny produced no output buffer",
-        { engine: metadata.id },
-      );
-    }
-    if (buffer.byteLength > MAX_BUFFERED_OUTPUT_BYTES) {
-      throw new EngineError(
-        "unsupported",
-        "output too large for this browser; try a browser with OPFS support",
-        { engine: metadata.id },
-      );
-    }
-    return { kind: "bytes", bytes: buffer, mime };
-  } catch (e) {
-    if (syncHandle) {
-      await cleanupFailedOpfsOutput(syncHandle, opfsName);
-    }
-    // `conversion.cancel()` (triggered by `onAbort` above) rejects `execute()`
-    // with mediabunny's own `ConversionCanceledError`, not a `DOMException`
-    // `toEngineError` would recognize as an abort — normalize it here so an
-    // aborted task always surfaces as `EngineError("aborted")` like every
-    // other engine's abort path.
-    if (signal.aborted) {
-      throw new EngineError("aborted", "transcode aborted", {
-        engine: metadata.id,
-        cause: e,
-      });
-    }
-    throw e;
-  }
-}
-
-/** Best-effort cleanup for a partial OPFS output after a failed or aborted
- * transcode: closes the sync access handle if `close()`/`abort()` on the
- * `StreamTarget`'s writable hasn't already (double-close is a no-op per
- * spec... but mediabunny may not have torn the writable down at all if the
- * failure happened before the target ever started writing), then removes
- * the partial file so it doesn't wait for the 24h sweep. */
-async function cleanupFailedOpfsOutput(
-  handle: OpfsSyncAccessHandle,
-  name: string,
-): Promise<void> {
-  try {
-    handle.close();
-  } catch {
-    // Already closed by the writable's close()/abort() — fine.
-  }
-  try {
-    const root = await navigator.storage.getDirectory();
-    const dir = await root.getDirectoryHandle(OPFS_TEMP_DIR, {
-      create: false,
-    });
-    await dir.removeEntry(name);
-  } catch {
-    // Never created, or already removed — nothing more to do.
-  }
 }
 
 async function load(_ctx: EngineLoadContext): Promise<EngineInstance> {
@@ -390,8 +211,8 @@ async function load(_ctx: EngineLoadContext): Promise<EngineInstance> {
 
 function dispose(): void {
   // No engine-owned resource persists between `run()` calls — each
-  // transcode opens its own `Input`/`Output`/sync access handle and closes
-  // them within `runTranscode` itself.
+  // conversion opens its own `Input`/`Output`/sync access handle and closes
+  // them within `runConversion` itself.
 }
 
 export default defineEngine({
