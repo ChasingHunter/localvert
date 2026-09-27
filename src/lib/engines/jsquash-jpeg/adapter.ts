@@ -5,7 +5,9 @@ import type { Operation, StepFormat } from "@/lib/registry";
 import { FORMATS } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
+import { stripJpeg } from "../exif/strip";
 import { ENGINE_MANIFEST } from "../manifest";
+import { neverLarger } from "../shared/never-larger";
 import { encodeToTargetSize } from "../shared/target-size";
 import type {
   EngineAdapter,
@@ -47,6 +49,14 @@ function supports(
       return input === "jpg" && output === "raster";
     case "encode":
       return input === "raster" && output === "jpg";
+    // ADR-0013: compress-jpg's single byte-to-byte step (runCompress below)
+    // rather than the generic ADR-0007 raster pipeline — mode "lossless"
+    // never even touches the wasm decoder/encoder (byte-level strip only),
+    // and every mode's never-larger check needs the exact original input
+    // bytes alongside the final result, which a two-step decode/encode
+    // pipeline can't give it.
+    case "compress":
+      return input === "jpg" && output === "jpg";
     default:
       return false;
   }
@@ -279,6 +289,174 @@ async function runEncode(
   return { kind: "bytes", bytes, mime: FORMATS.jpg.mime };
 }
 
+type CompressMode =
+  | "lossless"
+  | "visually-lossless"
+  | "strong"
+  | "custom"
+  | "target-size";
+
+/**
+ * Fixed quality per non-custom, non-target-size mode (ADR-0013):
+ * `visually-lossless` (this tool's actual default) is mozjpeg's own
+ * commonly-cited "artifacts start being visible on typical photos at normal
+ * viewing distance" threshold; `strong` is a real, visibly-lossy size win.
+ */
+const QUALITY_BY_MODE: Record<"visually-lossless" | "strong", number> = {
+  "visually-lossless": 0.85,
+  strong: 0.6,
+};
+
+/**
+ * compress (jpg -> jpg, ADR-0013): a single byte-to-byte step, not the
+ * generic ADR-0007 raster pipeline — `mode: "lossless"` never touches the
+ * wasm decoder/encoder at all (a pure metadata strip via the `exif` engine's
+ * `stripJpeg`, reused directly), and every other mode's never-larger check
+ * needs the exact original input bytes alongside its own final result, which
+ * a two-step decode/encode handoff can't give it.
+ */
+async function runCompress(
+  task: EngineTask,
+  ensureDecodeReady: () => Promise<void>,
+  ensureEncodeReady: () => Promise<void>,
+): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  const originalBytes = await inputToBytes(input);
+  signal.throwIfAborted();
+
+  const mode: CompressMode =
+    options.mode === "visually-lossless" ||
+    options.mode === "strong" ||
+    options.mode === "custom" ||
+    options.mode === "target-size"
+      ? options.mode
+      : "lossless";
+
+  if (mode === "lossless") {
+    let stripped: ArrayBuffer;
+    try {
+      stripped = stripJpeg(new Uint8Array(originalBytes)).buffer as ArrayBuffer;
+    } catch (e) {
+      throw new EngineError("decode-failed", "failed to strip jpeg metadata", {
+        engine: metadata.id,
+        cause: e,
+      });
+    }
+    onProgress?.(1);
+    const picked = neverLarger(originalBytes, stripped);
+    return {
+      kind: "bytes",
+      bytes: picked.bytes,
+      mime: FORMATS.jpg.mime,
+      ...(picked.note ? { note: picked.note } : {}),
+    };
+  }
+
+  await ensureDecodeReady();
+  signal.throwIfAborted();
+  onProgress?.(0.15);
+
+  let decoded: ImageData;
+  try {
+    decoded = await decodeJpeg(originalBytes);
+  } catch (e) {
+    throw new EngineError("decode-failed", "failed to decode jpeg", {
+      engine: metadata.id,
+      cause: e,
+    });
+  }
+  signal.throwIfAborted();
+  onProgress?.(0.3);
+
+  const composited = compositeOverBackground(
+    { width: decoded.width, height: decoded.height, data: decoded.data },
+    options.background,
+  );
+  const imageData = new ImageData(
+    composited.data,
+    composited.width,
+    composited.height,
+  );
+
+  await ensureEncodeReady();
+  signal.throwIfAborted();
+  onProgress?.(0.45);
+
+  const progressive = options.progressive !== false;
+  const encodeAtQuality = async (quality: number): Promise<ArrayBuffer> => {
+    try {
+      return await encodeJpeg(imageData, {
+        progressive,
+        quality: Math.round(clamp01(quality) * 100),
+      });
+    } catch (e) {
+      throw new EngineError("encode-failed", "failed to encode jpeg", {
+        engine: metadata.id,
+        cause: e,
+      });
+    }
+  };
+
+  let encoded: ArrayBuffer;
+  if (mode === "target-size") {
+    const targetSizeKB = options.targetSizeKB;
+    if (typeof targetSizeKB !== "number" || targetSizeKB <= 0) {
+      throw new EngineError(
+        "internal",
+        "target-size mode requires a positive targetSizeKB",
+        { engine: metadata.id },
+      );
+    }
+    let iteration = 0;
+    const result = await encodeToTargetSize(
+      async (quality) => {
+        const out = await encodeAtQuality(quality);
+        iteration += 1;
+        onProgress?.(0.45 + 0.4 * Math.min(iteration / 8, 1));
+        return out;
+      },
+      targetSizeKB * 1024,
+      { signal },
+    );
+    encoded = result.bytes;
+  } else {
+    const quality =
+      mode === "custom"
+        ? typeof options.quality === "number"
+          ? options.quality
+          : 0.75
+        : QUALITY_BY_MODE[mode];
+    encoded = await encodeAtQuality(quality);
+  }
+  onProgress?.(0.9);
+
+  let strippedOriginal: ArrayBuffer;
+  try {
+    strippedOriginal = stripJpeg(new Uint8Array(originalBytes))
+      .buffer as ArrayBuffer;
+  } catch {
+    // Malformed input would already have failed the decode above.
+    strippedOriginal = originalBytes;
+  }
+
+  const picked = neverLarger(
+    strippedOriginal,
+    encoded,
+    "This JPG was already about as small as it gets at this quality — kept " +
+      "the original (with metadata removed).",
+  );
+
+  onProgress?.(1);
+  return {
+    kind: "bytes",
+    bytes: picked.bytes,
+    mime: FORMATS.jpg.mime,
+    ...(picked.note ? { note: picked.note } : {}),
+  };
+}
+
 /**
  * Compiles `<baseUrl>mozjpeg_dec.wasm`/`mozjpeg_enc.wasm` and hands the
  * resulting `WebAssembly.Module` to jSquash's own `init` — never letting
@@ -331,6 +509,8 @@ async function load(ctx: EngineLoadContext): Promise<EngineInstance> {
           return await runDecode(task, ensureDecodeReady);
         case "encode":
           return await runEncode(task, ensureEncodeReady);
+        case "compress":
+          return await runCompress(task, ensureDecodeReady, ensureEncodeReady);
         default:
           throw new EngineError(
             "unsupported",

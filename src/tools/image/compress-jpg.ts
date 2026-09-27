@@ -1,29 +1,58 @@
 import { z } from "zod";
-import { defineTool, imagePipeline } from "@/lib/registry";
+import { defineTool } from "@/lib/registry";
 
 /**
- * `targetSizeKB` is the whole point of this tool: pick a byte budget instead
- * of a quality number. It's optional — `quality` alone is a perfectly valid
- * way to compress — so the two knobs coexist, and the engine adapter
- * (`jsquash-jpeg`'s `runEncode`) prefers `targetSizeKB` whenever it's set,
- * bisecting `quality` internally (`src/lib/engines/shared/target-size.ts`)
- * to hit it. Both fields must carry `.meta()` *before* `.optional()`/
- * `.default()` — see `src/lib/options/fields.ts`'s `unwrap` doc comment;
- * meta registered after a wrapper is invisible to it.
+ * ADR-0013: `lossless` is metadata-strip only (the `exif` engine's
+ * byte-level `stripJpeg`, reused verbatim — no re-encode, pixels untouched)
+ * since a JPEG's size lives almost entirely in its lossy pixel data, which a
+ * metadata strip alone barely touches. `visually-lossless` is the actual
+ * default: mozjpeg quality ~0.85, the commonly-cited threshold below which
+ * compression artifacts start being visible on typical photos at normal
+ * viewing distance — a real size win nobody has to second-guess. `strong`
+ * (~0.6) and `custom` (a direct quality slider, shown only in this mode) are
+ * explicit, visibly-lossy choices; `target-size` is the pre-existing
+ * byte-budget behaviour, unchanged. All five run through the single
+ * `jsquash-jpeg` `compress` op (`runCompress`), which never returns a file
+ * bigger than the input.
  */
 export default defineTool({
   slug: "compress-jpg",
   category: "image",
-  title: "Compress JPG to a Target Size",
+  title: "Compress JPG",
   description:
-    "Shrink a JPG file — to a target size (e.g. under 200 KB) or a quality " +
-    "level you choose — free, private, in your browser. Files never leave " +
-    "your device. Re-encoding strips embedded metadata, including GPS.",
+    "Shrink a JPG file — losslessly (metadata only), visually lossless " +
+    "(the default), strong, a custom quality, or a target size (e.g. under " +
+    "200 KB) — free, private, in your browser. Files never leave your " +
+    "device. Never makes the file bigger.",
 
   accepts: ["jpg"],
   produces: "jpg",
 
   options: z.object({
+    mode: z
+      .enum([
+        "lossless",
+        "visually-lossless",
+        "strong",
+        "custom",
+        "target-size",
+      ])
+      .meta({
+        label: "Mode",
+        control: "select",
+        help: '"Lossless" only strips metadata; the other modes re-encode the image.',
+      })
+      .default("visually-lossless"),
+    quality: z
+      .number()
+      .min(0.05)
+      .max(1)
+      .meta({
+        label: "Quality",
+        control: "slider",
+        showWhen: { field: "mode", equals: "custom" },
+      })
+      .default(0.75),
     targetSizeKB: z
       .number()
       .int()
@@ -33,19 +62,19 @@ export default defineTool({
         label: "Target size",
         control: "number",
         unit: "KB",
-        help: "Leave empty to use Quality instead",
+        required: true,
+        showWhen: { field: "mode", equals: "target-size" },
       })
       .optional(),
-    quality: z
-      .number()
-      .min(0.05)
-      .max(1)
-      .meta({ label: "Quality", control: "slider" })
-      .default(0.75),
   }),
-  defaults: { quality: 0.75 },
+  defaults: { mode: "visually-lossless", quality: 0.75 },
 
-  pipeline: imagePipeline("jpg", "jpg"),
+  pipeline: [
+    {
+      op: "compress",
+      candidates: [{ engine: "jsquash-jpeg" }],
+    },
+  ],
 
   batch: true,
 });

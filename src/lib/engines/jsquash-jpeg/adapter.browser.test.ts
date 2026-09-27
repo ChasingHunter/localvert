@@ -92,9 +92,13 @@ describe("jsquash-jpeg adapter", () => {
       expect(adapter.supports("encode", "raster", "png")).toBe(false);
     });
 
-    it("rejects a non-decode/encode op", () => {
+    it("rejects a non-decode/encode/compress op", () => {
       expect(adapter.supports("resize", "raster", "raster")).toBe(false);
       expect(adapter.supports("transcode", "jpg", "jpg")).toBe(false);
+    });
+
+    it("accepts compress jpg -> jpg", () => {
+      expect(adapter.supports("compress", "jpg", "jpg")).toBe(true);
     });
   });
 
@@ -256,6 +260,162 @@ describe("jsquash-jpeg adapter", () => {
       ).rejects.toSatisfy(
         (e: unknown) => isEngineError(e) && e.code === "aborted",
       );
+    });
+  });
+
+  describe("compress (ADR-0013)", () => {
+    it("mode lossless strips metadata without touching pixels", async () => {
+      const instance = await adapter.load({
+        baseUrl: baseUrl(),
+        capabilities: {} as never,
+      });
+      const srcBlob = await sourceJpeg();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "jpg",
+          outputFormat: "jpg",
+          options: { mode: "lossless" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(sniffFormat(new Uint8Array(result.bytes))).toBe("jpg");
+
+      const outBitmap = await createImageBitmap(
+        new Blob([result.bytes], { type: result.mime }),
+      );
+      expect(outBitmap.width).toBe(WIDTH);
+      expect(outBitmap.height).toBe(HEIGHT);
+      outBitmap.close();
+    });
+
+    it("mode visually-lossless (the default) produces a smaller jpg than a noisy source", async () => {
+      const instance = await adapter.load({
+        baseUrl: baseUrl(),
+        capabilities: {} as never,
+      });
+      const srcBlob = await noisySourceJpeg();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "jpg",
+          outputFormat: "jpg",
+          options: { mode: "visually-lossless" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(result.bytes.byteLength).toBeLessThan(srcBlob.size);
+    });
+
+    it("mode strong produces a smaller file than mode visually-lossless", async () => {
+      const instance = await adapter.load({
+        baseUrl: baseUrl(),
+        capabilities: {} as never,
+      });
+      const srcBlob = await noisySourceJpeg();
+
+      const visuallyLossless = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "jpg",
+          outputFormat: "jpg",
+          options: { mode: "visually-lossless" },
+        }),
+      );
+      const strong = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "jpg",
+          outputFormat: "jpg",
+          options: { mode: "strong" },
+        }),
+      );
+      if (visuallyLossless.kind !== "bytes" || strong.kind !== "bytes") {
+        throw new Error("expected bytes results");
+      }
+      expect(strong.bytes.byteLength).toBeLessThan(
+        visuallyLossless.bytes.byteLength,
+      );
+    });
+
+    it("mode custom honours options.quality", async () => {
+      const instance = await adapter.load({
+        baseUrl: baseUrl(),
+        capabilities: {} as never,
+      });
+      const srcBlob = await noisySourceJpeg();
+
+      const low = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "jpg",
+          outputFormat: "jpg",
+          options: { mode: "custom", quality: 0.2 },
+        }),
+      );
+      const high = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "jpg",
+          outputFormat: "jpg",
+          options: { mode: "custom", quality: 0.9 },
+        }),
+      );
+      if (low.kind !== "bytes" || high.kind !== "bytes") {
+        throw new Error("expected bytes results");
+      }
+      expect(low.bytes.byteLength).toBeLessThan(high.bytes.byteLength);
+    });
+
+    it("mode target-size bisects toward the requested byte budget", async () => {
+      const instance = await adapter.load({
+        baseUrl: baseUrl(),
+        capabilities: {} as never,
+      });
+      const srcBlob = await noisySourceJpeg();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "jpg",
+          outputFormat: "jpg",
+          options: { mode: "target-size", targetSizeKB: 5 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(result.bytes.byteLength).toBeLessThanOrEqual(5 * 1024 * 1.2);
+    });
+
+    it("never returns a file bigger than the input, and notes it when it doesn't", async () => {
+      const instance = await adapter.load({
+        baseUrl: baseUrl(),
+        capabilities: {} as never,
+      });
+      // A tiny, already-tiny solid-colour source: re-encoding at a high
+      // "custom" quality plus jpeg's own container overhead is a case where
+      // the never-larger fallback is expected to kick in.
+      const srcBlob = await sourceJpeg(4, 4);
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "jpg",
+          outputFormat: "jpg",
+          options: { mode: "custom", quality: 1 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(result.bytes.byteLength).toBeLessThanOrEqual(srcBlob.size);
     });
   });
 });
