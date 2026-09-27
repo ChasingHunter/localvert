@@ -21,6 +21,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { findStagedFiles, readBucketName, wranglerBinPath } from "./upload-r2";
 
 export function seedLocalR2(
@@ -78,4 +79,13 @@ function main(): void {
   }
 }
 
-main();
+// Same guard as upload-r2.ts's `main()` call — without it, importing this
+// module (e.g. from seed-r2-local.test.ts) would run the real `main()`
+// against the real repo root on every test run, exactly the bug this
+// comment is here to prevent a regression of.
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  main();
+}
