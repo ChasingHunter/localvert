@@ -25,11 +25,14 @@ export default defineTool({
   produces: "png",
 
   options: z.object({
-    halfSize: z.boolean().default(false).meta({
-      label: "Fast half-size decode",
-      control: "switch",
-      help: "Decodes at half resolution — faster, good for a quick preview.",
-    }),
+    halfSize: z
+      .boolean()
+      .meta({
+        label: "Fast half-size decode",
+        control: "switch",
+        help: "Decodes at half resolution — faster, good for a quick preview.",
+      })
+      .default(false),
   }),
   defaults: { halfSize: false },
 
