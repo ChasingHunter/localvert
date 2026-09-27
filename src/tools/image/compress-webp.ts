@@ -37,6 +37,13 @@ export default defineTool({
         label: "Mode",
         control: "select",
         help: '"Lossless" only strips metadata; the other modes re-encode the image.',
+        optionLabels: {
+          lossless: "Lossless (strip metadata only)",
+          "visually-lossless": "High quality (recommended)",
+          strong: "Smallest file",
+          custom: "Custom quality",
+          "target-size": "Target file size",
+        },
       })
       .default("visually-lossless"),
     quality: z

@@ -30,6 +30,11 @@ export default defineTool({
         label: "Compression",
         control: "select",
         help: '"Lossless" only restructures the file; "strong" also shrinks images the most.',
+        optionLabels: {
+          lossless: "Lossless (no quality loss)",
+          balanced: "Balanced",
+          strong: "Strong (smallest)",
+        },
       })
       .default("lossless"),
   }),

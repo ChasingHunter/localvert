@@ -57,6 +57,20 @@ interface NumberLike {
   format: string | null;
 }
 
+/**
+ * A select option's display text: the tool's own `optionLabels` entry if it
+ * has one, else the enum value with `-`/`_` separators turned into spaces
+ * (`"target-size"` → "target size"). Case is left alone on purpose — many
+ * enums are format ids (`jpg`, `mp3`) where naive capitalization ("Jpg")
+ * reads worse than the raw value; tools that want proper wording declare it.
+ */
+export function optionLabel(
+  value: string,
+  labels?: Record<string, string>,
+): string {
+  return labels?.[value] ?? value.replace(/[-_]+/g, " ");
+}
+
 function isFiniteBound(n: number | null): n is number {
   return n !== null && Number.isFinite(n);
 }
@@ -100,7 +114,7 @@ function describeField(key: string, rawField: CoreField): FieldSpec {
       };
       const options = Object.values(entries).map((value) => ({
         value,
-        label: value,
+        label: optionLabel(value, meta.optionLabels),
       }));
       return { ...base, control, options };
     }

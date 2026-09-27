@@ -38,6 +38,22 @@ describe("describeFields", () => {
     ]);
   });
 
+  it("labels select options from optionLabels, else the value with separators as spaces", () => {
+    const schema = z.object({
+      mode: z.enum(["lossless", "target-size", "keep_all"]).meta({
+        label: "Mode",
+        control: "select",
+        optionLabels: { lossless: "Lossless (strip metadata only)" },
+      }),
+    });
+    const [field] = describeFields(schema);
+    expect(field?.control === "select" && field.options).toEqual([
+      { value: "lossless", label: "Lossless (strip metadata only)" },
+      { value: "target-size", label: "target size" },
+      { value: "keep_all", label: "keep all" },
+    ]);
+  });
+
   it("describes a slider control with min/max/step from zod checks", () => {
     const schema = z.object({
       quality: z

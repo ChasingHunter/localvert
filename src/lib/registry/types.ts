@@ -33,6 +33,13 @@ declare module "zod/v4/core" {
      */
     step?: number;
     /**
+     * Display text for a `select` field's enum values, keyed by value. Any
+     * value without an entry falls back to itself with separators turned
+     * into spaces (`"target-size"` → "target size") — see `optionLabel` in
+     * `src/lib/options/fields.ts`.
+     */
+    optionLabels?: Record<string, string>;
+    /**
      * Marks this field as required *for the tool to run*, distinct from
      * zod-level validity — e.g. `protect-pdf`'s `password` is a valid
      * (empty-string) value per its schema (see that tool's own doc comment
@@ -227,6 +234,8 @@ export interface OptionMeta {
     | "hidden";
   unit?: string;
   help?: string;
+  /** See the `optionLabels` doc comment on the `GlobalMeta` augmentation above. */
+  optionLabels?: Record<string, string>;
   /** See the `required` doc comment on the `GlobalMeta` augmentation above. */
   required?: boolean;
   /** See the `showWhen` doc comment on the `GlobalMeta` augmentation above. */

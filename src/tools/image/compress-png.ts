@@ -30,7 +30,11 @@ export default defineTool({
       .meta({
         label: "Mode",
         control: "select",
-        help: '"Lossless" only repacks the file; "smaller" reduces colours too.',
+        help: '"Lossless" only repacks the file; "Smaller" reduces colours too.',
+        optionLabels: {
+          lossless: "Lossless",
+          smaller: "Smaller (reduce colours)",
+        },
       })
       .default("lossless"),
     dither: z
