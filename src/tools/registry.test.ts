@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ENGINE_MANIFEST } from "@/lib/engines/manifest";
+import { describeFields } from "@/lib/options/fields";
 import { FORMATS } from "@/lib/registry";
 import { TOOLS, TOOLS_BY_SLUG } from "./index";
 import { TOOL_LOADERS } from "./loaders";
@@ -107,4 +108,14 @@ describe("TOOLS", () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  // The options form builds its fields with `describeFields`, which throws on
+  // any field missing a label or control — that crashed /tools/mute-video at
+  // render time (2026-09-27). Every tool's schema must describe cleanly.
+  it.each(TOOLS.map((t) => [t.slug, t] as const))(
+    "%s: every option field describes for the options form",
+    (_slug, tool) => {
+      expect(() => describeFields(tool.options)).not.toThrow();
+    },
+  );
 });
