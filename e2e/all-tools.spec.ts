@@ -81,6 +81,9 @@ const FIXTURE_BY_FORMAT: Partial<Record<FormatId, string>> = {
   avi: "sample.avi",
   flv: "sample.flv",
   wav: "sample.wav",
+  gif: "sample.gif",
+  bmp: "sample.bmp",
+  ico: "sample.ico",
 };
 
 /** A second, distinct fixture of the same format — only needed by
