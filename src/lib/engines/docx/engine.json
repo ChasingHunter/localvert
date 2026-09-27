@@ -1,0 +1,8 @@
+{
+  "id": "docx",
+  "versionFrom": "fflate",
+  "license": "MIT",
+  "location": "bundled",
+  "needsIsolation": false,
+  "heavy": false
+}

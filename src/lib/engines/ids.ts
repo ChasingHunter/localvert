@@ -2,6 +2,7 @@
 export type EngineId =
   | "canvas"
   | "data"
+  | "docx"
   | "epub"
   | "exif"
   | "ffmpeg"
