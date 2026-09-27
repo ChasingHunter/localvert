@@ -1,0 +1,1 @@
+Localvert e2e fixture: a small plain text file used to smoke-test txt-to-pdf.

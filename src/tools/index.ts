@@ -27,8 +27,10 @@ import xlsxToCsv from "@/tools/data/xlsx-to-csv";
 import xlsxToJson from "@/tools/data/xlsx-to-json";
 import yamlToJson from "@/tools/data/yaml-to-json";
 import excelToPdf from "@/tools/document/excel-to-pdf";
+import htmlToPdf from "@/tools/document/html-to-pdf";
 import markdownToPdf from "@/tools/document/markdown-to-pdf";
 import powerpointToPdf from "@/tools/document/powerpoint-to-pdf";
+import txtToPdf from "@/tools/document/txt-to-pdf";
 import wordToPdf from "@/tools/document/word-to-pdf";
 import avifToJpg from "@/tools/image/avif-to-jpg";
 import avifToPng from "@/tools/image/avif-to-png";
@@ -148,8 +150,10 @@ export const TOOLS: readonly ToolDefinition[] = [
   xlsxToJson,
   yamlToJson,
   excelToPdf,
+  htmlToPdf,
   markdownToPdf,
   powerpointToPdf,
+  txtToPdf,
   wordToPdf,
   avifToJpg,
   avifToPng,

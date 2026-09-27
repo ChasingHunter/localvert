@@ -45,7 +45,7 @@ as its codec preference table.
 | `pdfjs` | — | — | `render`: pdf → jpg, png | adapter ready |
 | `tesseract` | — | — | `ocr`: jpg, png, webp, bmp → txt, pdf | adapter ready |
 | `data` | — | — | `transcode`: json ↔ yaml, json → xlsx, xlsx → json | adapter ready |
-| `libreoffice` | — | — | `transcode`: docx, doc, odt, rtf, xlsx, xls, ods, pptx, ppt, odp → pdf | adapter ready |
+| `libreoffice` | — | — | `transcode`: docx, doc, odt, rtf, xlsx, xls, ods, pptx, ppt, odp, txt, html → pdf | adapter ready |
 
 `canvas` also still runs the legacy single-step `transcode` op directly
 (bytes of one format straight to bytes of another) for a tool that predates

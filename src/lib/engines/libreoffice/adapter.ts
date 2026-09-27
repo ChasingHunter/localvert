@@ -59,7 +59,16 @@ const metadata = {
 
 /** Extension the nested worker's `MimetypeConverter` (see `q`'s filter-name
  * table in `browser.worker.global.js`) needs to pick the right import
- * filter — every format this tool accepts, all converting to "pdf". */
+ * filter — every format this tool accepts, all converting to "pdf".
+ *
+ * `txt`/`html` (ADR-0012's txt/html-to-pdf addendum) both classify as the
+ * nested worker's own "text" doc type (its `ne` table) — same Writer import
+ * path as docx/odt/rtf, just via the `Text`/`HTML (StarWriter)` filters
+ * rather than an OOXML/ODF one. Confirmed by reading `browser.worker.
+ * global.js` directly (see that addendum): there is no PDF entry here on
+ * purpose — see the same addendum for why PDF import doesn't go through
+ * this table at all.
+ */
 const INPUT_EXT: Record<string, string> = {
   docx: "docx",
   doc: "doc",
@@ -71,6 +80,8 @@ const INPUT_EXT: Record<string, string> = {
   pptx: "pptx",
   ppt: "ppt",
   odp: "odp",
+  txt: "txt",
+  html: "html",
 };
 
 function supports(

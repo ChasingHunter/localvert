@@ -497,13 +497,15 @@ export const FORMATS = {
     ext: ["txt"],
     mime: "text/plain",
     category: "document",
-    // Output-only: plain text has no magic bytes of its own to sniff, so no
-    // dropped file can ever be identified as this format. `sniffFormat`'s
-    // `.some()` over an empty `magic` array is always `false`, which is
-    // exactly the "never matches" behavior an output-only format needs —
-    // see the OCR tools (`src/tools/image/image-to-text.ts`) that `produce`
-    // this format but never `accept` it.
+    // Plain text has no magic bytes of its own — same reasoning as
+    // csv/json/yaml above — so this is a `text` format, identified by
+    // extension via `classifyFiles`' fallback. Historically output-only (the
+    // OCR tools, `src/tools/image/image-to-text.ts`, `produce` this format);
+    // `txt-to-pdf` (ADR-0012's LibreOffice addendum) is the first tool that
+    // also `accepts` it, which is what makes the extension fallback matter
+    // here rather than just documenting a shape nothing reads.
     magic: [],
+    text: true,
   },
   json: {
     label: "JSON",
@@ -546,6 +548,21 @@ export const FORMATS = {
     category: "document",
     // Plain text, same reasoning as csv/json/yaml above: no container
     // signature of its own, identified by extension.
+    magic: [],
+    text: true,
+  },
+  html: {
+    label: "HTML",
+    ext: ["html", "htm"],
+    mime: "text/html",
+    category: "document",
+    // Same reasoning as md above: no fixed container signature (a real
+    // browser accepts HTML missing its "<!doctype" / "<html" opener
+    // entirely), so this is a `text` format, identified by extension.
+    // `svg`'s own magic (above) matches a bare "<?xml" prolog too, but svg
+    // is declared first, so an actual .html file starting with one would
+    // never reach here anyway — moot, since this format never sniffs by
+    // magic at all.
     magic: [],
     text: true,
   },

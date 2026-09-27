@@ -188,6 +188,20 @@ into an editable Writer document) would need either a different
 `libreoffice-wasm` build whose wrapper exposes `FilterName` at load time, or
 a from-scratch text-reflow engine — both out of scope for this slice.
 
+### Addendum (2026-09-28): txt/html-to-pdf
+
+Two more direct LibreOffice conversions, same shape as `word-to-pdf`:
+`txt-to-pdf` and `html-to-pdf` add `txt`/`html` to `INPUT_EXT` — both
+classify as the nested worker's own `"text"` doc type (the `ne` table the
+PDF-import addendum above already read), the same Writer import path
+docx/odt/rtf use, just via the `Text`/`HTML (StarWriter)` filters. `html`
+is a new `FormatSpec` (`src/lib/registry/formats.ts`): a `text` format (no
+fixed signature, identified by extension) like md/csv, not a binary one.
+LibreOffice runs under this app's `connect-src 'self'` the same as every
+other engine, so a dropped HTML file's external images/`@import`ed
+stylesheets simply fail to load — stated in `html-to-pdf`'s own description,
+not discovered later as a silent rendering gap.
+
 ## Alternatives considered
 
 - **mammoth / docx-preview (JS-only docx renderers).** Rejected: coverage is

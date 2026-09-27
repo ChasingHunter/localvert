@@ -27,6 +27,8 @@ describe("libreoffice adapter", () => {
       "pptx",
       "ppt",
       "odp",
+      "txt",
+      "html",
     ] as const) {
       expect(libreoffice.supports("transcode", ext, "pdf")).toBe(true);
     }

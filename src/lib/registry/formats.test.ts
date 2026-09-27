@@ -252,12 +252,15 @@ describe("sniffFile", () => {
 
 describe("FORMATS table shape", () => {
   /**
-   * Formats with no magic bytes of their own — never sniffable, so a tool
-   * may only ever `produce` one, never `accept` it. Exactly `txt` today
-   * (OCR's plain-text output); a new output-only format joins this list on
-   * purpose rather than silently exempting itself.
+   * Formats with no magic bytes of their own and no `text: true` either —
+   * never sniffable by any path, so a tool may only ever `produce` one,
+   * never `accept` it. Empty today: `txt` used to be the one example (OCR's
+   * plain-text output) until `txt-to-pdf` (ADR-0012's LibreOffice addendum)
+   * needed it as an accepted format too, which is what made it a `text`
+   * format like csv/json/yaml/md/html. A new genuinely output-only format
+   * joins this list on purpose rather than silently exempting itself.
    */
-  const OUTPUT_ONLY: readonly FormatId[] = ["txt"];
+  const OUTPUT_ONLY: readonly FormatId[] = [];
 
   it("every accepted format has a magic alternative or is a text format", () => {
     for (const [id, spec] of Object.entries(FORMATS) as [
@@ -312,6 +315,9 @@ describe("textFormatFromExtension", () => {
     expect(textFormatFromExtension("data.json")).toBe("json");
     expect(textFormatFromExtension("data.yaml")).toBe("yaml");
     expect(textFormatFromExtension("data.yml")).toBe("yaml");
+    expect(textFormatFromExtension("notes.txt")).toBe("txt");
+    expect(textFormatFromExtension("page.html")).toBe("html");
+    expect(textFormatFromExtension("page.htm")).toBe("html");
   });
 
   it("returns null for a non-text format's extension", () => {

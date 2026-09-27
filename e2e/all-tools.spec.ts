@@ -100,6 +100,8 @@ const FIXTURE_BY_FORMAT: Partial<Record<FormatId, string>> = {
   webm: "sample.webm",
   mkv: "sample.mkv",
   wmv: "sample.wmv",
+  txt: "sample.txt",
+  html: "sample.html",
 };
 
 /** A second, distinct fixture of the same format — only needed by

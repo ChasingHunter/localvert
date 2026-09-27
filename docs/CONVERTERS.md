@@ -171,7 +171,8 @@ them, so that column reads their own **Arity** instead.
 | `word-to-pdf` | Word (DOCX, DOC), OpenDocument Text, RTF | PDF | libreoffice | Yes | Needs a desktop browser (≥4 GB memory) and a one-time ~74 MB download, consent-gated (ADR-0012). No CJK fonts in this build. |
 | `excel-to-pdf` | Excel (XLSX, XLS), OpenDocument Spreadsheet | PDF | libreoffice | Yes | Same engine/limits as `word-to-pdf` (ADR-0012). |
 | `powerpoint-to-pdf` | PowerPoint (PPTX, PPT), OpenDocument Presentation | PDF | libreoffice | Yes | Same engine/limits as `word-to-pdf` (ADR-0012). |
-
+| `txt-to-pdf` | Text | PDF | libreoffice | Yes | Same engine/limits as `word-to-pdf` (ADR-0012 addendum), via LibreOffice Writer's "Text" import filter. |
+| `html-to-pdf` | HTML | PDF | libreoffice | Yes | Same engine/limits as `word-to-pdf` (ADR-0012 addendum). External images/stylesheets never load (`connect-src 'self'`) — only what's embedded in the file renders. |
 ## Archive
 
 | Slug | From | To | Engine | Batch | Notes |
