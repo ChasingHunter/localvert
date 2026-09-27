@@ -216,6 +216,13 @@ jobs:
         if: steps.e2e-specs.outputs.found == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium
 
+      # `.engines-r2/` is gitignored, so it isn't in the "site" artifact. The
+      # e2e webServer seeds local R2 from it (scripts/seed-r2-local.ts); without
+      # this step the ffmpeg wasm 404s and legacy-video conversions never finish.
+      - name: Stage r2 engine assets
+        if: steps.e2e-specs.outputs.found == 'true'
+        run: pnpm sync-engines
+
       # Playwright's webServer runs `wrangler dev` against the built `out/`
       # directory locally — no Cloudflare credentials needed for this job.
       - name: E2E tests
