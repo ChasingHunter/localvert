@@ -25,7 +25,12 @@ export default defineConfig({
   // editor's browser tests), re-optimizes and reloads the page, which on a
   // cold cache — every CI run — can kill whichever test file is loading.
   optimizeDeps: {
-    include: ["@embedpdf/engines", "@embedpdf/pdfium"],
+    include: [
+      "@embedpdf/engines",
+      "@embedpdf/engines/worker",
+      "@embedpdf/models",
+      "@embedpdf/pdfium",
+    ],
   },
   server: {
     headers: {
