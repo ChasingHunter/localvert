@@ -3,7 +3,16 @@
 import { useDocumentManagerCapability } from "@embedpdf/plugin-document-manager/react";
 import { useExport } from "@embedpdf/plugin-export/react";
 import { ThumbImg } from "@embedpdf/plugin-thumbnail/react";
-import { FileInput, Plus, RotateCcw, RotateCw, Trash2, X } from "lucide-react";
+import {
+  FileInput,
+  Plus,
+  Redo2,
+  RotateCcw,
+  RotateCw,
+  Trash2,
+  Undo2,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -378,6 +387,10 @@ export function PageOrganizer({
   ]);
 
   const busy = insertBusy || applying;
+  // Refs, not state — but every commit/undo/redo already calls `setTiles`,
+  // so these lengths are current by the time this render reads them.
+  const canUndo = pastRef.current.length > 0;
+  const canRedo = futureRef.current.length > 0;
 
   return (
     <dialog
@@ -426,7 +439,27 @@ export function PageOrganizer({
           <Button
             type="button"
             variant="outline"
-            size="sm"
+            size="icon-sm"
+            disabled={!canUndo || busy}
+            aria-label="Undo"
+            onClick={undo}
+          >
+            <Undo2 aria-hidden="true" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            disabled={!canRedo || busy}
+            aria-label="Redo"
+            onClick={redo}
+          >
+            <Redo2 aria-hidden="true" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
             disabled={selected.size === 0 || busy}
             aria-label="Rotate selection left"
             onClick={() => rotateSelection(-90)}
@@ -436,7 +469,7 @@ export function PageOrganizer({
           <Button
             type="button"
             variant="outline"
-            size="sm"
+            size="icon-sm"
             disabled={selected.size === 0 || busy}
             aria-label="Rotate selection right"
             onClick={() => rotateSelection(90)}
@@ -465,7 +498,7 @@ export function PageOrganizer({
           aria-multiselectable="true"
           className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-3 overflow-auto rounded-md border border-border bg-canvas p-3"
         >
-          {tiles.map((tile) => (
+          {tiles.map((tile, index) => (
             <div
               key={tile.id}
               data-tile-id={tile.id}
@@ -529,12 +562,12 @@ export function PageOrganizer({
               <span className="text-xs text-ink-muted">
                 {tile.source === "blank" ? "—" : (tile.page ?? 0) + 1}
               </span>
-              <div className="flex gap-1">
+              <div className="grid grid-cols-2 gap-1">
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon"
-                  aria-label="Rotate left"
+                  size="icon-sm"
+                  aria-label={`Rotate page ${index + 1} left`}
                   disabled={busy}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -546,8 +579,8 @@ export function PageOrganizer({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon"
-                  aria-label="Rotate right"
+                  size="icon-sm"
+                  aria-label={`Rotate page ${index + 1} right`}
                   disabled={busy}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -559,8 +592,8 @@ export function PageOrganizer({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon"
-                  aria-label="Insert blank page after"
+                  size="icon-sm"
+                  aria-label={`Insert blank page after page ${index + 1}`}
                   disabled={busy}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -572,8 +605,8 @@ export function PageOrganizer({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon"
-                  aria-label="Delete page"
+                  size="icon-sm"
+                  aria-label={`Delete page ${index + 1}`}
                   disabled={busy}
                   onClick={(e) => {
                     e.stopPropagation();

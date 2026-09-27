@@ -76,12 +76,15 @@ body {
 }
 
 /*
- * E6b -- touch: the PDF editor's toolbar buttons grow to a real 40px touch
- * target on a coarse (touch) pointer, without changing their mouse/desktop
- * size. Scoped to the editor's own toolbar, not every button on the site.
+ * E6b -- touch: the PDF editor's toolbar buttons, and the page organizer's
+ * per-tile action buttons, grow to a real 40px touch target on a coarse
+ * (touch) pointer, without changing their mouse/desktop size. Scoped to the
+ * editor's own toolbar and the organizer's page grid, not every button on
+ * the site.
  */
 @media (pointer: coarse) {
-  [role="toolbar"] [data-slot="button"] {
+  [role="toolbar"] [data-slot="button"],
+  [aria-label="Pages"] [data-slot="button"] {
     min-width: 40px;
     min-height: 40px;
   }
