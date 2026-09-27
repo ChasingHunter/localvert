@@ -22,7 +22,11 @@
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { findStagedFiles, readBucketName, wranglerBinPath } from "./upload-r2";
+import {
+  findStagedFiles,
+  readBucketName,
+  wranglerBinPath,
+} from "./upload-r2.ts";
 
 export function seedLocalR2(
   rootDir: string,
@@ -55,6 +59,17 @@ export function seedLocalR2(
         "--content-type",
         file.contentType,
         "--local",
+        // Without this, wrangler can't find `infra/wrangler.jsonc` from the
+        // repo-root cwd this script runs from (auto-discovery only searches
+        // upward from cwd, never into subdirectories) and silently falls
+        // back to a `--local` persist directory under the repo root instead
+        // of `infra/.wrangler/` — a *different* store than the one
+        // `wrangler dev --config infra/wrangler.jsonc` reads from, so every
+        // seeded object 404s once the server starts. Same `--config`
+        // `playwright.config.ts`'s `webServer.command` passes to `wrangler
+        // dev`, so both processes agree on one persist path.
+        "--config",
+        join(rootDir, "infra", "wrangler.jsonc"),
       ],
       { stdio: "inherit" },
     );
