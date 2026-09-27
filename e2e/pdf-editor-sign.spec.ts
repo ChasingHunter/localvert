@@ -188,7 +188,10 @@ test.describe("pdf-editor signature dialog", () => {
       page.evaluate(
         () =>
           new Promise<boolean>((resolve, reject) => {
-            const req = indexedDB.open("localvert", 1);
+            // No explicit version: `local-db.ts` is now the single opener for
+            // "localvert" (both the signatures and drafts stores) at version
+            // 2 — opening at a stale version 1 here throws VersionError.
+            const req = indexedDB.open("localvert");
             req.onsuccess = () => {
               const db = req.result;
               if (!db.objectStoreNames.contains("signatures")) {

@@ -40,7 +40,14 @@ const test = base.extend<Fixtures>({
 });
 
 function pageImage(page: import("@playwright/test").Page, pageIndex = 0) {
-  return page.locator(`[data-page-index="${pageIndex}"] img`);
+  // A bare `img` descendant selector also matches a FreeText annotation's own
+  // rendered appearance image (EmbedPDF's `plugin-annotation` renders one
+  // several levels deep, alongside its "Insert text" placeholder span) once
+  // the page has any annotation on it — the "Restore reopens it" case below
+  // does, via the restored draft's own saved annotation. `RenderLayer`'s page
+  // image is a direct child of `PagePointerProvider`'s wrapper div (see
+  // `pdf-editor-app.tsx`'s `renderPage`), so `> div > img` is unambiguous.
+  return page.locator(`[data-page-index="${pageIndex}"] > div > img`);
 }
 
 async function openEditor(page: import("@playwright/test").Page) {

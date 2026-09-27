@@ -103,9 +103,12 @@ test.describe("pdf-editor text edit", () => {
     await openEditor(page);
 
     await page.getByRole("button", { name: "Edit text" }).click();
-    const sampleObject = page.getByRole("button", {
-      name: /Text object: .*Sample/,
-    });
+    // Scoped to page 1's rendered layer: the fixture repeats "Sample text for
+    // page N" on every page, so an unscoped name match is a strict-mode
+    // violation (it also matches page 2's object).
+    const sampleObject = page
+      .locator('[data-page-index="0"]')
+      .getByRole("button", { name: /Text object: .*Sample/ });
     await expect(sampleObject).toBeVisible({ timeout: 10_000 });
     await sampleObject.click();
 
@@ -122,6 +125,11 @@ test.describe("pdf-editor text edit", () => {
     const bytes = await exportBytes(page);
     const text = await extractText(bytes);
     expect(text).toContain("Changed");
-    expect(text).not.toContain("Sample");
+    // Only page 1's object was edited — the fixture repeats "Sample text for
+    // page N" on every page, so page 2's own "Sample" is untouched and still
+    // legitimately present; assert against page 1's specific phrase instead
+    // of "Sample" globally.
+    expect(text).not.toContain("Sample text for page 1");
+    expect(text).toContain("Sample text for page 2");
   });
 });
