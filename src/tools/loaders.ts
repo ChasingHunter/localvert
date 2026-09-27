@@ -82,6 +82,7 @@ export const TOOL_LOADERS = {
   "webp-to-jpg": () => import("./image/webp-to-jpg"),
   "webp-to-png": () => import("./image/webp-to-png"),
   "webp-to-svg": () => import("./image/webp-to-svg"),
+  "add-page-numbers": () => import("./pdf/add-page-numbers"),
   "compress-pdf": () => import("./pdf/compress-pdf"),
   "delete-pdf-pages": () => import("./pdf/delete-pdf-pages"),
   "extract-pdf-pages": () => import("./pdf/extract-pdf-pages"),
