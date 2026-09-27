@@ -7,7 +7,12 @@ import {
   useDocumentState,
   useRegistry,
 } from "@embedpdf/core/react";
-import type { PdfWidgetAnnoObject, Rect, SearchResult } from "@embedpdf/models";
+import type {
+  PdfDocumentObject,
+  PdfWidgetAnnoObject,
+  Rect,
+  SearchResult,
+} from "@embedpdf/models";
 import { AnnotationPluginPackage } from "@embedpdf/plugin-annotation";
 import {
   AnnotationLayer,
@@ -53,6 +58,7 @@ import {
   Minus,
   MousePointer2,
   PenLine,
+  Printer,
   Redo2,
   Search as SearchIcon,
   Signature,
@@ -71,9 +77,19 @@ import type { AcceptedFile } from "@/components/dropzone-logic";
 import { PageOrganizer } from "@/components/editor/page-organizer";
 import { SignatureDialog } from "@/components/editor/signature-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  deleteDraft,
+  formatRelativeTime,
+  loadDraft,
+  saveDraft,
+} from "@/lib/editor/draft-store";
 import { flattenExportedForms } from "@/lib/editor/flatten-forms";
 import { flattenRedactedPagesToImages } from "@/lib/editor/flatten-redacted-pages";
 import { createPdfiumWorkerEngine } from "@/lib/editor/pdfium-engine";
+import {
+  pinchRatioToZoomDelta,
+  pointerDistance,
+} from "@/lib/editor/pinch-zoom";
 import { sanitizeExportedPdf } from "@/lib/editor/sanitize-export";
 import {
   isTypingTarget,
@@ -84,6 +100,34 @@ import type { ReplacePageImage } from "@/lib/engines/pdf-lib/adapter";
 import { FormLayer, isFillableWidget } from "./form-layer";
 import { RedactionLayer, type RedactionMark } from "./redaction-layer";
 import { SearchBar, SearchHighlightLayer } from "./search-bar";
+
+/** Cap on pages the print flow will render at once -- rendering (and holding
+ * in memory as object URLs) hundreds of full-page PNGs at once is exactly
+ * the kind of thing that should have a clear, deliberate limit rather than
+ * quietly hanging the tab. */
+const MAX_PRINT_PAGES = 300;
+
+/** localStorage key for the "Keep a local draft" switch's own on/off state
+ * (E6b) -- NOT the draft content itself, which lives in IndexedDB
+ * (`draft-store.ts`). Read/written with try/catch: private-mode Safari can
+ * make `localStorage` throw on access. */
+const DRAFT_ENABLED_KEY = "localvert:pdf-editor:draft-enabled";
+
+function readDraftEnabledPref(): boolean {
+  try {
+    return localStorage.getItem(DRAFT_ENABLED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeDraftEnabledPref(enabled: boolean): void {
+  try {
+    localStorage.setItem(DRAFT_ENABLED_KEY, enabled ? "1" : "0");
+  } catch {
+    // Best-effort only -- see the constant's doc comment.
+  }
+}
 
 /**
  * The PDF editor's app-mode UI (ADR-0009), built on `@embedpdf/core`'s
@@ -234,8 +278,59 @@ export function PdfEditorApp() {
     if (first) setFile(first.file);
   }, []);
 
+  // E6b — local draft restore banner. Checked once, on mount, before any
+  // file is opened; a draft only ever matters at that point (once a document
+  // is loaded, `Editor`'s own autosave effect is what would overwrite it).
+  const [draft, setDraft] = useState<{
+    name: string;
+    bytes: ArrayBuffer;
+    savedAt: number;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    loadDraft().then((found) => {
+      if (!cancelled && found) setDraft(found);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const restoreDraft = useCallback(() => {
+    if (!draft) return;
+    // Same open path as a dropped file (`handleFiles` above): a plain `File`
+    // constructed from the saved bytes, so `EditorShell`'s `file.arrayBuffer()`
+    // effect can't tell the difference.
+    setFile(new File([draft.bytes], draft.name, { type: "application/pdf" }));
+    setDraft(null);
+  }, [draft]);
+  const discardDraft = useCallback(() => {
+    setDraft(null);
+    deleteDraft();
+  }, []);
+
   return (
     <div className="flex flex-col gap-4">
+      {draft && !file && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface p-3 text-sm">
+          <span>
+            Restore your unsaved draft of <strong>{draft.name}</strong> (saved{" "}
+            {formatRelativeTime(draft.savedAt)})?
+          </span>
+          <div className="ml-auto flex gap-2">
+            <Button type="button" size="sm" onClick={restoreDraft}>
+              Restore
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={discardDraft}
+            >
+              Discard
+            </Button>
+          </div>
+        </div>
+      )}
       {!loaded && <Dropzone accepts={["pdf"]} onFiles={handleFiles} />}
       <EmbedPDF engine={engineHandle.engine} plugins={plugins}>
         <EditorShell
@@ -806,6 +901,146 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
     }
   }, [exportProvides, fileName, flattenForms, sanitizeExport]);
 
+  // E6b — print. Renders every page to a PNG through the SAME PDFium worker
+  // as every other engine call (invariant 2), then places them as plain
+  // `<img>`s in a print-only container revealed by `@media print` (see
+  // globals.css) and calls `window.print()`. No iframe (CSP `frame-src`
+  // would block it anyway) and no new window -- both would need to load a
+  // second document, and this one never leaves the page. The pages are
+  // rendered off a throwaway document opened from the SAME exported bytes
+  // `handleExport` produces (`engine.openDocumentBuffer`, the bare
+  // `PdfEngine` call, not the DocumentManager plugin capability that would
+  // replace the on-screen document) -- so the printed pages reflect the
+  // current annotations, never the visible document's live PDFium state.
+  const [printStatus, setPrintStatus] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
+  const [printError, setPrintError] = useState<string | null>(null);
+  const handlePrint = useCallback(async () => {
+    if (!engine || !exportProvides) return;
+    setPrintError(null);
+    try {
+      const bytes = await exportProvides.saveAsCopy().toPromise();
+      const tempDoc: PdfDocumentObject = await engine
+        .openDocumentBuffer({ id: `print-${fileName}`, content: bytes })
+        .toPromise();
+      const total = tempDoc.pages.length;
+      if (total > MAX_PRINT_PAGES) {
+        setPrintError(
+          `This document has ${total} pages — printing is limited to ${MAX_PRINT_PAGES} pages at a time.`,
+        );
+        await engine.closeDocument(tempDoc).toPromise();
+        return;
+      }
+      setPrintStatus({ done: 0, total });
+      const DPI_SCALE = 150 / 72;
+      const urls: string[] = [];
+      for (const page of tempDoc.pages) {
+        const blob = await engine
+          .renderPage(tempDoc, page, {
+            scaleFactor: DPI_SCALE,
+            imageType: "image/png",
+          })
+          .toPromise();
+        urls.push(URL.createObjectURL(blob));
+        setPrintStatus({ done: urls.length, total });
+      }
+      await engine.closeDocument(tempDoc).toPromise();
+
+      const container = document.createElement("div");
+      container.id = "pdf-editor-print-sheets";
+      for (const url of urls) {
+        const img = document.createElement("img");
+        img.src = url;
+        container.appendChild(img);
+      }
+      document.body.appendChild(container);
+      const cleanup = () => {
+        container.remove();
+        for (const url of urls) URL.revokeObjectURL(url);
+        window.removeEventListener("afterprint", cleanup);
+      };
+      window.addEventListener("afterprint", cleanup);
+      window.print();
+    } catch {
+      setPrintError("Couldn't prepare the document for printing.");
+    } finally {
+      setPrintStatus(null);
+    }
+  }, [engine, exportProvides, fileName]);
+
+  // E6b — opt-in local draft autosave, OFF by default (sensitive PDFs must
+  // never be written to disk unless the user asks). The switch's on/off
+  // state is remembered in localStorage (`readDraftEnabledPref`); the draft
+  // content itself lives only in IndexedDB (`draft-store.ts`) and is deleted
+  // the moment the switch is turned off.
+  const [keepDraft, setKeepDraftState] = useState(readDraftEnabledPref);
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    const provides = history.provides;
+    if (!provides) return;
+    return provides.onHistoryChange(() => {
+      dirtyRef.current = true;
+    });
+  }, [history.provides]);
+  useEffect(() => {
+    if (!keepDraft || !exportProvides) return;
+    const id = setInterval(async () => {
+      if (!dirtyRef.current) return;
+      dirtyRef.current = false;
+      try {
+        const bytes = await exportProvides.saveAsCopy().toPromise();
+        await saveDraft({ name: fileName, bytes, savedAt: Date.now() });
+      } catch {
+        // Best-effort autosave -- a failed save just tries again in 30s.
+      }
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [keepDraft, exportProvides, fileName]);
+  const setKeepDraft = useCallback((enabled: boolean) => {
+    setKeepDraftState(enabled);
+    writeDraftEnabledPref(enabled);
+    if (!enabled) deleteDraft();
+  }, []);
+
+  // E6b — pinch-to-zoom (touch). Two active pointers on the viewport → the
+  // ratio of their current span to the span at the previous move event drives
+  // `zoom.provides.requestZoomBy` (`@embedpdf/plugin-zoom`'s
+  // `ZoomScope.requestZoomBy(delta, center?)`, `dist/lib/types.d.ts`). A
+  // single pointer is left completely alone -- `touch-action: pan-x pan-y`
+  // on the viewport (below) hands one-finger scroll straight to the browser,
+  // same as before this feature existed.
+  const activePointers = useRef(new Map<number, { x: number; y: number }>());
+  const lastPinchDistance = useRef<number | null>(null);
+  const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType !== "touch") return;
+    activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (activePointers.current.size !== 2) lastPinchDistance.current = null;
+  }, []);
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType !== "touch" || !activePointers.current.has(e.pointerId))
+        return;
+      activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (activePointers.current.size !== 2 || !zoom.provides) return;
+      const [a, b] = [...activePointers.current.values()];
+      if (!a || !b) return;
+      const distance = pointerDistance(a, b);
+      const previous = lastPinchDistance.current;
+      if (previous !== null && previous > 0) {
+        const delta = pinchRatioToZoomDelta(distance / previous);
+        if (delta !== 0) zoom.provides.requestZoomBy(delta);
+      }
+      lastPinchDistance.current = distance;
+    },
+    [zoom.provides],
+  );
+  const onPointerEnd = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    activePointers.current.delete(e.pointerId);
+    if (activePointers.current.size !== 2) lastPinchDistance.current = null;
+  }, []);
+
   const onWheel = useCallback(
     (e: React.WheelEvent<HTMLDivElement>) => {
       if (!e.ctrlKey || !zoom.provides) return;
@@ -978,6 +1213,17 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
           <Keyboard aria-hidden="true" />
         </Button>
 
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label="Print"
+          onClick={handlePrint}
+          disabled={printStatus !== null}
+        >
+          <Printer aria-hidden="true" />
+        </Button>
+
         <label className="flex items-center gap-1 text-xs text-ink-muted">
           Color
           <input
@@ -1085,6 +1331,14 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
             />
             Remove hidden data
           </label>
+          <label className="flex items-center gap-1 text-xs text-ink-muted">
+            <input
+              type="checkbox"
+              checked={keepDraft}
+              onChange={(e) => setKeepDraft(e.target.checked)}
+            />
+            Keep a local draft
+          </label>
           <Button type="button" onClick={handleExport} disabled={exporting}>
             {exporting ? "Exporting…" : "Export PDF"}
           </Button>
@@ -1102,6 +1356,13 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
       />
+
+      {printStatus && (
+        <p role="status" aria-live="polite" className="text-sm text-ink-muted">
+          Preparing {printStatus.done}/{printStatus.total} pages…
+        </p>
+      )}
+      {printError && <p className="text-sm text-danger">{printError}</p>}
 
       {redactMode && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface p-2">
@@ -1232,8 +1493,18 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
           // Passing an absolute `style` height here is spread in AFTER the
           // component's own defaults, so it overrides "100%" with a real
           // pixel value the flex row no longer needs to help resolve.
-          style={{ height: 480 }}
+          // `touch-action: pan-x pan-y` (E6b) hands single-finger drag
+          // straight to the browser's native scroll -- `onPointerDown`/
+          // `onPointerMove` below only ever act once a SECOND touch pointer
+          // joins (pinch), so one-finger scroll behaves exactly as it did
+          // before this feature existed.
+          style={{ height: 480, touchAction: "pan-x pan-y" }}
           onWheel={onWheel}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerEnd}
+          onPointerCancel={onPointerEnd}
+          onPointerLeave={onPointerEnd}
         >
           <GlobalPointerProvider documentId={documentId}>
             <Scroller documentId={documentId} renderPage={renderPage} />

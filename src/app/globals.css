@@ -43,3 +43,46 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
+
+/*
+ * E6b -- PDF editor print. `handlePrint` (pdf-editor-app.tsx) appends
+ * #pdf-editor-print-sheets directly to <body> with one <img> per rendered
+ * page, then calls window.print(). Hidden outside print so it never shows
+ * on screen; @media print hides everything ELSE so only the sheets print,
+ * one page per printed sheet (`break-after: page`).
+ */
+#pdf-editor-print-sheets {
+  display: none;
+}
+
+@media print {
+  body > *:not(#pdf-editor-print-sheets) {
+    display: none;
+  }
+
+  #pdf-editor-print-sheets {
+    display: block;
+  }
+
+  #pdf-editor-print-sheets img {
+    display: block;
+    width: 100%;
+    break-after: page;
+  }
+
+  #pdf-editor-print-sheets img:last-child {
+    break-after: auto;
+  }
+}
+
+/*
+ * E6b -- touch: the PDF editor's toolbar buttons grow to a real 40px touch
+ * target on a coarse (touch) pointer, without changing their mouse/desktop
+ * size. Scoped to the editor's own toolbar, not every button on the site.
+ */
+@media (pointer: coarse) {
+  [role="toolbar"] [data-slot="button"] {
+    min-width: 40px;
+    min-height: 40px;
+  }
+}

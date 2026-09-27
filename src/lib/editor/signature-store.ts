@@ -13,7 +13,11 @@
  */
 
 const DB_NAME = "localvert";
-const DB_VERSION = 1;
+// Bumped to 2 alongside `draft-store.ts`'s own `DB_VERSION` (E6b), which
+// adds a second object store ("drafts") to this same database. Both files'
+// versions must stay equal: `indexedDB.open` throws `VersionError` if either
+// one ever asks for a version lower than what's already on disk.
+const DB_VERSION = 2;
 const STORE_NAME = "signatures";
 const KEY = "default";
 
