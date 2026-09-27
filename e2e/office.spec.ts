@@ -120,7 +120,15 @@ test.describe("word to pdf (libreoffice engine, ADR-0012)", () => {
     await dialog.getByRole("button", { name: "Download and convert" }).click();
     await expect(dialog).toBeHidden();
 
-    const downloadLink = page.getByRole("link", { name: "Download" });
+    // Scoped to the job list (`<ul>`, role "list") rather than the whole
+    // page: this tool's own description names "download" (per the brief —
+    // "desktop browser, ~74 MB one-time download"), and so do its sibling
+    // tools' cards in the page's "Related tools" section, which a page-wide
+    // `getByRole("link", { name: "Download" })` (substring match) also
+    // matches.
+    const downloadLink = page
+      .getByRole("list")
+      .getByRole("link", { name: "Download" });
     await expect(downloadLink).toBeVisible({ timeout: 180_000 });
 
     expect(
