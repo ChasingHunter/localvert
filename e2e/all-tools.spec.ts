@@ -148,6 +148,32 @@ const REQUIRED_FIELD_LABELS: Record<string, string> = {
   text: "Watermark text",
 };
 
+/** Output formats whose encoder the browser borrows from the OS (WebCodecs
+ * AAC: Windows/macOS/ChromeOS/Android, not desktop Linux), keyed to the
+ * `AudioEncoder` config that proves it's available. */
+const PLATFORM_CODEC_PROBES: Partial<Record<FormatId, AudioEncoderConfig>> = {
+  m4a: {
+    codec: "mp4a.40.2",
+    sampleRate: 44_100,
+    numberOfChannels: 2,
+    bitrate: 128_000,
+  },
+};
+
+async function canEncodeAudio(
+  page: import("@playwright/test").Page,
+  config: AudioEncoderConfig,
+): Promise<boolean> {
+  return page.evaluate(async (c) => {
+    if (typeof AudioEncoder === "undefined") return false;
+    try {
+      return (await AudioEncoder.isConfigSupported(c)).supported === true;
+    } catch {
+      return false;
+    }
+  }, config);
+}
+
 /**
  * Sniffs `bytes` against `FORMATS[id]`'s own magic-byte table — the same
  * source of truth `sniffFormat` uses on drop, so this spec can never drift
@@ -402,6 +428,17 @@ for (const tool of TOOLS) {
         await expect(submit).toBeEnabled({ timeout: heavy ? 60_000 : 15_000 });
         await submit.click();
       }
+    }
+
+    // Some output codecs come from the OS, not the browser: Chromium on Linux
+    // (CI) has no AAC encoder, so an m4a output can't be produced there. The
+    // app must then say so plainly — assert that instead of a download.
+    const probe = PLATFORM_CODEC_PROBES[tool.produces as FormatId];
+    if (probe && !(await canEncodeAudio(page, probe))) {
+      await expect(
+        page.getByText(`your browser can't encode ${tool.produces}`),
+      ).toBeVisible({ timeout: 20_000 });
+      return;
     }
 
     // `exact`: several tool cards under "Related tools" mention a download in
