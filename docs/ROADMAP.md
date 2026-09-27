@@ -172,8 +172,11 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
       (tools ~156 KB gz, home ~134 KB). Eleven silent-failure gotchas found on the way are in
       `docs/editor/EMBEDPDF_NOTES.md` ("v2 manual plugin composition").
 - [x] E2 Signatures (draw/type/upload; opt-in local-only saved signature) + form filling + flatten (2026-09-27)
-- [ ] E3 Page organizer: thumbnail grid — reorder, rotate, delete, insert blank, insert from PDF
-- [ ] E4 True redaction (verified by text/image extraction) + sanitize (metadata, JS, attachments)
+- [x] E3 Page organizer: thumbnail grid — reorder, rotate, delete, insert blank, insert from PDF
+      (pdf-lib `organize` op in a worker, keyboard reorder, local undo) (2026-09-27)
+- [x] E4 True redaction (verified by text/image extraction) + sanitize (metadata, JS, attachments)
+      — PDFium text redaction plus optional page rasterisation for images/graphics under a box;
+      `sanitize-pdf` tool and a "Remove hidden data" export option (2026-09-27)
 - [ ] E5 Edit existing text: remove original text objects, insert replacement (font substitution
       where glyphs missing; no reflow)
 - [ ] E6 Polish: search, select/copy, shortcuts, touch, print, local draft autosave
