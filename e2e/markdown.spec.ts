@@ -116,10 +116,9 @@ test.describe("markdown to pdf (typst engine, ADR-0011)", () => {
       // hop (e.g. Cloudflare Workers static-asset serving normalizing a
       // path) — the browser follows it automatically to a 200/206, so it's
       // not itself a failure.
-      expect(
-        [200, 206, 307],
-        `${req.url} should succeed`,
-      ).toContain(req.status);
+      expect([200, 206, 307], `${req.url} should succeed`).toContain(
+        req.status,
+      );
     }
 
     const downloadPromise = page.waitForEvent("download");
