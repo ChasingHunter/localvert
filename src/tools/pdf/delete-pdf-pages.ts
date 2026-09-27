@@ -25,6 +25,12 @@ export default defineTool({
     pages: z.string().meta({
       label: "Pages to delete",
       control: "text",
+      // Unlike `extract-pdf-pages`/`split-pdf-pages`, an empty value here
+      // has no sensible "all" reading — it would mean "delete every page",
+      // which the pdf-lib engine's `extract` op already refuses outright
+      // (see its own error). `required: true` is the UI-level backstop for
+      // that rule: it gates the Convert button until something is typed.
+      required: true,
       help: 'e.g. "2, 4-6" — every other page is kept, in order.',
     }),
     mode: z.enum(["remove"]).meta({ label: "Mode", control: "hidden" }),
