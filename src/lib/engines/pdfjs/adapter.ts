@@ -58,9 +58,10 @@ function supports(
   input: StepFormat,
   output: StepFormat,
 ): boolean {
-  return (
-    op === "render" && input === "pdf" && (output === "jpg" || output === "png")
-  );
+  if (input !== "pdf") return false;
+  if (op === "render") return output === "jpg" || output === "png";
+  if (op === "extractText") return output === "txt";
+  return false;
 }
 
 /** Reads one `EngineInput` down to an `ArrayBuffer`. Mirrors `pdf-lib/
@@ -265,6 +266,8 @@ async function run(
     switch (task.op) {
       case "render":
         return await runRender(task, pdfjsLib, baseUrl);
+      case "extractText":
+        return await runExtractText(task, pdfjsLib, baseUrl);
       default:
         throw new EngineError(
           "unsupported",
@@ -454,6 +457,164 @@ async function runRender(
     }
 
     return { kind: "files", files };
+  } finally {
+    await loadingTask.destroy();
+  }
+}
+
+/**
+ * One page's worth of `getTextContent()` items reassembled into lines.
+ * pdf.js hands back a flat run of `TextItem`s (each one roughly a "text
+ * run" from the content stream, not a whole line) plus `TextMarkedContent`
+ * entries this tool has no use for (`"str" in item` tells them apart — see
+ * `TextMarkedContent`'s own type, which has no `str` field). Two signals
+ * decide where a line ends: `item.hasEOL` (pdf.js's own flag for "the
+ * content stream had an explicit line break here", set from the text's
+ * layout, not guessed) and a jump in `item.transform`'s y-translation
+ * (`transform[5]`) of more than a point, which catches wrapped text that
+ * pdf.js doesn't mark with `hasEOL` at all (most PDFs never emit an
+ * explicit EOL between visually-wrapped lines — only `hasEOL` alone would
+ * concatenate a whole paragraph onto one line).
+ */
+/**
+ * One `getTextContent()` item -- a `TextItem` (real text run) or a
+ * `TextMarkedContent` (marked-content marker, no `str`). Derived from
+ * `PDFPageProxy["getTextContent"]`'s own return type rather than importing
+ * `TextItem`/`TextMarkedContent` directly: `pdfjs-dist`'s public entry point
+ * (`pdf.d.ts`, what `pdfjs-dist`'s package.json actually points `types` at)
+ * re-exports only a handful of top-level type aliases -- confirmed by
+ * grepping it -- neither of these among them, unlike `PDFDocumentProxy`/
+ * `PDFPageProxy`, which it does re-export.
+ */
+type TextContentItem = Awaited<
+  ReturnType<PdfjsNS.PDFPageProxy["getTextContent"]>
+>["items"][number];
+
+function reconstructPageText(items: TextContentItem[]): string {
+  const lines: string[] = [];
+  let currentLine = "";
+  let lastY: number | undefined;
+
+  for (const item of items) {
+    if (!("str" in item)) continue; // TextMarkedContent -- not real text
+    const y = item.transform[5];
+    if (lastY !== undefined && Math.abs(y - lastY) > 1 && currentLine !== "") {
+      lines.push(currentLine);
+      currentLine = "";
+    }
+    currentLine += item.str;
+    lastY = y;
+    if (item.hasEOL) {
+      lines.push(currentLine);
+      currentLine = "";
+      lastY = undefined;
+    }
+  }
+  if (currentLine !== "") lines.push(currentLine);
+  return lines.join("\n");
+}
+
+/**
+ * extractText (pdf -> txt, `pdf-to-text`): pdf.js's own text layer, not a
+ * render -- no `CanvasFactory`/`FilterFactory` needed since nothing is
+ * rasterised. `options.pageMarkers` (default off) heads each page's text
+ * with a "--- Page N ---" line; pages are always separated by a blank line
+ * regardless. A page with no extractable text (most often a scanned image
+ * PDF with no text layer at all) contributes an empty string between its
+ * neighbours' blank-line separators rather than a special marker -- the
+ * tool's own description points a user who hits this at
+ * `pdf-to-searchable-pdf`'s OCR instead of this function guessing why a
+ * given page came back empty.
+ */
+async function runExtractText(
+  task: EngineTask,
+  pdfjsLib: typeof PdfjsNS,
+  baseUrl: string,
+): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  const bytes = new Uint8Array(await inputToArrayBuffer(input));
+  signal.throwIfAborted();
+
+  const loadingTask = pdfjsLib.getDocument({
+    data: bytes,
+    disableFontFace: true,
+    useSystemFonts: false,
+    useWorkerFetch: false,
+    cMapUrl: `${baseUrl}cmaps/`,
+    cMapPacked: true,
+    standardFontDataUrl: `${baseUrl}standard_fonts/`,
+    stopAtErrors: true,
+  });
+
+  try {
+    let doc: PdfjsNS.PDFDocumentProxy;
+    try {
+      doc = await loadingTask.promise;
+    } catch (e) {
+      if (e instanceof pdfjsLib.PasswordException) {
+        throw new EngineError(
+          "unsupported",
+          "This PDF is password-protected — unlock it first",
+          { engine: metadata.id, cause: e },
+        );
+      }
+      throw new EngineError("decode-failed", "failed to parse PDF", {
+        engine: metadata.id,
+        cause: e,
+      });
+    }
+
+    signal.throwIfAborted();
+
+    const pagesSpec = typeof options.pages === "string" ? options.pages : "";
+    const indices = parsePageRange(pagesSpec, doc.numPages);
+    if (indices.length === 0) {
+      throw new EngineError(
+        "internal",
+        "extractText produced no output pages",
+        {
+          engine: metadata.id,
+        },
+      );
+    }
+    if (indices.length > MAX_PAGES) {
+      throw new EngineError(
+        "unsupported",
+        `extractText is capped at ${MAX_PAGES} pages per job; this selection has ${indices.length}`,
+        { engine: metadata.id },
+      );
+    }
+
+    const pageMarkers = options.pageMarkers === true;
+    const pageTexts: string[] = [];
+    for (let i = 0; i < indices.length; i++) {
+      signal.throwIfAborted();
+      const pageIndex = indices[i];
+      if (pageIndex === undefined) continue; // unreachable: i < indices.length
+      const pageNumber = pageIndex + 1; // pdf.js pages are 1-based
+
+      const page = await doc.getPage(pageNumber);
+      try {
+        const textContent = await page.getTextContent();
+        const text = reconstructPageText(textContent.items);
+        pageTexts.push(
+          pageMarkers ? `--- Page ${pageNumber} ---\n${text}` : text,
+        );
+      } finally {
+        page.cleanup();
+      }
+      onProgress?.((i + 1) / indices.length);
+    }
+
+    const fullText = pageTexts.join("\n\n");
+    const outBytes = new TextEncoder().encode(fullText);
+    return {
+      kind: "bytes",
+      bytes: outBytes.buffer,
+      mime: FORMATS.txt.mime,
+    };
   } finally {
     await loadingTask.destroy();
   }

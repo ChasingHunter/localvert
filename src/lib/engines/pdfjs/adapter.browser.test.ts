@@ -105,6 +105,14 @@ describe("pdfjs adapter", () => {
     it("rejects a non-image output", () => {
       expect(adapter.supports("render", "pdf", "pdf")).toBe(false);
     });
+
+    it("accepts extractText from pdf to txt", () => {
+      expect(adapter.supports("extractText", "pdf", "txt")).toBe(true);
+    });
+
+    it("rejects extractText to a non-txt output", () => {
+      expect(adapter.supports("extractText", "pdf", "png")).toBe(false);
+    });
   });
 
   describe("run", () => {
@@ -328,6 +336,94 @@ describe("pdfjs adapter", () => {
           .map((entry) => entry.name)
           .filter((url) => new URL(url).origin !== location.origin);
         expect(foreign).toEqual([]);
+      },
+      TIMEOUT,
+    );
+  });
+
+  describe("run: extractText", () => {
+    function textTask(overrides: Partial<EngineTask> = {}): EngineTask {
+      return baseTask({ op: "extractText", outputFormat: "txt", ...overrides });
+    }
+
+    it(
+      "extracts each page's own text, pages separated by a blank line",
+      async () => {
+        const instance = await adapter.load({
+          baseUrl: baseUrl(),
+          capabilities: {} as never,
+        });
+        const pdf = await buildTestPdf(200, 300);
+
+        const result = await instance.run(textTask({ input: bytesInput(pdf) }));
+        if (result.kind !== "bytes") throw new Error("expected bytes result");
+        expect(result.mime).toBe("text/plain");
+
+        const text = new TextDecoder().decode(result.bytes);
+        expect(text).toContain("Page 1");
+        expect(text).toContain("Page 2");
+        // Two pages, so exactly one blank-line separator between them.
+        expect(text.split("\n\n").length).toBe(2);
+      },
+      TIMEOUT,
+    );
+
+    it(
+      "adds a '--- Page N ---' heading per page when pageMarkers is on",
+      async () => {
+        const instance = await adapter.load({
+          baseUrl: baseUrl(),
+          capabilities: {} as never,
+        });
+        const pdf = await buildTestPdf(150, 150);
+
+        const result = await instance.run(
+          textTask({ input: bytesInput(pdf), options: { pageMarkers: true } }),
+        );
+        if (result.kind !== "bytes") throw new Error("expected bytes result");
+
+        const text = new TextDecoder().decode(result.bytes);
+        expect(text).toContain("--- Page 1 ---");
+        expect(text).toContain("--- Page 2 ---");
+      },
+      TIMEOUT,
+    );
+
+    it(
+      '"pages" selects a subset — "2" extracts only the second page',
+      async () => {
+        const instance = await adapter.load({
+          baseUrl: baseUrl(),
+          capabilities: {} as never,
+        });
+        const pdf = await buildTestPdf(120, 120);
+
+        const result = await instance.run(
+          textTask({ input: bytesInput(pdf), options: { pages: "2" } }),
+        );
+        if (result.kind !== "bytes") throw new Error("expected bytes result");
+
+        const text = new TextDecoder().decode(result.bytes);
+        expect(text).not.toContain("Page 1");
+        expect(text).toContain("Page 2");
+      },
+      TIMEOUT,
+    );
+
+    it(
+      "throws EngineError('unsupported') for a password-protected PDF",
+      async () => {
+        const instance = await adapter.load({
+          baseUrl: baseUrl(),
+          capabilities: {} as never,
+        });
+        const encrypted = await buildEncryptedPdf();
+
+        await expect(
+          instance.run(textTask({ input: bytesInput(encrypted) })),
+        ).rejects.toSatisfy(
+          (e: unknown) => isEngineError(e) && e.code === "unsupported",
+        );
       },
       TIMEOUT,
     );

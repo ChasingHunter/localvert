@@ -98,6 +98,20 @@ export type Operation =
   | "flatten"
   | "sanitize"
   /**
+   * pdf -> pdf, `watermark-pdf`: stamps `options.text` across every selected
+   * page (`pdf-lib/adapter.ts`'s `runWatermark`) — diagonal or horizontal,
+   * centered/top/bottom, rotation-aware so the mark reads upright relative
+   * to the viewer on a page with a non-zero `/Rotate`.
+   */
+  | "watermark"
+  /**
+   * pdf -> pdf, `add-page-numbers`: draws a page number label on every
+   * selected page (`pdf-lib/adapter.ts`'s `runAddPageNumbers`); numbering
+   * counts every page (`startAt` + index) even though only selected pages
+   * get a visible label.
+   */
+  | "addPageNumbers"
+  /**
    * E3 (page organizer): pdf (+ any number of inserted pdfs, via `inputs`,
    * ADR-0008's many-to-one shape) -> pdf. Rebuilds a document page-by-page
    * from `options.plan` (see `validatePlan` in
@@ -110,6 +124,14 @@ export type Operation =
    */
   | "organize"
   | "render"
+  /**
+   * pdf -> txt, `pdf-to-text`: pdf.js text extraction (`pdfjs/adapter.ts`'s
+   * `runExtractText`), one document -> one `.txt` file with pages separated
+   * by a blank line (optionally headed by `options.pageMarkers`'s "--- Page
+   * N ---"). Not `render` (pdf -> raster images) or `ocr` (image -> text via
+   * tesseract) — this reads the PDF's own embedded text, no rasterisation.
+   */
+  | "extractText"
   | "ocr"
   /**
    * Composite op, `tesseract` only: pdf -> pdf, render each page (via a
