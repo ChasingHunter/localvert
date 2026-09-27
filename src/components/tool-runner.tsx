@@ -8,11 +8,42 @@ import type { AcceptedFile, RejectedFile } from "@/components/dropzone-logic";
 import { FileOrderList } from "@/components/file-order-list";
 import { JobList } from "@/components/job-list";
 import { Button } from "@/components/ui/button";
+import {
+  downloadBytes,
+  enginesNeedingConsent,
+  grantConsent,
+  hasConsent,
+} from "@/lib/engines/consent";
+import { ENGINE_MANIFEST } from "@/lib/engines/manifest";
 import { jobStore, selectOrderedJobs } from "@/lib/jobs/store";
 import { FORMATS, formatFromFilename } from "@/lib/registry/formats";
-import type { ToolDefinition } from "@/lib/registry/types";
+import type { EngineId, ToolDefinition } from "@/lib/registry/types";
 import { collectToBlob } from "@/lib/sinks/collect";
 import { TOOL_LOADERS } from "@/tools/loaders";
+
+/**
+ * Upstream source repository per consent-gated engine, for the GPL
+ * source-offer link in `EngineConsentDialog` (ADR-0002 rule 5) — kept here,
+ * not in the generated manifest, since it's a UI-only concern and only
+ * engines with `consent: true` ever need it.
+ */
+const ENGINE_SOURCE_URLS: Partial<Record<EngineId, string>> = {
+  ffmpeg: "https://github.com/ffmpegwasm/ffmpeg.wasm",
+};
+
+/**
+ * Same code-splitting reasoning as `OptionsForm`/`CropEditor` above: most
+ * tool pages use no `consent: true` engine at all (only `ffmpeg`-backed
+ * tools do today), so this only downloads for a page that actually needs
+ * the prompt.
+ */
+const EngineConsentDialog = dynamic(
+  () =>
+    import("@/components/engine-consent-dialog").then(
+      (mod) => mod.EngineConsentDialog,
+    ),
+  { ssr: false },
+);
 
 /**
  * The options form pulls in radix primitives (select/slider/switch) that
@@ -146,6 +177,15 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   // `zipping`/`zipError` above, which track the cross-job "download all".
   const [zippingJobId, setZippingJobId] = useState<string | null>(null);
   const [jobZipError, setJobZipError] = useState<string | null>(null);
+  // ADR-0002 rule 4: a submission blocked on the user agreeing to download a
+  // `consent: true` engine (e.g. ffmpeg). `proceed` is the exact submission
+  // that was about to run — `handleConsentDownload` calls it once consent is
+  // granted, with no need to re-derive which files/options it was for.
+  const [consentGate, setConsentGate] = useState<{
+    engineId: EngineId;
+    proceed: () => void;
+  } | null>(null);
+  const [consentDeclined, setConsentDeclined] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -188,8 +228,60 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   // `hasCropField` above, so this file never imports zod just to check it.
   const hasRequiredOptions = (tool?.requiredOptionKeys?.length ?? 0) > 0;
 
+  /**
+   * ADR-0002 rule 4's gate, wrapping every path below that would otherwise
+   * call `jobEngine().submit(...)` directly. `enginesNeedingConsent` reads
+   * only the (already-loaded, engine-code-free) `ENGINE_MANIFEST` — no
+   * engine adapter is touched until consent is actually granted. If every
+   * engine this submission might reach already has stored consent (or
+   * needs none), `proceed` runs immediately and no dialog ever renders. If
+   * not, `proceed` is held in `consentGate` until `handleConsentDownload`
+   * or `handleConsentCancel` resolves it; re-entrant by construction, so a
+   * tool needing two consent-gated engines asks once per engine in turn.
+   */
+  const ensureConsent = useCallback(
+    (proceed: () => void) => {
+      setConsentDeclined(null);
+      if (!tool) return;
+      const needed = enginesNeedingConsent(tool, ENGINE_MANIFEST);
+      const ungranted = needed.find(
+        (id) =>
+          !hasConsent(window.localStorage, id, ENGINE_MANIFEST[id].version),
+      );
+      if (!ungranted) {
+        proceed();
+        return;
+      }
+      setConsentGate({ engineId: ungranted, proceed });
+    },
+    [tool],
+  );
+
+  const handleConsentDownload = useCallback(() => {
+    if (!consentGate) return;
+    const { engineId, proceed } = consentGate;
+    grantConsent(
+      window.localStorage,
+      engineId,
+      ENGINE_MANIFEST[engineId].version,
+    );
+    setConsentGate(null);
+    // Re-run the gate: covers a submission that needs more than one
+    // consent-gated engine, and is a no-op (calls `proceed` straight away)
+    // for the common case of exactly one.
+    ensureConsent(proceed);
+  }, [consentGate, ensureConsent]);
+
+  const handleConsentCancel = useCallback(() => {
+    if (!consentGate) return;
+    setConsentDeclined(
+      `Not converted — the ${consentGate.engineId} engine wasn't downloaded.`,
+    );
+    setConsentGate(null);
+  }, [consentGate]);
+
   const handleFiles = useCallback(
-    async (accepted: AcceptedFile[], rejectedFiles: RejectedFile[]) => {
+    (accepted: AcceptedFile[], rejectedFiles: RejectedFile[]) => {
       setRejected(rejectedFiles);
       if (!tool || accepted.length === 0) return;
       if (hasCropField) {
@@ -217,50 +309,67 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         setPendingRequiredFiles((prev) => [...prev, ...accepted]);
         return;
       }
-      const engine = await jobEngine();
-      engine.submit(
-        tool,
-        accepted.map((a) => ({ file: a.file, format: a.format })),
-        options,
-      );
+      ensureConsent(async () => {
+        const engine = await jobEngine();
+        engine.submit(
+          tool,
+          accepted.map((a) => ({ file: a.file, format: a.format })),
+          options,
+        );
+      });
     },
-    [tool, options, hasCropField, isManyToOne, hasRequiredOptions],
+    [
+      tool,
+      options,
+      hasCropField,
+      isManyToOne,
+      hasRequiredOptions,
+      ensureConsent,
+    ],
   );
 
-  const handleSubmitPending = useCallback(async () => {
+  const handleSubmitPending = useCallback(() => {
     if (!tool || pendingRequiredFiles.length === 0 || !canSubmit) return;
-    const engine = await jobEngine();
-    engine.submit(
-      tool,
-      pendingRequiredFiles.map((a) => ({ file: a.file, format: a.format })),
-      options,
-    );
-    setPendingRequiredFiles([]);
-  }, [tool, pendingRequiredFiles, options, canSubmit]);
-
-  const handleSubmitOrdered = useCallback(async () => {
-    if (!tool || orderedFiles.length < 2) return;
-    const engine = await jobEngine();
-    engine.submit(
-      tool,
-      orderedFiles.map((a) => ({ file: a.file, format: a.format })),
-      options,
-    );
-    setOrderedFiles([]);
-  }, [tool, orderedFiles, options]);
-
-  const handleCropSubmit = useCallback(
-    async (crop: Rect) => {
-      if (!tool || !cropTarget) return;
+    const files = pendingRequiredFiles;
+    ensureConsent(async () => {
       const engine = await jobEngine();
       engine.submit(
         tool,
-        [{ file: cropTarget.file, format: cropTarget.format }],
-        { ...options, crop },
+        files.map((a) => ({ file: a.file, format: a.format })),
+        options,
       );
-      setCropTarget(null);
+      setPendingRequiredFiles([]);
+    });
+  }, [tool, pendingRequiredFiles, options, canSubmit, ensureConsent]);
+
+  const handleSubmitOrdered = useCallback(() => {
+    if (!tool || orderedFiles.length < 2) return;
+    const files = orderedFiles;
+    ensureConsent(async () => {
+      const engine = await jobEngine();
+      engine.submit(
+        tool,
+        files.map((a) => ({ file: a.file, format: a.format })),
+        options,
+      );
+      setOrderedFiles([]);
+    });
+  }, [tool, orderedFiles, options, ensureConsent]);
+
+  const handleCropSubmit = useCallback(
+    (crop: Rect) => {
+      if (!tool || !cropTarget) return;
+      const target = cropTarget;
+      ensureConsent(async () => {
+        const engine = await jobEngine();
+        engine.submit(tool, [{ file: target.file, format: target.format }], {
+          ...options,
+          crop,
+        });
+        setCropTarget(null);
+      });
     },
-    [tool, cropTarget, options],
+    [tool, cropTarget, options, ensureConsent],
   );
 
   const handleCropCancel = useCallback(() => {
@@ -445,6 +554,21 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
 
       {zipError && <p className="text-sm text-danger">{zipError}</p>}
       {jobZipError && <p className="text-sm text-danger">{jobZipError}</p>}
+      {consentDeclined && (
+        <p className="text-sm text-ink-muted">{consentDeclined}</p>
+      )}
+
+      {consentGate && (
+        <EngineConsentDialog
+          open={true}
+          engineId={consentGate.engineId}
+          license={ENGINE_MANIFEST[consentGate.engineId].license}
+          bytes={downloadBytes(ENGINE_MANIFEST[consentGate.engineId])}
+          sourceUrl={ENGINE_SOURCE_URLS[consentGate.engineId] ?? "#"}
+          onDownload={handleConsentDownload}
+          onCancel={handleConsentCancel}
+        />
+      )}
     </div>
   );
 }
