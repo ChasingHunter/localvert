@@ -44,6 +44,7 @@ as its codec preference table.
 | `pdf-lib` | jpg, png (`merge` only) | — | `merge`, `split`, `rotate`, `extract`, `protect`, `unlock`, `compress`: pdf | adapter ready |
 | `pdfjs` | — | — | `render`: pdf → jpg, png | adapter ready |
 | `tesseract` | — | — | `ocr`: jpg, png, webp, bmp → txt, pdf | adapter ready |
+| `data` | — | — | `transcode`: json ↔ yaml, json → xlsx, xlsx → json | adapter ready |
 
 `canvas` also still runs the legacy single-step `transcode` op directly
 (bytes of one format straight to bytes of another) for a tool that predates
@@ -285,6 +286,7 @@ see `scripts/embedpdf-deps.test.ts`'s guard and ADR-0009.
 | `mediabunny` | `mediabunny` + `@mediabunny/mp3-encoder` | 1.60.0 | **MPL-2.0** (wrapper); the mp3-encoder's LAME core itself is **LGPL** | 0 for `mediabunny` itself (wraps WebCodecs, no wasm of its own); `@mediabunny/mp3-encoder` bundles its own inline worker + base64-encoded LAME wasm (~130 KB gz), imported only from `audio.ts` (never `dist/modules/*`, which self-references and would hang Turbopack) | bundled | no |
 | `mediabunny`'s `toGif` op | `gifenc` | 1.0.3 | MIT | 0 (bundled in JS; ~5 KB before gzip) | bundled (inside the `mediabunny` chunk, not its own `EngineId`) | no |
 | `ffmpeg` | `@ffmpeg/core` (single-thread, not `-mt` — no `SharedArrayBuffer` needed) | 0.12.10 | **GPL-2.0-or-later** | ~31 MiB (0.11 MiB JS glue + ~30.7 MiB wasm) | r2 | no |
+| `data` | `papaparse` 5.7.0 + `yaml` 2.9.1 + `read-excel-file` 9.3.10 + `write-excel-file` 4.1.1 | see note below | MIT (papaparse, read-excel-file, write-excel-file) + ISC (yaml) | 0 (bundled in JS; all four are pure JS, no wasm) | bundled | no |
 
 ### How engine assets ship
 
@@ -322,6 +324,39 @@ glue, `tesseract.js-core` for the wasm, `@tesseract.js-data/eng` for the
 language data). Only the engine's own top-level `package` (or `versionFrom`)
 ever decides the version; a borrowed file's own package version is
 irrelevant to it.
+
+**`data`'s `versionFrom` tracks only one of its four libraries.** Unlike
+`tesseract`'s per-file `package` override (still one *engine-level* version),
+`gen-registry.ts`'s `versionFrom` is exactly one string — there's no schema
+support for a "bundled" engine to declare several tracked package versions at
+once. `data/engine.json` names `papaparse` (the first library it depends on)
+as that one source of truth; `yaml`, `read-excel-file` and `write-excel-file`
+are pinned in `package.json` and their versions recorded by hand in this
+table and in `THIRD_PARTY_LICENSES.md` instead, same as any other dependency
+this project doesn't have a derivation mechanism for. A Dependabot bump of
+one of the other three needs a manual edit to both docs rows — flagged here
+so it isn't missed, not resolved by this slice.
+
+**`csv` is not a registered format yet.** `FORMATS` (`src/lib/registry/
+formats.ts`) requires every accepted (non-output-only) format to have at
+least one real magic-byte pattern — `formats.test.ts`'s "every sniffable
+format has at least one magic alternative" enforces it, and `classifyFiles`
+(`src/components/dropzone-logic.ts`) rejects any file that doesn't sniff,
+regardless of extension. CSV has no fixed byte signature at all (it's
+arbitrary delimited text — unlike JSON's `{`/`[` opener or YAML's `---`
+marker, both registered with a narrow, real, best-effort pattern), so it
+can't be an accepted input under the current registry without a new
+extension-only accept path. `src/lib/engines/data/transforms.ts`'s
+`csvToJson`/`jsonToCsv` are written and unit-tested regardless — they're
+plain functions, ready to wire in once the registry gains that path — but no
+`FORMATS.csv` entry or csv-conversion tool ships in this slice. See the
+commit that added this note for the two options considered: (1) add a
+`FormatSpec.acceptByExtensionOnly` flag `classifyFiles` checks when a sniff
+comes back `null`, or (2) give CSV a deliberately loose magic heuristic
+(e.g. "mostly printable ASCII in the first N bytes") — which the current
+`MagicPattern` type (fixed offset + exact bytes) can't express without
+widening that type too. Both are planner-level registry decisions, not
+something this slice should improvise.
 
 `pnpm sync-engines` copies each "static"/"r2" engine's files into place
 (`public/engines/<id>@<version>/` for "static", `.engines-r2/xl/<id>@<

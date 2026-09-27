@@ -50,6 +50,10 @@ requires its own ADR and we must publish the modified source.
 | `@mediabunny/mp3-encoder` (wraps a LAME wasm build; wired into every mp3-output audio tool as of Phase 3b) | 1.60.0 | MPL-2.0 (wrapper); LAME itself is LGPL | Vanilagy; the LAME project | https://github.com/Vanilagy/mediabunny |
 | `gifenc` (pure-JS GIF encoder + color quantizer; `video-to-gif`'s `toGif` op, replacing ffmpeg for GIF output per ADR-0002) | 1.0.3 | MIT | Matt DesLauriers | https://github.com/mattdesl/gifenc |
 | `ffmpeg` (`@ffmpeg/core`, wraps FFmpeg built with libx264) | 0.12.10 | **GPL-2.0-or-later** (via x264) — see the copyleft table below | ffmpegwasm contributors; the FFmpeg project; x264 (VideoLAN) | https://github.com/ffmpegwasm/ffmpeg.wasm |
+| `papaparse` (CSV parse/unparse) | 5.7.0 | MIT | Matt Holt and Papa Parse contributors | https://github.com/mholt/PapaParse |
+| `yaml` (YAML parse/stringify) | 2.9.1 | ISC | Eemeli Aro | https://github.com/eemeli/yaml |
+| `read-excel-file` (xlsx read) | 9.3.10 | MIT | catamphetamine | https://gitlab.com/catamphetamine/read-excel-file |
+| `write-excel-file` (xlsx write) | 4.1.1 | MIT | catamphetamine | https://gitlab.com/catamphetamine/write-excel-file |
 
 `jsquash-webp`'s underlying codec is libwebp, Copyright 2010 Google Inc.,
 BSD-3-Clause (`node_modules/@jsquash/webp/codec/LICENSE.codec.md` after

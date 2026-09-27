@@ -147,3 +147,20 @@ apply to any of them, so that column reads their own **Arity** instead.
 | Slug | From | To | Engine | Batch | Notes |
 |---|---|---|---|---|---|
 | _none yet_ | | | | | Phase 1 (compression) |
+
+## Data
+
+| Slug | From | To | Engine | Batch | Notes |
+|---|---|---|---|---|---|
+| `json-to-yaml` | JSON | YAML | data | Yes | Preserves key order; indent fixed at 2 |
+| `yaml-to-json` | YAML | JSON | data | Yes | — |
+| `json-to-xlsx` | JSON | XLSX | data | Yes | JSON must be an array of objects; nested values are JSON-stringified into their cell; bold header row, single sheet named "Sheet1" |
+| `xlsx-to-json` | XLSX | JSON | data | Yes | `sheet` option (1-based, default 1) picks which sheet to read |
+
+CSV conversions (`csv-to-json`, `json-to-csv`, `csv-to-xlsx`, `xlsx-to-csv`)
+are **not yet shippable**: CSV has no magic-byte signature the registry's
+`sniffFormat` can key off, so `classifyFiles` would reject every real CSV
+drop as unrecognized. The pure conversion logic already exists and is
+unit-tested (`src/lib/engines/data/transforms.ts`'s `csvToJson`/`jsonToCsv`)
+— see `docs/ENGINES.md`'s note on the `data` engine for the two options to
+unblock it.
