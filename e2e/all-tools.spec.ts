@@ -87,9 +87,13 @@ const FIXTURE_BY_FORMAT: Partial<Record<FormatId, string>> = {
 };
 
 /** A second, distinct fixture of the same format — only needed by
- * `arity: "many-to-one"` tools (`merge-pdf`, `images-to-pdf`). */
+ * `arity: "many-to-one"` tools (`merge-pdf`, `images-to-pdf` and its
+ * single-format siblings `jpg-to-pdf`/`png-to-pdf`). `ocr-text.png` is
+ * already committed for `image-to-text`'s override below — reused here
+ * rather than adding a third png fixture just for this. */
 const SECOND_FIXTURE_BY_FORMAT: Partial<Record<FormatId, string>> = {
   jpg: "photo-medium.jpg",
+  png: "ocr-text.png",
   pdf: "b.pdf",
 };
 
@@ -108,16 +112,19 @@ const FIXTURE_OVERRIDE_BY_SLUG: Partial<Record<string, Fixture>> = {
 const REQUIRED_FIELD_VALUES: Record<string, Record<string, string>> = {
   "protect-pdf": { password: "e2e-smoke-test-pw" },
   "delete-pdf-pages": { pages: "1" },
+  "watermark-pdf": { text: "e2e smoke test" },
 };
 
 /** Every option field's rendered `<Label>` text is `.meta({label})` from
  * the tool's own schema — `Password` for both `protect-pdf` and
  * `unlock-pdf`, the only `control: "password"` field in the registry;
  * `delete-pdf-pages`'s required `pages` field renders as "Pages to
- * delete". */
+ * delete"; `watermark-pdf`'s required `text` field renders as "Watermark
+ * text". */
 const REQUIRED_FIELD_LABELS: Record<string, string> = {
   password: "Password",
   pages: "Pages to delete",
+  text: "Watermark text",
 };
 
 /**

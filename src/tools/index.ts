@@ -86,12 +86,14 @@ import extractPdfPages from "@/tools/pdf/extract-pdf-pages";
 import flattenPdf from "@/tools/pdf/flatten-pdf";
 import imageToSearchablePdf from "@/tools/pdf/image-to-searchable-pdf";
 import imagesToPdf from "@/tools/pdf/images-to-pdf";
+import jpgToPdf from "@/tools/pdf/jpg-to-pdf";
 import mergePdf from "@/tools/pdf/merge-pdf";
 import pdfEditor from "@/tools/pdf/pdf-editor";
 import pdfToJpg from "@/tools/pdf/pdf-to-jpg";
 import pdfToPng from "@/tools/pdf/pdf-to-png";
 import pdfToSearchablePdf from "@/tools/pdf/pdf-to-searchable-pdf";
 import pdfToText from "@/tools/pdf/pdf-to-text";
+import pngToPdf from "@/tools/pdf/png-to-pdf";
 import protectPdf from "@/tools/pdf/protect-pdf";
 import reorderPdfPages from "@/tools/pdf/reorder-pdf-pages";
 import rotatePdf from "@/tools/pdf/rotate-pdf";
@@ -201,12 +203,14 @@ export const TOOLS: readonly ToolDefinition[] = [
   flattenPdf,
   imageToSearchablePdf,
   imagesToPdf,
+  jpgToPdf,
   mergePdf,
   pdfEditor,
   pdfToJpg,
   pdfToPng,
   pdfToSearchablePdf,
   pdfToText,
+  pngToPdf,
   protectPdf,
   reorderPdfPages,
   rotatePdf,

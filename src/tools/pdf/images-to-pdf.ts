@@ -1,5 +1,5 @@
-import { z } from "zod";
 import { defineTool } from "@/lib/registry";
+import { imagesToPdfDefaults, imagesToPdfOptions } from "../_shared-options";
 
 /**
  * ADR-0008: arity `"many-to-one"` — every dropped jpg/png becomes its own
@@ -13,6 +13,11 @@ import { defineTool } from "@/lib/registry";
  * falls back to whichever format the first dropped file sniffs as, and the
  * pdf-lib engine re-sniffs every individual input by its own bytes anyway
  * (see the engine's own doc comment).
+ *
+ * `options`/`defaults` live in `_shared-options.ts` (`imagesToPdfOptions`)
+ * so the per-format siblings `jpg-to-pdf`/`png-to-pdf` render the identical
+ * form rather than drifting apart one tool file at a time — same reasoning
+ * as `jpgOptions` there.
  */
 export default defineTool({
   slug: "images-to-pdf",
@@ -25,27 +30,8 @@ export default defineTool({
   accepts: ["jpg", "png"],
   produces: "pdf",
 
-  options: z.object({
-    pageSize: z
-      .enum(["fit", "a4", "letter"])
-      .meta({ label: "Page size", control: "select" }),
-    orientation: z.enum(["auto", "portrait", "landscape"]).meta({
-      label: "Orientation",
-      control: "select",
-      showWhen: { field: "pageSize", equals: ["a4", "letter"] },
-    }),
-    margin: z
-      .number()
-      .min(0)
-      .max(144)
-      .meta({
-        label: "Margin",
-        control: "number",
-        unit: "pt",
-        showWhen: { field: "pageSize", equals: ["a4", "letter"] },
-      }),
-  }),
-  defaults: { pageSize: "fit", orientation: "auto", margin: 0 },
+  options: imagesToPdfOptions,
+  defaults: imagesToPdfDefaults,
 
   pipeline: [{ op: "merge", candidates: [{ engine: "pdf-lib" }] }],
 

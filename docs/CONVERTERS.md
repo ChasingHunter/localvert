@@ -89,9 +89,10 @@ Crop is out of scope for this slice — it needs an interactive crop UI.
 
 ## PDF
 
-`merge-pdf`, `split-pdf` and `images-to-pdf` are ADR-0008 multi-file tools,
-not one-to-one conversions — **Batch** (repeat per dropped file) doesn't
-apply to any of them, so that column reads their own **Arity** instead.
+`merge-pdf`, `split-pdf`, `images-to-pdf` and its single-format siblings
+`jpg-to-pdf`/`png-to-pdf` are ADR-0008 multi-file tools, not one-to-one
+conversions — **Batch** (repeat per dropped file) doesn't apply to any of
+them, so that column reads their own **Arity** instead.
 
 | Slug | From | To | Engine | Arity | Notes |
 |---|---|---|---|---|---|
@@ -102,6 +103,10 @@ apply to any of them, so that column reads their own **Arity** instead.
 | `extract-pdf-pages` | PDF | PDF | pdf-lib | one-to-one (batch) | Keeps only the given pages, in the order given |
 | `reorder-pdf-pages` | PDF | PDF | pdf-lib | one-to-one (batch) | Rearranges pages per `order` (e.g. "3, 1, 2, 4-6"); ranges may run backwards, repeating a page duplicates it, blank = unchanged |
 | `images-to-pdf` | JPEG/PNG | PDF | pdf-lib | many-to-one | One image per page, in the order arranged via drag/keyboard reorder; page size fit/A4/letter, orientation, margin |
+| `jpg-to-pdf` | JPEG | PDF | pdf-lib | many-to-one | Single-format sibling of `images-to-pdf`, same options |
+| `png-to-pdf` | PNG | PDF | pdf-lib | many-to-one | Single-format sibling of `images-to-pdf`, same options |
+| `watermark-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Stamps text across every selected page; diagonal/horizontal, opacity/size/color/position; rejects non-WinAnsi text with a clear message rather than silently dropping characters |
+| `add-page-numbers` | PDF | PDF | pdf-lib | one-to-one (batch) | Draws a page number label per selected page; six corner/edge positions, 4 formats, `startAt`; numbering counts every page even when only some are labeled |
 | `protect-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Adds a password, AES-256; printing/copying permissions |
 | `unlock-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Removes a password you already have |
 | `compress-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Re-encodes embedded images smaller (`level`: smallest/balanced/best); never bigger than the input |
@@ -109,6 +114,7 @@ apply to any of them, so that column reads their own **Arity** instead.
 | `sanitize-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Strips metadata/JavaScript/attachments (default on), web links (default off) |
 | `pdf-to-jpg` | PDF | JPEG | pdfjs | one-to-many | One JPG per selected page (`pages`, `dpi`, `quality`); white background |
 | `pdf-to-png` | PDF | PNG | pdfjs | one-to-many | One PNG per selected page (`pages`, `dpi`); page transparency preserved |
+| `pdf-to-text` | PDF | Text | pdfjs | one-to-one (batch) | Extracts embedded text into a `.txt` file (`pages`, `pageMarkers` heading each page); a scanned PDF with no text layer needs `pdf-to-searchable-pdf`'s OCR first |
 | `image-to-searchable-pdf` | JPEG/PNG/WebP/BMP | PDF | tesseract | one-to-one (batch) | Adds an invisible OCR text layer over the original page image; English only today (`language` select). Single-page input only — see `pdf-to-searchable-pdf` for multi-page |
 | `pdf-to-searchable-pdf` | PDF | PDF | tesseract (composite `ocrPdf` op, driving `pdfjs` render and `pdf-lib` merge internally) | one-to-one (batch) | Renders each page, OCRs it, and merges the searchable pages back into one PDF, in order; English only today (`language` select); capped at 200 pages per job |
 | `pdf-editor` | PDF | PDF | pdfium (session) | n/a — `kind: "app"` | Opens one PDF at a time; highlight, underline, strikethrough, freehand ink, rectangle, ellipse, line/arrow, free text and image-stamp annotations; undo/redo (Ctrl+Z / Ctrl+Shift+Z); exports `<name>-edited.pdf`. One page at a time (prev/next) — not the virtualised multi-page scroll + thumbnail rail ADR-0009 describes; see docs/ROADMAP.md's E1 note |

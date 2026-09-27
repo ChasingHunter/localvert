@@ -256,6 +256,39 @@ export const csvInputDefaults: z.infer<typeof csvInputOptions> = {
   dynamicTyping: true,
 };
 
+/**
+ * Shared by `images-to-pdf` and its per-format siblings `jpg-to-pdf`/
+ * `png-to-pdf` (ADR-0008 many-to-one `merge` op, `pdf-lib` engine's
+ * `runMergeImages`) -- one image per page, `pageSize`/`orientation`/`margin`
+ * control how each image is laid out. See `runMergeImages`'s own doc comment
+ * for exactly what each value does.
+ */
+export const imagesToPdfOptions = z.object({
+  pageSize: z
+    .enum(["fit", "a4", "letter"])
+    .meta({ label: "Page size", control: "select" }),
+  orientation: z.enum(["auto", "portrait", "landscape"]).meta({
+    label: "Orientation",
+    control: "select",
+    showWhen: { field: "pageSize", equals: ["a4", "letter"] },
+  }),
+  margin: z
+    .number()
+    .min(0)
+    .max(144)
+    .meta({
+      label: "Margin",
+      control: "number",
+      unit: "pt",
+      showWhen: { field: "pageSize", equals: ["a4", "letter"] },
+    }),
+});
+export const imagesToPdfDefaults: z.infer<typeof imagesToPdfOptions> = {
+  pageSize: "fit",
+  orientation: "auto",
+  margin: 0,
+};
+
 export const cropField = z
   .object({
     x: z.number().int().nonnegative(),
