@@ -264,7 +264,9 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: [check, build, browser]
+    # e2e is a gate too: it is the only job that exercises the built site in
+    # a real browser, so a red e2e must never reach production.
+    needs: [check, build, browser, e2e]
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     # url: intentionally left out — the workers.dev URL isn't known until the

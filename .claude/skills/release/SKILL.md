@@ -32,7 +32,7 @@ Version semantics come from commit types: `fix:` → patch, `feat:` → minor,
 
 4. **Merge it.** `gh pr merge <n> --squash`. release-please then creates the
    tag `vX.Y.Z` and the GitHub Release; the push to `main` runs `ci.yml`,
-   whose `deploy` job ships it once `check`, `build` and `browser` pass
+   whose `deploy` job ships it once `check`, `build`, `browser` and `e2e` pass
    (deploy is a job in `ci.yml`, not a separate workflow).
 
 5. **Verify the release actually shipped** — do not report success from the
