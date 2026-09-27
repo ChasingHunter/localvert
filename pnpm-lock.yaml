@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@bentopdf/libreoffice-wasm':
+        specifier: 2.3.1
+        version: 2.3.1
       '@cantoo/pdf-lib':
         specifier: ^2.11.1
         version: 2.11.1(html-entities@2.6.0)
@@ -245,6 +248,9 @@ packages:
   '@babel/types@7.29.8':
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
+
+  '@bentopdf/libreoffice-wasm@2.3.1':
+    resolution: {integrity: sha512-LVWvXGsMO96PrVS8ktZXa2EmVwmV52YH4l7GwQHANDqsilU3TWLxk4dTVJuNcfr8vGXfUndQuiwLAymCFywZMA==}
 
   '@biomejs/biome@2.5.12':
     resolution: {integrity: sha512-Lw4VHZRebrReBBnlHa12JQjnIBm3JJAA55PDB9LbBVBF0q4RYphm6KfmIjqtPhf61MxZ5Q9KoK8R8x+7per5Aw==}
@@ -3240,6 +3246,8 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
+
+  '@bentopdf/libreoffice-wasm@2.3.1': {}
 
   '@biomejs/biome@2.5.12':
     optionalDependencies:

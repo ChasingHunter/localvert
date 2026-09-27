@@ -36,6 +36,7 @@
     ]
   },
   "dependencies": {
+    "@bentopdf/libreoffice-wasm": "2.3.1",
     "@cantoo/pdf-lib": "^2.11.1",
     "@embedpdf/core": "2.15.1",
     "@embedpdf/engines": "2.15.1",
