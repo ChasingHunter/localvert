@@ -92,8 +92,13 @@ const test = base.extend<Fixtures>({
   ],
 });
 
+// The rendered page image is a direct child of `PagePointerProvider`'s
+// wrapper div (see `pdf-editor-app.tsx`'s `renderPage`), so `> div > img` is
+// unambiguous — a bare `img` descendant selector also matches a placed
+// stamp/signature image (an `<img>` inside the annotation layer), same fix
+// as `e2e/pdf-editor-draft.spec.ts`'s `pageImage`.
 function pageImage(page: import("@playwright/test").Page, pageIndex = 0) {
-  return page.locator(`[data-page-index="${pageIndex}"] img`);
+  return page.locator(`[data-page-index="${pageIndex}"] > div > img`);
 }
 
 async function exportBytes(

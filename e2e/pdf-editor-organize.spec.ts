@@ -57,14 +57,19 @@ test.describe("pdf-editor page organizer", () => {
     await page.getByRole("option", { name: "Page 2" }).click();
     await page.keyboard.press("Alt+ArrowLeft");
 
-    // The tile now first (originally page 2) — rotate it right 90°.
+    // The tile now first (originally page 2) — rotate it right 90°. Each
+    // tile's per-page buttons are named by their current (post-reorder)
+    // 1-based position, so the first tile's is "...page 1...".
     const firstTile = dialog.getByRole("option").first();
-    await firstTile.getByRole("button", { name: "Rotate right" }).click();
+    await firstTile
+      .getByRole("button", { name: "Rotate page 1 right" })
+      .click();
 
-    // Insert a blank page after the last tile (originally page 1).
+    // Insert a blank page after the last tile (originally page 1, now at
+    // position 2).
     const lastTile = dialog.getByRole("option").last();
     await lastTile
-      .getByRole("button", { name: "Insert blank page after" })
+      .getByRole("button", { name: "Insert blank page after page 2" })
       .click();
 
     await expect(dialog.getByRole("option")).toHaveCount(3);
