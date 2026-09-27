@@ -232,6 +232,47 @@ export const FORMATS = {
     category: "pdf",
     magic: [[{ offset: 0, bytes: ascii("%PDF-") }]],
   },
+  mp4: {
+    label: "MP4",
+    ext: ["mp4", "m4v"],
+    mime: "video/mp4",
+    category: "video",
+    // ISO-BMFF "ftyp" box, same shape as avif/heic above — one alternative
+    // per common MP4 major brand. Brands vary by encoder (isom/mp42 are the
+    // usual ones; M4V and avc1 show up from some cameras/exporters); an
+    // unlisted brand is an accepted gap, same as heic's own note above.
+    magic: ["isom", "iso2", "mp41", "mp42", "M4V ", "avc1"].map((brand) => [
+      { offset: 4, bytes: ascii("ftyp") },
+      { offset: 8, bytes: ascii(brand) },
+    ]),
+  },
+  mov: {
+    label: "QuickTime",
+    ext: ["mov"],
+    mime: "video/quicktime",
+    category: "video",
+    // Same ISO-BMFF "ftyp" box, major brand "qt  " (note the trailing
+    // spaces — QuickTime's own brand code, padded to 4 bytes).
+    magic: [
+      [
+        { offset: 4, bytes: ascii("ftyp") },
+        { offset: 8, bytes: ascii("qt  ") },
+      ],
+    ],
+  },
+  webm: {
+    label: "WebM",
+    ext: ["webm"],
+    mime: "video/webm",
+    category: "video",
+    // The EBML header signature webm shares with every Matroska-family
+    // container. Telling webm apart from a plain .mkv needs the EBML
+    // `DocType` element a few bytes in, which this offset+bytes-only magic
+    // scheme can't express — accepted gap, same shape as raw/tiff above:
+    // an .mkv dropped here sniffs as "webm" and is refined by extension
+    // where it matters, or simply isn't a format any tool accepts yet.
+    magic: [[{ offset: 0, bytes: [0x1a, 0x45, 0xdf, 0xa3] }]],
+  },
   zip: {
     label: "ZIP",
     ext: ["zip"],

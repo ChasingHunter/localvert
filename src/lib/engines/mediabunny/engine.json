@@ -1,0 +1,8 @@
+{
+  "id": "mediabunny",
+  "versionFrom": "mediabunny",
+  "license": "MPL-2.0",
+  "location": "bundled",
+  "needsIsolation": false,
+  "heavy": false
+}
