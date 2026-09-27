@@ -37,6 +37,13 @@ export interface EngineAsset {
  * `package` as before. `sync-engines`'s installed-version check only ever
  * runs against the engine's own `package`/`version` pair — a file borrowed
  * from a different package is copied as-is, unchecked against any version.
+ *
+ * `package: "local"` is a sentinel, not a real npm specifier: `from`
+ * resolves relative to the repo root's own `vendor/` tree instead of any
+ * installed package — for assets with no owning npm package at all (e.g.
+ * `typst`'s vendored OFL/Bitstream-Vera fonts and its vendored `cmarker`
+ * typst package, fetched once at dev time per its ADR, not installed via
+ * npm).
  */
 export interface EngineSourceFile {
   from: string;

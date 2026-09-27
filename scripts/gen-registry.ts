@@ -539,6 +539,9 @@ function resolveAssets(
   ]);
   const resolveFilePackageDir = (fileSource: EngineSourceFileLike): string => {
     if (fileSource.package === undefined) return packageDir;
+    // "local" sentinel — see the identical comment in
+    // `scripts/sync-engines.ts`'s `copyEngineFiles`.
+    if (fileSource.package === "local") return rootDir;
     const cached = packageDirs.get(fileSource.package);
     if (cached) return cached;
     const resolved = resolvePackageDir(fileSource.package, rootDir);

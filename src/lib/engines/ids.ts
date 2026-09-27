@@ -19,4 +19,5 @@ export type EngineId =
   | "resvg"
   | "tesseract"
   | "tracer"
+  | "typst"
   | "utif";

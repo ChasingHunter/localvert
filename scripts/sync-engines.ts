@@ -311,6 +311,11 @@ function copyEngineFiles(
   const packageDirs = new Map<string, string>();
   const resolveFilePackageDir = (fileSource: SourceFile): string => {
     if (fileSource.package === undefined) return packageDir;
+    // "local" is a sentinel, not a real npm specifier: it resolves a file
+    // from this repo's own `vendor/` tree (e.g. typst's vendored fonts and
+    // cmarker package — files with no owning npm package at all) instead of
+    // `node_modules`. `from` is then relative to `rootDir` directly.
+    if (fileSource.package === "local") return rootDir;
     const cached = packageDirs.get(fileSource.package);
     if (cached) return cached;
     const resolved = resolvePackageDir(fileSource.package, rootDir);

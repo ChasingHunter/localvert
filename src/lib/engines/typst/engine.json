@@ -1,0 +1,64 @@
+{
+  "id": "typst",
+  "license": "Apache-2.0 (typst.ts + typst compiler) + MIT (cmarker) + OFL-1.1 (Libertinus Serif) + Bitstream Vera (DejaVu Sans Mono)",
+  "location": "r2",
+  "needsIsolation": false,
+  "heavy": true,
+  "consent": true,
+  "package": "@myriaddreamin/typst-ts-web-compiler",
+  "files": [
+    {
+      "from": "pkg/typst_ts_web_compiler_bg.wasm",
+      "to": "typst_ts_web_compiler_bg.wasm"
+    },
+    {
+      "from": "pkg/typst_ts_web_compiler.mjs",
+      "to": "typst_ts_web_compiler.mjs"
+    },
+    {
+      "from": "vendor/typst-fonts/LibertinusSerif-Regular.otf",
+      "to": "fonts/LibertinusSerif-Regular.otf",
+      "package": "local"
+    },
+    {
+      "from": "vendor/typst-fonts/LibertinusSerif-Bold.otf",
+      "to": "fonts/LibertinusSerif-Bold.otf",
+      "package": "local"
+    },
+    {
+      "from": "vendor/typst-fonts/LibertinusSerif-Italic.otf",
+      "to": "fonts/LibertinusSerif-Italic.otf",
+      "package": "local"
+    },
+    {
+      "from": "vendor/typst-fonts/LibertinusSerif-BoldItalic.otf",
+      "to": "fonts/LibertinusSerif-BoldItalic.otf",
+      "package": "local"
+    },
+    {
+      "from": "vendor/typst-fonts/DejaVuSansMono.ttf",
+      "to": "fonts/DejaVuSansMono.ttf",
+      "package": "local"
+    },
+    {
+      "from": "vendor/typst-fonts/DejaVuSansMono-Bold.ttf",
+      "to": "fonts/DejaVuSansMono-Bold.ttf",
+      "package": "local"
+    },
+    {
+      "from": "vendor/typst-packages/preview/cmarker/0.1.8/lib.typ",
+      "to": "packages/preview/cmarker/0.1.8/lib.typ",
+      "package": "local"
+    },
+    {
+      "from": "vendor/typst-packages/preview/cmarker/0.1.8/plugin.wasm",
+      "to": "packages/preview/cmarker/0.1.8/plugin.wasm",
+      "package": "local"
+    },
+    {
+      "from": "vendor/typst-packages/preview/cmarker/0.1.8/typst.toml",
+      "to": "packages/preview/cmarker/0.1.8/typst.toml",
+      "package": "local"
+    }
+  ]
+}
