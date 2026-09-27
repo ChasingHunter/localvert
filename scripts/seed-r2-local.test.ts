@@ -2,7 +2,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { seedLocalR2 } from "./seed-r2-local";
+import { r2EngineIds, seedLocalR2 } from "./seed-r2-local";
+
+describe("r2EngineIds", () => {
+  it("finds the repo's r2-hosted engines from their engine.json", () => {
+    expect(r2EngineIds(process.cwd())).toContain("ffmpeg");
+  });
+});
 
 const FAKE_WRANGLER_BIN = "/fake/wrangler.js";
 

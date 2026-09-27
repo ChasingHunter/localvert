@@ -20,6 +20,7 @@
  * needs.
  */
 import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -78,10 +79,37 @@ export function seedLocalR2(
   return seeded;
 }
 
+/** Ids of engines whose engine.json declares `location: "r2"`. */
+export function r2EngineIds(rootDir: string): string[] {
+  const enginesDir = join(rootDir, "src", "lib", "engines");
+  const ids: string[] = [];
+  for (const entry of readdirSync(enginesDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const metaPath = join(enginesDir, entry.name, "engine.json");
+    if (!existsSync(metaPath)) continue;
+    const meta = JSON.parse(readFileSync(metaPath, "utf8")) as {
+      id?: string;
+      location?: string;
+    };
+    if (meta.location === "r2") ids.push(meta.id ?? entry.name);
+  }
+  return ids;
+}
+
 function main(): void {
   const rootDir = process.cwd();
   const seeded = seedLocalR2(rootDir);
   if (seeded.length === 0) {
+    // An r2 engine with nothing staged means its wasm would 404 under
+    // `wrangler dev` and every test using it would time out far from the
+    // cause — fail here instead (CI hit exactly this, 2026-09-27).
+    const r2Engines = r2EngineIds(rootDir);
+    if (r2Engines.length > 0) {
+      console.error(
+        `seed-r2-local: nothing staged in .engines-r2/, but r2 engines exist (${r2Engines.join(", ")}). Run \`pnpm sync-engines\` first.`,
+      );
+      process.exit(1);
+    }
     // biome-ignore lint/suspicious/noConsole: this is the script's own completion summary.
     console.log(
       "seed-r2-local: nothing staged in .engines-r2/ — nothing to do.",
