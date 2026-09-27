@@ -209,10 +209,11 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
 
 ## Phase 4.5 — Popular conversions + compression (v0.3.0)
 
-- [ ] Audio/video pages: mp4/mov/webm → mp3, aac/opus/wma → mp3, m4a/flac → wav
-- [ ] Images: gif, bmp, ico in and out (+ jpg/png → gif/bmp/ico)
-- [ ] PDF: pdf → text, jpg/png → pdf pages, watermark, page numbers
-- [ ] Compression done right (ADR-0013): lossless by default where possible — compress-png
+- [x] Audio/video pages: mp4/mov/webm → mp3, aac/opus/wma → mp3 (wma via ffmpeg, consent-gated),
+      m4a/flac → wav (2026-09-28)
+- [x] Images: gif, bmp, ico in and out (+ jpg/png → gif/bmp/ico) — 11 tools (2026-09-28)
+- [x] PDF: pdf → text, jpg/png → pdf pages, watermark, page numbers (2026-09-28)
+- [x] Compression done right (ADR-0013, 2026-09-28): lossless by default where possible — compress-png
       (oxipng lossless / image-q palette), jpg/webp modes (lossless strip, visually lossless,
       target size; never larger than input), compress-pdf lossless mode, compress audio
 - [ ] PDF → Word via LibreOffice ("layout approximate"); EPUB/HTML/TXT → PDF
