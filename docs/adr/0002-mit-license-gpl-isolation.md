@@ -95,6 +95,24 @@ ADR-0010). ffmpeg's GPL path is now reached only for the legacy containers
 (avi, wmv, flv) this ADR's table lists — the "most-common reason a user
 reaches ffmpeg" is closed.
 
+**2026-09-27:** the first GPL engine actually shipped under this ADR's rules
+— `avi-to-mp4`, `wmv-to-mp4` and `flv-to-mp4` route to `ffmpeg`
+(`src/lib/engines/ffmpeg/`, wrapping `@ffmpeg/core` 0.12.10, single-thread
+build, no `SharedArrayBuffer`/isolation needed). Rule 1 (never vendored — it
+is `location: "r2"`, fetched from R2 at runtime, never committed), rule 2
+(unmodified upstream `dist/esm/*` files), rule 3 (`heavy: true` gives it its
+own dedicated worker via `src/lib/workers/pool.ts`, confirmed by
+`pool.test.ts`'s heavy-pool coverage) and rule 6 (only these three legacy
+containers reach it; every common video/audio path stays on mediabunny) are
+all in place. **Rule 4's download gate and rule 5's in-app source-offer
+link are not yet wired up** — this slice shipped the engine, tools, format
+detection, R2 upload path and local-R2 e2e seeding, but the user-facing
+consent dialog in front of the ~31 MB fetch (naming the GPL license and
+linking THIRD_PARTY_LICENSES.md/upstream source) is still open work. Until
+it lands, dropping an avi/wmv/flv file downloads the engine silently on
+first use — out of step with this ADR's own rule 4 and worth closing before
+these three tools are treated as done.
+
 ## Alternatives considered
 
 **License the whole project GPL.** Would end the question outright. Rejected:

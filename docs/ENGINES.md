@@ -284,6 +284,7 @@ see `scripts/embedpdf-deps.test.ts`'s guard and ADR-0009.
 | `pdfium` | `@embedpdf/pdfium` | 2.15.1 | MIT | ~4.6 MiB (pdfium.wasm) | static | no |
 | `mediabunny` | `mediabunny` + `@mediabunny/mp3-encoder` | 1.60.0 | **MPL-2.0** (wrapper); the mp3-encoder's LAME core itself is **LGPL** | 0 for `mediabunny` itself (wraps WebCodecs, no wasm of its own); `@mediabunny/mp3-encoder` bundles its own inline worker + base64-encoded LAME wasm (~130 KB gz), imported only from `audio.ts` (never `dist/modules/*`, which self-references and would hang Turbopack) | bundled | no |
 | `mediabunny`'s `toGif` op | `gifenc` | 1.0.3 | MIT | 0 (bundled in JS; ~5 KB before gzip) | bundled (inside the `mediabunny` chunk, not its own `EngineId`) | no |
+| `ffmpeg` | `@ffmpeg/core` (single-thread, not `-mt` — no `SharedArrayBuffer` needed) | 0.12.10 | **GPL-2.0-or-later** | ~31 MiB (0.11 MiB JS glue + ~30.7 MiB wasm) | r2 | no |
 
 ### How engine assets ship
 
@@ -370,7 +371,6 @@ first, then adapter, wiring, size budget, docs.
 |---|---|---|---|---|
 | `tesseract.js` | OCR | Apache-2.0 | core + traineddata | 2 |
 | `mediabunny` | Video/audio via WebCodecs — **primary path** | MIT | small | 3 |
-| `@ffmpeg/core-mt` | avi, wmv, flv, GIF out — **fallback only** | **GPL-2.0+** | ~32 MB → **R2** | 3 |
 | `typst.ts` | Markdown to PDF | Apache-2.0 | ~10 MB | 4 |
 | `@bentopdf/libreoffice-wasm` | Office to PDF, **opt-in gate** | MPL-2.0 | ~80 MB → **R2** | 4 |
 

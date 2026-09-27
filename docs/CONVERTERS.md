@@ -111,6 +111,9 @@ apply to any of them, so that column reads their own **Arity** instead.
 | `webm-to-mp4` | WebM | MP4 | mediabunny | Yes | Re-encodes VP9-or-VP8/Opus to AVC/AAC; `quality` select (Low/Medium/High) |
 | `mov-to-mp4` | MOV | MP4 | mediabunny | Yes | Usually a fast remux (both ISOBMFF, h264/aac fits either container); falls back to a real transcode otherwise. `quality` select |
 | `mkv-to-mp4` | MKV | MP4 | mediabunny | Yes | Re-encodes VP9-or-VP8/Opus to AVC/AAC; `quality` select. MKV sniffing relies on `refineFormat`'s extension-based upgrade from WebM (shared EBML magic) |
+| `avi-to-mp4` | AVI | MP4 | ffmpeg | Yes | Re-encodes to libx264/AAC (`-crf 23 -preset veryfast`); AVI's usual codecs aren't WebCodecs-decodable, so this is the first tool routed to ffmpeg (GPL-2.0-or-later, r2-hosted, ~31 MB, ADR-0002) rather than the permissive mediabunny path |
+| `wmv-to-mp4` | WMV | MP4 | ffmpeg | Yes | Same ffmpeg route as `avi-to-mp4` — WMV's codec isn't WebCodecs-decodable |
+| `flv-to-mp4` | FLV | MP4 | ffmpeg | Yes | Same ffmpeg route as `avi-to-mp4` — FLV's codec isn't WebCodecs-decodable |
 | `mp4-to-mov` | MP4 | MOV | mediabunny | Yes | Usually a fast remux; falls back to a real transcode otherwise. `quality` select |
 | `mov-to-webm` | MOV | WebM | mediabunny | Yes | Re-encodes to VP9-or-VP8 + Opus; `quality` select |
 | `trim-video` | MP4, MOV, WebM, MKV | same container | mediabunny | Yes | Cuts to a start/end time in seconds; `end` must be greater than `start` (validated in the engine, not the option schema — see `video.ts`'s `validateTrim`) |
