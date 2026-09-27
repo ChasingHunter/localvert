@@ -147,6 +147,47 @@ if the shape changes. Both patches run as the `"libreoffice-glue"` patch
 session, each an instance on the shared memory — negligible next to the
 74 MB engine.
 
+### Addendum (2026-09-28): PDF import is Draw-only — no pdf-to-word
+
+Wave E's brief was word/txt/html/epub -> pdf plus a `pdf-to-word` (pdf ->
+docx) tool, feasibility-gated on whether this build's PDF import actually
+lands in Writer (which would let a real Writer document, editable text and
+all, come back out). It doesn't, and the wrapper forecloses it on purpose —
+evidence, not a guess:
+
+- `soffice.data`'s own installation config strings (found by gunzipping
+  `soffice.data.gz`/`soffice.wasm.gz` and scanning for ASCII runs) contain
+  both `writer_pdf_import` and `draw_pdf_import` — the real LibreOffice
+  install ships both filters, statically linked into `libpdfimportlo.a`.
+  Their presence alone proves nothing about which one this wrapper's
+  protocol actually reaches.
+- `browser.worker.global.js` hardcodes a `pdf: "drawing"` entry in its own
+  input-classification table (the `ne` object, right next to the `q`
+  export-filter table read for the existing three tools) — every other
+  input format maps to `"text"`/`"spreadsheet"`/`"presentation"`, but `pdf`
+  is `"drawing"`. Its own valid-output table for the `"drawing"` doc type is
+  `["pdf", "png", "svg", "html"]` — no `docx`/`doc` — and its
+  `ie()` error-message builder has a literal, unconditional string for
+  exactly this case: `"PDF files are imported as Draw documents and cannot
+  be exported to Office formats."` This isn't an omission to work around;
+  the wrapper enforces it as a rule.
+- The load side of the protocol never lets a caller force an import filter
+  either way: `documentLoadWithOptions(path, options)`'s `options` string is
+  used for exactly one thing across the whole file —
+  `` `,Password=${password}` `` — never a `FilterName`. There is no
+  parameter that could ask LibreOfficeKit to import a `.pdf` via Writer's
+  `writer_pdf_import` instead of whatever auto-detection picks (which, per
+  the `ne`/`ie` evidence above, is Draw's `draw_pdf_import`).
+
+So: PDF import through this package always produces a Draw document, never
+an editable Writer one, and the JS layer refuses to export a Draw document
+to `docx` even if it were asked to. **`pdf-to-word` is not built** — not a
+scope cut, a confirmed infeasibility of this specific engine's exposed
+surface. A real pdf-to-word conversion (reflowing a PDF's text/layout back
+into an editable Writer document) would need either a different
+`libreoffice-wasm` build whose wrapper exposes `FilterName` at load time, or
+a from-scratch text-reflow engine — both out of scope for this slice.
+
 ## Alternatives considered
 
 - **mammoth / docx-preview (JS-only docx renderers).** Rejected: coverage is
