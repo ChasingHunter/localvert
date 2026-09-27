@@ -42,11 +42,12 @@ as its codec preference table.
 | `exif` | — | — | `strip`: jpg, png, webp | adapter ready |
 | `libraw` | raw | — | — | adapter ready |
 | `pdf-lib` | jpg, png (`merge` only) | — | `merge`, `split`, `rotate`, `extract`, `protect`, `unlock`, `compress`: pdf | adapter ready |
-| `pdfjs` | — | — | `render`: pdf → jpg, png | adapter ready |
+| `pdfjs` | — | — | `render`: pdf → jpg, png; `extractText`: pdf → txt; `extractLayout`: pdf → json (feeds `pdf-to-word`'s second step, `docx`'s own `transcode`) | adapter ready |
 | `tesseract` | — | — | `ocr`: jpg, png, webp, bmp → txt, pdf | adapter ready |
 | `data` | — | — | `transcode`: json ↔ yaml, json → xlsx, xlsx → json | adapter ready |
 | `libreoffice` | — | — | `transcode`: docx, doc, odt, rtf, xlsx, xls, ods, pptx, ppt, odp, txt, html → pdf | adapter ready |
 | `epub` | — | — | `transcode`: epub → html (feeds `epub-to-pdf`'s second step, `libreoffice`'s own html → pdf) | adapter ready |
+| `docx` | — | — | `transcode`: json → docx (writes `pdf-to-word`'s output from `pdfjs`'s own `extractLayout` JSON) | adapter ready |
 
 `canvas` also still runs the legacy single-step `transcode` op directly
 (bytes of one format straight to bytes of another) for a tool that predates
@@ -163,6 +164,13 @@ text via predefined Adobe CMaps) ship as real per-file assets under
 `ctx.baseUrl` — `scripts/sync-engines.ts` gained directory-entry support
 (`{from: "cmaps/", to: "cmaps/"}`) to copy pdf.js's own directory trees of
 them one file at a time, same as every other engine's fixed file list.
+Its `extractLayout` op (`pdf-to-word`'s first step, ADR-0014) reconstructs
+paragraphs/headings from `getTextContent()` into JSON rather than
+rasterising anything; the `docx` engine (pure JS, `bundled`, `fflate`'s
+`zipSync`) writes the actual `.docx` from that JSON in a second pipeline
+step — see ADR-0014 for the full mechanism, including why bold/italic
+detection reads `page.commonObjs` and what's deliberately not
+implemented yet (images, column detection).
 
 `tesseract` (`tesseract.js`, wrapping the Tesseract OCR engine) doesn't fit
 the decode/encode/transform shape either — its one op, `ocr`, hands an image
@@ -295,6 +303,7 @@ see `scripts/embedpdf-deps.test.ts`'s guard and ADR-0009.
 | `typst` | `@myriaddreamin/typst-ts-web-compiler` 0.7.0 (glue + compiler wasm) + vendored `cmarker` 0.1.8 + Libertinus Serif + DejaVu Sans Mono fonts (`vendor/typst-*`, no owning npm package — ADR-0011) | 0.7.0 | Apache-2.0 (typst.ts + typst compiler) + MIT (cmarker) + OFL-1.1 (Libertinus Serif) + Bitstream Vera (DejaVu Sans Mono) | ~30.6 MiB (28.3 MiB compiler wasm + 1.9 MiB fonts + 0.3 MiB cmarker) | r2 | no |
 | `libreoffice` | `@bentopdf/libreoffice-wasm` (LibreOfficeDev 24.8, wasm/pthreads) | 2.3.1 | **MPL-2.0** | ~74 MiB gzipped (46.5 MiB wasm.gz + 27.3 MiB data.gz + 0.5 MiB JS glue) | r2 | **yes** (pthreads need `SharedArrayBuffer`) |
 | `epub` | `fflate` (already a dependency of the streaming ZIP sink) | 0.8.3 | MIT | 0 (bundled in JS; our own `epub.ts` reading logic + fflate's `unzipSync`, no wasm) | bundled | no |
+| `docx` | `fflate` (already a dependency; same package `epub` shares) | 0.8.3 | MIT | 0 (bundled in JS; our own `writer.ts` OOXML templating + fflate's `zipSync`, no wasm) | bundled | no |
 
 ### How engine assets ship
 
