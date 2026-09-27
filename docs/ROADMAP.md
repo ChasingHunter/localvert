@@ -208,6 +208,14 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
 
 ## Phase 5 — Polish
 
+- [ ] Universal converter UX (owner request 2026-09-27): one entry point — drop any file,
+      input format auto-detected, "Convert to [dropdown of every reachable output]" + Convert;
+      "From [format] → To [format]" pickers for people who start from the format; instant
+      search across all tools; categories as secondary navigation. Per-pair pages stay (SEO)
+      but share the same component. Accessibility first (keyboard, screen readers, contrast).
+      Research existing converter sites for patterns.
+- [ ] Full visual redesign of the site (after the universal converter lands)
+
 - [ ] i18n
 - [ ] `file_handlers` and `share_target` in the manifest (open files from the OS)
 - [ ] Cache manager UI + `navigator.storage.estimate()`
