@@ -27,6 +27,18 @@ export interface FormatSpec {
    * matches if any alternative's patterns all match.
    */
   magic: readonly (readonly MagicPattern[])[];
+  /**
+   * Plain text with no fixed byte signature of its own (csv, json, yaml —
+   * unlike an image/video/archive container, there is nothing at a fixed
+   * offset that reliably proves the format rather than just describing a
+   * loose grammar). `magic` is always `[]` for one of these. Identified by
+   * extension instead, gated on the file containing no NUL byte in its
+   * first `TEXT_SNIFF_BYTES` — see `textFormatFromExtension`/`looksLikeText`
+   * and `classifyFiles`' fallback path. A `text` format must declare at
+   * least one `ext` (enforced in formats.test.ts) or the fallback could
+   * never find it.
+   */
+  text?: boolean;
 }
 
 /** Byte values of an ASCII string, for signatures like "RIFF" or "%PDF-". */
@@ -458,28 +470,33 @@ export const FORMATS = {
     mime: "application/json",
     category: "data",
     // A JSON document has no fixed container signature — it's whatever text
-    // its own grammar allows — but a real one always opens with `{` or `[`
-    // (this table only ever needs to sniff the array-of-objects / object
-    // shape the data tools round-trip). Narrow, best-effort, same shape as
-    // every other accepted gap in this table: a file opening with a BOM,
-    // leading whitespace, or a bare JSON scalar (`"a string"`, `42`) won't
-    // sniff and is rejected as unrecognized rather than misdetected.
-    magic: [
-      [{ offset: 0, bytes: [0x7b] }], // '{'
-      [{ offset: 0, bytes: [0x5b] }], // '['
-    ],
+    // its own grammar allows (a leading BOM, whitespace, or a bare scalar
+    // are all legal and would defeat any fixed-offset byte check) — so this
+    // is a `text` format, identified by extension, not magic. See `text`'s
+    // doc comment on `FormatSpec` and `classifyFiles`' extension fallback.
+    magic: [],
+    text: true,
   },
   yaml: {
     label: "YAML",
     ext: ["yaml", "yml"],
     mime: "application/yaml",
     category: "data",
-    // Like JSON above, YAML has no container signature of its own. The one
-    // narrow, real convention this can key off is the "---" document-start
-    // marker — common, but far from universal (a YAML file with a single
-    // top-level mapping and no explicit document marker is legal and won't
-    // sniff). Accepted gap, same shape as the JSON entry above.
-    magic: [[{ offset: 0, bytes: ascii("---") }]],
+    // Same reasoning as JSON above: no container signature of its own (the
+    // "---" document-start marker some files open with is common but far
+    // from universal), so this is a `text` format too.
+    magic: [],
+    text: true,
+  },
+  csv: {
+    label: "CSV",
+    ext: ["csv"],
+    mime: "text/csv",
+    category: "data",
+    // Arbitrary delimited text — no signature at all, not even a loose one
+    // like JSON's `{`/`[` opener. `text` format, identified by extension.
+    magic: [],
+    text: true,
   },
   xlsx: {
     label: "Excel Workbook",
@@ -557,6 +574,38 @@ export function formatFromFilename(name: string): FormatId | null {
     if ((spec.ext as readonly string[]).includes(ext)) return id;
   }
   return null;
+}
+
+/**
+ * Extension-only fallback for `text` formats (see `FormatSpec.text`'s doc
+ * comment): a real csv/json/yaml file has no fixed byte signature, so
+ * `sniffFormat` returns `null` for one and `classifyFiles` falls back to
+ * this before giving up. Returns `null` unless the extension names a
+ * `FORMATS` entry with `text: true` — a binary file named `photo.json`
+ * still isn't treated as one just because of its name; see `looksLikeText`
+ * for the other half of that guard.
+ */
+export function textFormatFromExtension(name: string): FormatId | null {
+  const id = formatFromFilename(name);
+  return id !== null && (FORMATS[id] as FormatSpec).text === true ? id : null;
+}
+
+/** Bytes read from the head of a file when guarding the `text`-format
+ * extension fallback above — larger than `SNIFF_BYTES` because a NUL byte
+ * (this check's whole signal) can sit anywhere in a binary file's opening
+ * run of otherwise plausible-looking bytes, not just its first 32.
+ */
+export const TEXT_SNIFF_BYTES = 4096;
+
+/**
+ * True if `head` contains no NUL byte. A coarse but effective binary/text
+ * discriminator: no real text file, in any encoding this project's tools
+ * read (UTF-8, UTF-8 with BOM, ASCII), ever embeds one, while binary junk
+ * renamed to `.csv`/`.json`/`.yaml` almost always does within its first few
+ * KiB. Pure, so it's directly unit-testable without a real file read.
+ */
+export function looksLikeText(head: Uint8Array): boolean {
+  return !head.includes(0);
 }
 
 /**

@@ -2,12 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import {
   FORMATS,
   type FormatId,
+  type FormatSpec,
   formatFromFilename,
+  looksLikeText,
   type MagicPattern,
   refineFormat,
   SNIFF_BYTES,
   sniffFile,
   sniffFormat,
+  textFormatFromExtension,
 } from "./formats";
 
 /** Builds a header buffer that satisfies every pattern in one alternative. */
@@ -200,13 +203,21 @@ describe("FORMATS table shape", () => {
    */
   const OUTPUT_ONLY: readonly FormatId[] = ["txt"];
 
-  it("every sniffable format has at least one magic alternative", () => {
+  it("every accepted format has a magic alternative or is a text format", () => {
     for (const [id, spec] of Object.entries(FORMATS) as [
       FormatId,
-      (typeof FORMATS)[FormatId],
+      FormatSpec,
     ][]) {
       if (OUTPUT_ONLY.includes(id)) continue;
-      expect(spec.magic.length).toBeGreaterThan(0);
+      expect(spec.magic.length > 0 || spec.text === true).toBe(true);
+    }
+  });
+
+  it("a text format declares no magic and at least one extension", () => {
+    for (const spec of Object.values(FORMATS) as FormatSpec[]) {
+      if (!spec.text) continue;
+      expect(spec.magic.length).toBe(0);
+      expect(spec.ext.length).toBeGreaterThan(0);
     }
   });
 
@@ -236,5 +247,54 @@ describe("FORMATS table shape", () => {
         seen.add(ext);
       }
     }
+  });
+});
+
+describe("textFormatFromExtension", () => {
+  it("maps a text format's extension to its FormatId", () => {
+    expect(textFormatFromExtension("data.csv")).toBe("csv");
+    expect(textFormatFromExtension("data.json")).toBe("json");
+    expect(textFormatFromExtension("data.yaml")).toBe("yaml");
+    expect(textFormatFromExtension("data.yml")).toBe("yaml");
+  });
+
+  it("returns null for a non-text format's extension", () => {
+    expect(textFormatFromExtension("photo.png")).toBeNull();
+  });
+
+  it("returns null for an unknown or missing extension", () => {
+    expect(textFormatFromExtension("noext")).toBeNull();
+    expect(textFormatFromExtension("file.xyz")).toBeNull();
+  });
+});
+
+describe("looksLikeText", () => {
+  it("is true for real text with no NUL byte", () => {
+    expect(looksLikeText(new TextEncoder().encode("a,b,c\n1,2,3\n"))).toBe(
+      true,
+    );
+  });
+
+  it("is true for text opening with a UTF-8 BOM or leading whitespace", () => {
+    const bom = new Uint8Array([
+      0xef,
+      0xbb,
+      0xbf,
+      ...new TextEncoder().encode('{"a":1}'),
+    ]);
+    expect(looksLikeText(bom)).toBe(true);
+    expect(looksLikeText(new TextEncoder().encode("   \n{}"))).toBe(true);
+  });
+
+  it("is true for YAML with no '---' document marker", () => {
+    expect(looksLikeText(new TextEncoder().encode("a: 1\nb: 2\n"))).toBe(true);
+  });
+
+  it("is false when a NUL byte is present anywhere in the head", () => {
+    expect(looksLikeText(new Uint8Array([0x61, 0x00, 0x62]))).toBe(false);
+  });
+
+  it("is true for an empty buffer", () => {
+    expect(looksLikeText(new Uint8Array(0))).toBe(true);
   });
 });

@@ -93,3 +93,84 @@ describe("classifyFiles", () => {
     ]);
   });
 });
+
+describe("classifyFiles text-format fallback", () => {
+  it("accepts a real csv by extension when the magic sniff finds nothing", async () => {
+    const file = new File(["a,b,c\n1,2,3\n"], "data.csv", {
+      type: "text/csv",
+    });
+    const { accepted, rejected } = await classifyFiles([file], ["csv"]);
+    expect(rejected).toEqual([]);
+    expect(accepted).toEqual([
+      { file, format: "csv", extensionMismatch: false },
+    ]);
+  });
+
+  it("accepts JSON opening with a BOM or leading whitespace, and YAML with no '---' marker", async () => {
+    const bomJson = new File(["﻿" + '{"a":1}'], "data.json");
+    const whitespaceJson = new File(["  \n[1,2,3]"], "list.json");
+    const plainYaml = new File(["a: 1\nb: 2\n"], "data.yaml");
+
+    const { accepted, rejected } = await classifyFiles(
+      [bomJson, whitespaceJson, plainYaml],
+      ["json", "yaml"],
+    );
+    expect(rejected).toEqual([]);
+    expect(accepted.map((a) => a.format)).toEqual(["json", "json", "yaml"]);
+  });
+
+  it("rejects binary junk renamed to a text extension (NUL byte in the head)", async () => {
+    const junk = new File(
+      [new Uint8Array([0x01, 0x00, 0x02, 0x03])],
+      "not-really.csv",
+    );
+    const { accepted, rejected } = await classifyFiles([junk], ["csv"]);
+    expect(accepted).toEqual([]);
+    expect(rejected).toEqual([
+      { file: junk, reason: "unknown-format", detected: null },
+    ]);
+  });
+
+  it("lets real magic bytes win over a text extension guess", async () => {
+    // A real PNG renamed to .csv: the magic sniff finds "png" first, so the
+    // text fallback never runs — same "bytes over name" rule the module doc
+    // comment describes, just for the new fallback path specifically.
+    const file = new File(
+      [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])],
+      "photo.csv",
+    );
+    const { accepted, rejected } = await classifyFiles(
+      [file],
+      ["png"],
+      async () => "png",
+    );
+    expect(rejected).toEqual([]);
+    expect(accepted).toEqual([
+      { file, format: "png", extensionMismatch: true },
+    ]);
+  });
+
+  it("does not accept a text extension whose format is not in the accepts list", async () => {
+    const file = new File(["a,b\n1,2\n"], "data.csv");
+    const { accepted, rejected } = await classifyFiles([file], ["json"]);
+    expect(accepted).toEqual([]);
+    expect(rejected).toEqual([
+      { file, reason: "not-accepted", detected: "csv" },
+    ]);
+  });
+
+  it("uses an injected readTextHead instead of reading the real file", async () => {
+    const file = new File(["irrelevant"], "data.csv");
+    const nulHead = new Uint8Array([0x00]);
+    const { accepted, rejected } = await classifyFiles(
+      [file],
+      ["csv"],
+      async () => null,
+      async () => nulHead,
+    );
+    expect(accepted).toEqual([]);
+    expect(rejected).toEqual([
+      { file, reason: "unknown-format", detected: null },
+    ]);
+  });
+});
