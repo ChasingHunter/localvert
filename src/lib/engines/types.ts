@@ -63,14 +63,22 @@ export interface EngineSourceFile {
   gzip?: boolean;
   /**
    * Apply a named, deterministic source transform to this file while
-   * copying it, instead of copying it byte-for-byte. The only value today
-   * is `"typst-glue"` — `patchTypstGlue` in `scripts/sync-engines.ts`,
-   * replacing the two `new Function(...)` stubs wasm-bindgen's glue embeds
-   * for typst's dummy AccessModel/Registry with a closed lookup table, so
-   * the file runs under this app's CSP (no `unsafe-eval`). See that
-   * function's doc comment and ADR-0011.
+   * copying it, instead of copying it byte-for-byte. `"typst-glue"` —
+   * `patchTypstGlue` in `scripts/sync-engines.ts` — replaces the two
+   * `new Function(...)` stubs wasm-bindgen's glue embeds for typst's dummy
+   * AccessModel/Registry with a closed lookup table, so the file runs under
+   * this app's CSP (no `unsafe-eval`). See that function's doc comment and
+   * ADR-0011.
+   *
+   * `"libreoffice-embind"` — `patchLibreOfficeEmbind` in
+   * `scripts/sync-engines.ts` — replaces embind's two runtime code-
+   * generation sites (`craftInvokerFunction`'s invoker, and the emval method
+   * caller in `__emval_get_method_caller`) with the eval-free closures
+   * Emscripten itself emits under `-sDYNAMIC_EXECUTION=0`, so soffice.js's
+   * bound-class methods run under this app's CSP too. See that function's
+   * doc comment and ADR-0012.
    */
-  patch?: "typst-glue";
+  patch?: "typst-glue" | "libreoffice-embind";
 }
 
 /**

@@ -86,9 +86,9 @@ export interface SourceFile {
   package?: string;
   /** Ship this file gzipped — see `EngineSourceFile.gzip`'s doc comment. */
   gzip?: boolean;
-  /** Apply `patchTypstGlue` while copying — see `EngineSourceFile.patch`'s
-   * doc comment. */
-  patch?: "typst-glue";
+  /** Apply `patchTypstGlue`/`patchLibreOfficeEmbind` while copying — see
+   * `EngineSourceFile.patch`'s doc comment. */
+  patch?: "typst-glue" | "libreoffice-embind";
 }
 
 // ---------------------------------------------------------------------------
@@ -226,10 +226,183 @@ export function patchTypstGlue(source: string): string {
   return patched;
 }
 
-/** Dispatch table for `SourceFile.patch` — the only named transform today is
- * `"typst-glue"`. */
-const PATCHES: Record<"typst-glue", (source: string) => string> = {
+// ---------------------------------------------------------------------------
+// libreoffice embind patch (ADR-0012): CSP-safe replacement for embind's
+// runtime code generation
+// ---------------------------------------------------------------------------
+
+/**
+ * `@bentopdf/libreoffice-wasm`'s `assets/soffice.js` (an Emscripten build of
+ * LibreOffice, built *without* `-sDYNAMIC_EXECUTION=0`) has exactly two
+ * runtime code-generation sites, both routed through the same `newFunc`
+ * helper (`newFunc(Function, args)(...closureArgs)`, effectively
+ * `new Function(...)` via `Function.apply`):
+ *
+ * 1. `craftInvokerFunction`, embind's generic "call this bound C++ function"
+ *    invoker factory — used for every bound class method, constructor and
+ *    free function. It builds a source string via `createJsInvoker` and
+ *    hands it to `newFunc(Function, args)`.
+ * 2. `__emval_get_method_caller`, the emval helper behind calling a bound
+ *    JS method/constructor from C++ (`val::call`, `EM_ASM`-adjacent glue) —
+ *    same pattern, its own generated `functionBody` string.
+ *
+ * Both are exactly what Emscripten's own `-sDYNAMIC_EXECUTION=0` build flag
+ * replaces with eval-free closures — this build just wasn't compiled with
+ * that flag. This patch ports those closures by hand: same argument-count
+ * check, `this`/wire-type handling, destructor bookkeeping and return
+ * conversion as the *generated* body would perform, just written directly
+ * instead of assembled as a string and passed to `new Function`.
+ *
+ * Matched on the exact literal source of each function (not a regex over a
+ * generated-name shape, unlike `patchTypstGlue` — neither function here has
+ * a hash suffix; Emscripten emits both verbatim). `syncEngines` asserts each
+ * literal appears **exactly once** before trusting the patch — see
+ * `assertLibreOfficeEmbindPatched`'s use of `source.split(...).length`. A
+ * `libreoffice-wasm` upgrade that reshapes either function fails
+ * `pnpm sync-engines` loudly instead of silently shipping unpatched
+ * (CSP-blocked) code.
+ */
+const OLD_CRAFT_INVOKER_FUNCTION =
+  'function craftInvokerFunction(humanName,argTypes,classType,cppInvokerFunc,cppTargetFunc,isAsync){var argCount=argTypes.length;if(argCount<2){throwBindingError("argTypes array size mismatch! Must at least get return value and \'this\' types!")}assert(!isAsync,"Async bindings are only supported with JSPI.");var isClassMethodFunc=argTypes[1]!==null&&classType!==null;var needsDestructorStack=usesDestructorStack(argTypes);var returns=argTypes[0].name!=="void";var expectedArgCount=argCount-2;var minArgs=getRequiredArgCount(argTypes);var closureArgs=[humanName,throwBindingError,cppInvokerFunc,cppTargetFunc,runDestructors,argTypes[0],argTypes[1]];for(var i=0;i<argCount-2;++i){closureArgs.push(argTypes[i+2])}if(!needsDestructorStack){for(var i=isClassMethodFunc?1:2;i<argTypes.length;++i){if(argTypes[i].destructorFunction!==null){closureArgs.push(argTypes[i].destructorFunction)}}}closureArgs.push(checkArgCount,minArgs,expectedArgCount);let[args,invokerFnBody]=createJsInvoker(argTypes,isClassMethodFunc,returns,isAsync);args.push(invokerFnBody);var invokerFn=newFunc(Function,args)(...closureArgs);return createNamedFunction(humanName,invokerFn)}';
+
+/**
+ * Eval-free replacement. Reproduces exactly what the generated
+ * `invokerFnBody` (see `createJsInvoker` in the same file) does: check the
+ * call's argument count, wire `this` (for a class method) and each argument
+ * through its type's `toWireType`, invoke the real C++ trampoline, run
+ * destructors (batched via a shared stack when any wired argument needs
+ * one, else per-argument via each type's own `destructorFunction`), then
+ * convert and return the result via the return type's `fromWireType` — all
+ * with per-call local state, never anything shared across reentrant calls.
+ */
+const NEW_CRAFT_INVOKER_FUNCTION = `function craftInvokerFunction(humanName,argTypes,classType,cppInvokerFunc,cppTargetFunc,isAsync){
+var argCount=argTypes.length;
+if(argCount<2){throwBindingError("argTypes array size mismatch! Must at least get return value and 'this' types!")}
+assert(!isAsync,"Async bindings are only supported with JSPI.");
+var isClassMethodFunc=argTypes[1]!==null&&classType!==null;
+var needsDestructorStack=usesDestructorStack(argTypes);
+var returns=argTypes[0].name!=="void";
+var expectedArgCount=argCount-2;
+var minArgs=getRequiredArgCount(argTypes);
+var retType=argTypes[0];
+var classParam=argTypes[1];
+function invokerFunction(...callArgs){
+checkArgCount(callArgs.length,minArgs,expectedArgCount,humanName,throwBindingError);
+var destructors=needsDestructorStack?[]:null;
+var invokerArgs=[cppTargetFunc];
+var thisWired;
+if(isClassMethodFunc){thisWired=classParam["toWireType"](destructors,this);invokerArgs.push(thisWired)}
+var argsWired=[];
+for(var i=0;i<expectedArgCount;++i){
+var argType=argTypes[i+2];
+var argWired=argType["toWireType"](destructors,callArgs[i]);
+argsWired.push(argWired);
+invokerArgs.push(argWired);
+}
+var rv=cppInvokerFunc(...invokerArgs);
+if(needsDestructorStack){runDestructors(destructors)}
+else{
+for(var i=isClassMethodFunc?1:2;i<argTypes.length;++i){
+var paramName=i===1?thisWired:argsWired[i-2];
+var destructorFunction=argTypes[i].destructorFunction;
+if(destructorFunction!==null){destructorFunction(paramName)}
+}
+}
+if(returns){var ret=retType["fromWireType"](rv);return ret}
+}
+return createNamedFunction(humanName,invokerFunction)
+}`;
+
+const OLD_EMVAL_METHOD_CALLER =
+  'function __emval_get_method_caller(argCount,argTypes,kind){argTypes>>>=0;var types=emval_lookupTypes(argCount,argTypes);var retType=types.shift();argCount--;var functionBody=`return function (obj, func, destructorsRef, args) {\\n`;var offset=0;var argsList=[];if(kind===0){argsList.push("obj")}var params=["retType"];var args=[retType];for(var i=0;i<argCount;++i){argsList.push("arg"+i);params.push("argType"+i);args.push(types[i]);functionBody+=`  var arg${i} = argType${i}.readValueFromPointer(args${offset?"+"+offset:""});\\n`;offset+=types[i].argPackAdvance}var invoker=kind===1?"new func":"func.call";functionBody+=`  var rv = ${invoker}(${argsList.join(", ")});\\n`;if(!retType.isVoid){params.push("emval_returnValue");args.push(emval_returnValue);functionBody+="  return emval_returnValue(retType, destructorsRef, rv);\\n"}functionBody+="};\\n";params.push(functionBody);var invokerFunction=newFunc(Function,params)(...args);var functionName=`methodCaller<(${types.map(t=>t.name).join(", ")}) => ${retType.name}>`;return emval_addMethodCaller(createNamedFunction(functionName,invokerFunction))}';
+
+/**
+ * Eval-free replacement. Reproduces exactly what the generated
+ * `functionBody` does: read each argument's wire value off the `args`
+ * pointer packet (advancing `offset` by each type's own
+ * `argPackAdvance`, matching the generated `args${offset?"+"+offset:""}`
+ * indexing), dispatch as a construct (`kind===1`), a method call on `obj`
+ * (`kind===0`), or a plain call with the first argument as `this`
+ * (anything else — mirrors the generated `func.call(arg0, ...)` with no
+ * `obj` in scope), and, unless the return type is void, convert the result
+ * through `emval_returnValue`.
+ */
+const NEW_EMVAL_METHOD_CALLER = `function __emval_get_method_caller(argCount,argTypes,kind){
+argTypes>>>=0;
+var types=emval_lookupTypes(argCount,argTypes);
+var retType=types.shift();
+argCount--;
+function invokerFunction(obj,func,destructorsRef,args){
+var offset=0;
+var callArgs=[];
+for(var i=0;i<argCount;++i){
+var argType=types[i];
+var arg=argType.readValueFromPointer(offset?args+offset:args);
+callArgs.push(arg);
+offset+=argType.argPackAdvance;
+}
+var rv;
+if(kind===1){rv=new func(...callArgs)}
+else if(kind===0){rv=func.call(obj,...callArgs)}
+else{rv=func.call(...callArgs)}
+if(!retType.isVoid){return emval_returnValue(retType,destructorsRef,rv)}
+}
+var functionName=\`methodCaller<(\${types.map(t=>t.name).join(", ")}) => \${retType.name}>\`;
+return emval_addMethodCaller(createNamedFunction(functionName,invokerFunction))
+}`;
+
+/**
+ * Applies the transform described above to `source` (the raw `soffice.js`
+ * text). Throws (fail closed) if either literal doesn't match **exactly
+ * once** — a `libreoffice-wasm` upgrade that changes either function's shape
+ * must fail `pnpm sync-engines` loudly rather than ship unpatched. Also
+ * asserts the *output* contains no `newFunc(Function` (the pattern both
+ * sites used to invoke the dynamic `Function` constructor through) and no
+ * `new Function(`, as a second, independent guard.
+ */
+export function patchLibreOfficeEmbind(source: string): string {
+  const fail = (message: string): never => {
+    throw new Error(`[sync-engines] patchLibreOfficeEmbind: ${message}`);
+  };
+
+  const craftCount = source.split(OLD_CRAFT_INVOKER_FUNCTION).length - 1;
+  if (craftCount !== 1) {
+    fail(
+      `expected exactly one craftInvokerFunction, found ${craftCount} — libreoffice-wasm's embind glue shape changed, patch needs updating`,
+    );
+  }
+  const methodCallerCount = source.split(OLD_EMVAL_METHOD_CALLER).length - 1;
+  if (methodCallerCount !== 1) {
+    fail(
+      `expected exactly one __emval_get_method_caller, found ${methodCallerCount} — libreoffice-wasm's embind glue shape changed, patch needs updating`,
+    );
+  }
+
+  let patched = source.replace(
+    OLD_CRAFT_INVOKER_FUNCTION,
+    NEW_CRAFT_INVOKER_FUNCTION,
+  );
+  patched = patched.replace(OLD_EMVAL_METHOD_CALLER, NEW_EMVAL_METHOD_CALLER);
+
+  if (patched.includes("newFunc(Function")) {
+    fail(
+      'patched output still contains "newFunc(Function" — patch is incomplete',
+    );
+  }
+  if (patched.includes("new Function(")) {
+    fail('patched output still contains "new Function(" — patch is incomplete');
+  }
+
+  return patched;
+}
+
+/** Dispatch table for `SourceFile.patch`. */
+const PATCHES: Record<
+  "typst-glue" | "libreoffice-embind",
+  (source: string) => string
+> = {
   "typst-glue": patchTypstGlue,
+  "libreoffice-embind": patchLibreOfficeEmbind,
 };
 
 /**
@@ -322,8 +495,14 @@ function readEngineSource(dir: string, id: string): EngineSource {
     if (file.gzip !== undefined && typeof file.gzip !== "boolean") {
       fail(`"files[${i}].gzip" must be a boolean`);
     }
-    if (file.patch !== undefined && file.patch !== "typst-glue") {
-      fail(`"files[${i}].patch" must be "typst-glue" if present`);
+    if (
+      file.patch !== undefined &&
+      file.patch !== "typst-glue" &&
+      file.patch !== "libreoffice-embind"
+    ) {
+      fail(
+        `"files[${i}].patch" must be "typst-glue" or "libreoffice-embind" if present`,
+      );
     }
     return {
       from: file.from as string,
@@ -333,7 +512,7 @@ function readEngineSource(dir: string, id: string): EngineSource {
         : {}),
       ...(file.gzip !== undefined ? { gzip: file.gzip as boolean } : {}),
       ...(file.patch !== undefined
-        ? { patch: file.patch as "typst-glue" }
+        ? { patch: file.patch as "typst-glue" | "libreoffice-embind" }
         : {}),
     };
   });

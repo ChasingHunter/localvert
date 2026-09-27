@@ -17,7 +17,8 @@
     },
     {
       "from": "assets/soffice.js",
-      "to": "soffice.js"
+      "to": "soffice.js",
+      "patch": "libreoffice-embind"
     },
     {
       "from": "assets/soffice.worker.js",
