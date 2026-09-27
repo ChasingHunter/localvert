@@ -287,6 +287,7 @@ see `scripts/embedpdf-deps.test.ts`'s guard and ADR-0009.
 | `mediabunny`'s `toGif` op | `gifenc` | 1.0.3 | MIT | 0 (bundled in JS; ~5 KB before gzip) | bundled (inside the `mediabunny` chunk, not its own `EngineId`) | no |
 | `ffmpeg` | `@ffmpeg/core` (single-thread, not `-mt` — no `SharedArrayBuffer` needed) | 0.12.10 | **GPL-2.0-or-later** | ~31 MiB (0.11 MiB JS glue + ~30.7 MiB wasm) | r2 | no |
 | `data` | `papaparse` 5.7.0 + `yaml` 2.9.1 + `read-excel-file` 9.3.10 + `write-excel-file` 4.1.1 | see note below | MIT (papaparse, read-excel-file, write-excel-file) + ISC (yaml) | 0 (bundled in JS; all four are pure JS, no wasm) | bundled | no |
+| `typst` | `@myriaddreamin/typst-ts-web-compiler` 0.7.0 (glue + compiler wasm) + vendored `cmarker` 0.1.8 + Libertinus Serif + DejaVu Sans Mono fonts (`vendor/typst-*`, no owning npm package — ADR-0011) | 0.7.0 | Apache-2.0 (typst.ts + typst compiler) + MIT (cmarker) + OFL-1.1 (Libertinus Serif) + Bitstream Vera (DejaVu Sans Mono) | ~30.6 MiB (28.3 MiB compiler wasm + 1.9 MiB fonts + 0.3 MiB cmarker) | r2 | no |
 
 ### How engine assets ship
 
@@ -398,7 +399,6 @@ first, then adapter, wiring, size budget, docs.
 |---|---|---|---|---|
 | `tesseract.js` | OCR | Apache-2.0 | core + traineddata | 2 |
 | `mediabunny` | Video/audio via WebCodecs — **primary path** | MIT | small | 3 |
-| `typst.ts` | Markdown to PDF | Apache-2.0 | ~10 MB | 4 |
 | `@bentopdf/libreoffice-wasm` | Office to PDF, **opt-in gate** | MPL-2.0 | ~80 MB → **R2** | 4 |
 
 ---

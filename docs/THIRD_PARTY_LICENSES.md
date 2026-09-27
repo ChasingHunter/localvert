@@ -54,6 +54,10 @@ requires its own ADR and we must publish the modified source.
 | `yaml` (YAML parse/stringify) | 2.9.1 | ISC | Eemeli Aro | https://github.com/eemeli/yaml |
 | `read-excel-file` (xlsx read) | 9.3.10 | MIT | catamphetamine | https://gitlab.com/catamphetamine/read-excel-file |
 | `write-excel-file` (xlsx write) | 4.1.1 | MIT | catamphetamine | https://gitlab.com/catamphetamine/write-excel-file |
+| `typst.ts` / `typst-ts-web-compiler` (Markdown/PDF compile, `typst` 0.14.2 core) | 0.7.0 | Apache-2.0 | Myriad-Dreamin and typst.ts contributors; the Typst Project | https://github.com/Myriad-Dreamin/typst.ts |
+| `cmarker` (vendored Typst package, markdown -> Typst content) | 0.1.8 | MIT | Sabrina Jewson | https://github.com/SabrinaJewson/cmarker.typ (`vendor/typst-packages/preview/cmarker/0.1.8/`) |
+| Libertinus Serif (vendored font, body text) | v0.14.2 (typst-assets pin) | OFL-1.1 | The Libertinus Project Authors | https://github.com/alerque/libertinus (`vendor/typst-fonts/`) |
+| DejaVu Sans Mono (vendored font, raw/code text) | v0.14.2 (typst-assets pin) | Bitstream Vera License (+ Public Domain DejaVu changes) | Bitstream, Inc.; the DejaVu fonts team | https://dejavu-fonts.github.io (`vendor/typst-fonts/`) |
 
 `jsquash-webp`'s underlying codec is libwebp, Copyright 2010 Google Inc.,
 BSD-3-Clause (`node_modules/@jsquash/webp/codec/LICENSE.codec.md` after
@@ -89,6 +93,16 @@ dedication) — even more permissive than this package's own MIT license. No
 additional obligation beyond what MIT already requires; noted here for
 completeness since the algorithm's origin carries a different license than
 the npm package we actually depend on.
+
+`cmarker` and the two vendored fonts (Libertinus Serif, DejaVu Sans Mono) have
+no owning npm package — `scripts/sync-engines.ts`'s "local" package sentinel
+(`src/lib/engines/types.ts`'s `EngineSourceFile` doc comment) copies them
+straight from this repo's own `vendor/` tree instead. All four files were
+fetched once, at dev time, from their respective upstream sources (see
+ADR-0011) and committed verbatim, alongside each one's own license file under
+`vendor/typst-fonts/`/`vendor/typst-packages/preview/cmarker/0.1.8/` — same
+"unmodified upstream build" rule as every npm-sourced engine above, just
+without npm as the delivery mechanism.
 
 ## Copyleft engines
 
