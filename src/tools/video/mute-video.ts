@@ -23,7 +23,10 @@ export default defineTool({
   produces: "same",
 
   options: z.object({
-    mute: z.literal(true).meta({ control: "hidden" }).default(true),
+    mute: z
+      .literal(true)
+      .meta({ label: "Mute", control: "hidden" })
+      .default(true),
   }),
   defaults: { mute: true },
 
