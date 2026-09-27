@@ -44,6 +44,7 @@ import {
   Eraser,
   Highlighter,
   ImagePlus,
+  LayoutGrid,
   type LucideIcon,
   Minus,
   MousePointer2,
@@ -62,6 +63,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dropzone } from "@/components/dropzone";
 import type { AcceptedFile } from "@/components/dropzone-logic";
+import { PageOrganizer } from "@/components/editor/page-organizer";
 import { SignatureDialog } from "@/components/editor/signature-dialog";
 import { Button } from "@/components/ui/button";
 import { flattenExportedForms } from "@/lib/editor/flatten-forms";
@@ -307,6 +309,7 @@ function EditorShell({ engineReady, file, onLoadedChange }: EditorShellProps) {
     <Editor
       documentId={activeDocumentId}
       fileName={activeDocument.name ?? "document.pdf"}
+      pageCount={activeDocument.document?.pageCount ?? 0}
     />
   );
 }
@@ -314,9 +317,10 @@ function EditorShell({ engineReady, file, onLoadedChange }: EditorShellProps) {
 interface EditorProps {
   documentId: string;
   fileName: string;
+  pageCount: number;
 }
 
-function Editor({ documentId, fileName }: EditorProps) {
+function Editor({ documentId, fileName, pageCount }: EditorProps) {
   // Scoped to `documentId`, for everything that acts on THIS document's
   // annotations (create/select/delete/setActiveTool). Style pickers, below,
   // instead go through the unscoped `useAnnotationCapability()` — tool
@@ -358,6 +362,7 @@ function Editor({ documentId, fileName }: EditorProps) {
   const [exporting, setExporting] = useState(false);
   const stampInputRef = useRef<HTMLInputElement | null>(null);
   const [signOpen, setSignOpen] = useState(false);
+  const [organizerOpen, setOrganizerOpen] = useState(false);
 
   // E2a — form filling. Tracks which page indexes currently have at least
   // one fillable widget, reported up by each page's `FormLayer` once it
@@ -838,6 +843,16 @@ function Editor({ documentId, fileName }: EditorProps) {
           <Signature aria-hidden="true" />
         </Button>
 
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label="Organize pages"
+          onClick={() => setOrganizerOpen(true)}
+        >
+          <LayoutGrid aria-hidden="true" />
+        </Button>
+
         <label className="flex items-center gap-1 text-xs text-ink-muted">
           Color
           <input
@@ -1002,6 +1017,14 @@ function Editor({ documentId, fileName }: EditorProps) {
           setSignOpen(false);
           placeStamp(data, mimeType);
         }}
+      />
+
+      <PageOrganizer
+        open={organizerOpen}
+        onClose={() => setOrganizerOpen(false)}
+        documentId={documentId}
+        pageCount={pageCount}
+        fileName={fileName}
       />
 
       <div className="flex gap-3">

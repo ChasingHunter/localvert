@@ -89,6 +89,18 @@ export type Operation =
   | "unlock"
   | "flatten"
   | "sanitize"
+  /**
+   * E3 (page organizer): pdf (+ any number of inserted pdfs, via `inputs`,
+   * ADR-0008's many-to-one shape) -> pdf. Rebuilds a document page-by-page
+   * from `options.plan` (see `validatePlan` in
+   * `src/lib/editor/page-organizer-plan.ts` for its exact shape) — each
+   * entry either copies one page from one of the inputs (rotated by a
+   * delta added to whatever rotation it already carries) or inserts a
+   * blank page. Unlike `reorder` (same input, same pages, just
+   * rearranged), this can pull pages from several documents and invent new
+   * ones.
+   */
+  | "organize"
   | "render"
   | "ocr"
   /**

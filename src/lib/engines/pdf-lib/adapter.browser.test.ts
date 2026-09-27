@@ -1206,4 +1206,141 @@ describe("pdf-lib adapter", () => {
       expect(uri?.decodeText()).toBe("https://example.com");
     });
   });
+
+  describe("run: organize", () => {
+    it("builds a plan mixing a reordered page, a blank page and an inserted page", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      // Main doc: 3 distinctly-sized pages. Inserted doc: 1 page, its own
+      // distinct size.
+      const main = await buildPdf([
+        [100, 100],
+        [150, 150],
+        [200, 200],
+      ]);
+      const inserted = await buildPdf([[300, 300]]);
+
+      // Plan: main's page index 1 (150x150) rotated 90, a blank page, the
+      // inserted doc's only page, then main's page index 0 (100x100) again.
+      const result = await instance.run(
+        baseTask({
+          op: "organize",
+          input: bytesInput(main),
+          inputs: [bytesInput(main), bytesInput(inserted)],
+          options: {
+            plan: [
+              { source: 0, page: 1, rotate: 90 },
+              { source: "blank", rotate: 0 },
+              { source: 1, page: 0, rotate: 0 },
+              { source: 0, page: 0, rotate: 0 },
+            ],
+          },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+
+      const sizes = await pageSizes(result.bytes);
+      expect(sizes).toEqual([
+        [150, 150],
+        [595.28, 841.89], // default A4 blank, no previous page to inherit yet
+        [300, 300],
+        [100, 100],
+      ]);
+      expect(await pageRotations(result.bytes)).toEqual([90, 0, 0, 0]);
+    });
+
+    it("adds a blank page's rotation to its own (zero) starting rotation", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const main = await buildPdf([[100, 100]]);
+
+      const result = await instance.run(
+        baseTask({
+          op: "organize",
+          input: bytesInput(main),
+          inputs: [bytesInput(main)],
+          options: {
+            plan: [{ source: "blank", rotate: 180 }],
+          },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(await pageRotations(result.bytes)).toEqual([180]);
+    });
+
+    it("adds a page's rotate delta to its pre-existing rotation", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const main = await buildPdf([[100, 100]]);
+      const rotated = await instance.run(
+        baseTask({
+          op: "rotate",
+          input: bytesInput(main),
+          options: { pages: "", angle: "90" },
+        }),
+      );
+      if (rotated.kind !== "bytes") throw new Error("expected bytes result");
+
+      const result = await instance.run(
+        baseTask({
+          op: "organize",
+          input: bytesInput(rotated.bytes),
+          inputs: [bytesInput(rotated.bytes)],
+          options: {
+            plan: [{ source: 0, page: 0, rotate: 90 }],
+          },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(await pageRotations(result.bytes)).toEqual([180]);
+    });
+
+    it("throws EngineError('internal') for an invalid plan", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const main = await buildPdf([[100, 100]]);
+
+      await expect(
+        instance.run(
+          baseTask({
+            op: "organize",
+            input: bytesInput(main),
+            inputs: [bytesInput(main)],
+            options: { plan: [{ source: 5, page: 0, rotate: 0 }] },
+          }),
+        ),
+      ).rejects.toSatisfy(
+        (e: unknown) => isEngineError(e) && e.code === "internal",
+      );
+    });
+
+    it("throws EngineError('unsupported') when a source document is password-protected", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const encrypted = await buildEncryptedPdf();
+
+      await expect(
+        instance.run(
+          baseTask({
+            op: "organize",
+            input: bytesInput(encrypted),
+            inputs: [bytesInput(encrypted)],
+            options: { plan: [{ source: 0, page: 0, rotate: 0 }] },
+          }),
+        ),
+      ).rejects.toSatisfy(
+        (e: unknown) => isEngineError(e) && e.code === "unsupported",
+      );
+    });
+  });
 });

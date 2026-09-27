@@ -1,4 +1,9 @@
 import type { PDFDict } from "@cantoo/pdf-lib";
+import {
+  DEFAULT_BLANK_SIZE,
+  normalizeRotation,
+  validatePlan,
+} from "@/lib/editor/page-organizer-plan";
 import type { Operation, StepFormat } from "@/lib/registry";
 import {
   FORMATS,
@@ -60,7 +65,8 @@ function supports(
     // only so a direct `pool.run` call (like `flattenExportedForms`'s) can
     // route to this adapter the same way every other op does.
     op === "replacePagesWithImages" ||
-    op === "sanitize"
+    op === "sanitize" ||
+    op === "organize"
   );
 }
 
@@ -153,6 +159,8 @@ async function run(task: EngineTask): Promise<EngineResult> {
         return await runReplacePagesWithImages(task);
       case "sanitize":
         return await runSanitize(task);
+      case "organize":
+        return await runOrganize(task);
       default:
         throw new EngineError(
           "unsupported",
@@ -1243,6 +1251,80 @@ async function runSanitize(task: EngineTask): Promise<EngineResult> {
   onProgress?.(1);
 
   const outBytes = await doc.save();
+  return {
+    kind: "bytes",
+    bytes: outBytes.slice().buffer,
+    mime: FORMATS.pdf.mime,
+  };
+}
+
+/**
+ * organize (pdf [+ inserted pdfs] -> pdf, E3): rebuilds a document
+ * page-by-page from `options.plan` (`OrganizePlanEntry[]`, validated by the
+ * shared `validatePlan` — see its doc comment for the exact shape). `inputs`
+ * (ADR-0008's many-to-one shape) is every document the plan can reference —
+ * `inputs[0]` is always the main document being organized, `inputs[1..]`
+ * any PDFs the user inserted via the organizer's "Insert PDF" button.
+ * Unlike `reorder` (same pages, same document, just rearranged), a plan
+ * entry can also invent a blank page, and pages from different source
+ * documents can interleave freely.
+ */
+async function runOrganize(task: EngineTask): Promise<EngineResult> {
+  const { inputs, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  if (!inputs || inputs.length === 0) {
+    throw new EngineError("internal", "organize requires at least one input", {
+      engine: metadata.id,
+    });
+  }
+
+  const mod = await import("@cantoo/pdf-lib");
+  const srcDocs: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>[] =
+    [];
+  for (const current of inputs) {
+    signal.throwIfAborted();
+    const bytes = await inputToArrayBuffer(current);
+    signal.throwIfAborted();
+    srcDocs.push(await loadPdf(mod, bytes));
+  }
+
+  const pageCounts = srcDocs.map((doc) => doc.getPageCount());
+  const validated = validatePlan(options.plan, pageCounts);
+  if (!validated.ok) {
+    throw new EngineError("internal", validated.error, {
+      engine: metadata.id,
+    });
+  }
+  const { plan } = validated;
+
+  const outDoc = await mod.PDFDocument.create();
+  let previousSize = DEFAULT_BLANK_SIZE;
+
+  for (let i = 0; i < plan.length; i++) {
+    signal.throwIfAborted();
+    const entry = plan[i];
+    if (!entry) continue; // unreachable: guarded by `i < plan.length`
+
+    if (entry.source === "blank") {
+      const size = entry.size ?? previousSize;
+      const page = outDoc.addPage([size.width, size.height]);
+      page.setRotation(mod.degrees(normalizeRotation(0, entry.rotate)));
+      previousSize = size;
+    } else {
+      const srcDoc = srcDocs[entry.source];
+      if (!srcDoc) continue; // unreachable: source validated against pageCounts.length
+      const [copied] = await outDoc.copyPages(srcDoc, [entry.page ?? 0]);
+      if (!copied) continue; // unreachable: page validated against the source's page count
+      outDoc.addPage(copied);
+      const current = copied.getRotation().angle;
+      copied.setRotation(mod.degrees(normalizeRotation(current, entry.rotate)));
+      previousSize = copied.getSize();
+    }
+    onProgress?.((i + 1) / plan.length);
+  }
+
+  const outBytes = await outDoc.save();
   return {
     kind: "bytes",
     bytes: outBytes.slice().buffer,
