@@ -60,4 +60,5 @@ export const TOOL_LOADERS = {
   "split-pdf": () => import("./pdf/split-pdf"),
   "unlock-pdf": () => import("./pdf/unlock-pdf"),
   "mp4-to-webm": () => import("./video/mp4-to-webm"),
+  "video-to-gif": () => import("./video/video-to-gif"),
 } satisfies Record<string, () => Promise<{ default: ToolDefinition }>>;

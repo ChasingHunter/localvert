@@ -48,6 +48,7 @@ requires its own ADR and we must publish the modified source.
 | `@embedpdf/core` + `plugin-document-manager`, `plugin-viewport`, `plugin-scroll`, `plugin-render`, `plugin-zoom`, `plugin-thumbnail`, `plugin-selection`, `plugin-interaction-manager`, `plugin-annotation`, `plugin-history`, `plugin-export` (the PDF editor's viewer UI) | 2.15.1 | MIT | EmbedPDF contributors | https://github.com/embedpdf/embed-pdf-viewer |
 | `mediabunny` (WebCodecs container mux/demux for video and audio) | 1.60.0 | MPL-2.0 (file-level copyleft — see below) | Vanilagy | https://github.com/Vanilagy/mediabunny |
 | `@mediabunny/mp3-encoder` (wraps a LAME wasm build; reserved for a future audio slice, not wired into any tool yet) | 1.60.0 | MPL-2.0 (wrapper); LAME itself is LGPL | Vanilagy; the LAME project | https://github.com/Vanilagy/mediabunny |
+| `gifenc` (pure-JS GIF encoder + color quantizer; `video-to-gif`'s `toGif` op, replacing ffmpeg for GIF output per ADR-0002) | 1.0.3 | MIT | Matt DesLauriers | https://github.com/mattdesl/gifenc |
 
 `jsquash-webp`'s underlying codec is libwebp, Copyright 2010 Google Inc.,
 BSD-3-Clause (`node_modules/@jsquash/webp/codec/LICENSE.codec.md` after

@@ -107,6 +107,7 @@ apply to any of them, so that column reads their own **Arity** instead.
 | Slug | From | To | Engine | Batch | Notes |
 |---|---|---|---|---|---|
 | `mp4-to-webm` | MP4, MOV | WebM | mediabunny | Yes | Re-encodes to VP9 (falls back to VP8) + Opus, whichever this browser's WebCodecs can encode; large outputs stream through OPFS rather than memory — see ADR-0010 |
+| `video-to-gif` | MP4, MOV, WebM | GIF | mediabunny (`toGif` op, gifenc) | Yes | Trims to `start`/`duration` (≤30s), samples at `fps` (≤30), scales to `width` (≤800px, even dims), quantizes to `colors` per frame — gifenc (MIT), not ffmpeg, per ADR-0002's GIF mitigation |
 
 ## Audio
 

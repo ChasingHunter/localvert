@@ -74,6 +74,14 @@ export type { EngineId };
 
 export type Operation =
   | "transcode"
+  /**
+   * Phase 3c: video (mp4/mov/webm) -> gif, on the `mediabunny` engine's
+   * `gif.ts` helper (ADR-0002's gifenc mitigation — see that ADR's dated
+   * note). Samples frames at `options.fps` over `[options.start,
+   * options.start + options.duration]`, scales to `options.width` and
+   * gifenc-quantizes/encodes them. Never routed to ffmpeg.
+   */
+  | "toGif"
   | "decode"
   | "encode"
   | "resize"

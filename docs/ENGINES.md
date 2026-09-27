@@ -208,6 +208,14 @@ the `BufferTarget` fallback when OPFS isn't available. `@mediabunny/mp3-encoder`
 is installed but not wired into this engine yet — reserved for an audio
 transcode op.
 
+Its second op, `toGif` (Phase 3c, `src/lib/engines/mediabunny/gif.ts`), reads
+mp4/mov/webm through `mediabunny.CanvasSink` (which handles resizing and
+rotation/flip) at a fixed frame schedule (`start`/`duration`/`fps`), then
+quantizes and encodes each frame with `gifenc` (pure JS, no wasm) rather than
+ffmpeg — see ADR-0002's dated mitigation note. `gifenc` ships no `.d.ts`;
+`src/lib/engines/gifenc.d.ts` is a small hand-written ambient declaration for
+the handful of exports this op uses.
+
 ---
 
 ## Delivery table
@@ -263,6 +271,7 @@ see `scripts/embedpdf-deps.test.ts`'s guard and ADR-0009.
 | `pdfium` | `@embedpdf/pdfium` | 2.15.1 | MIT | ~4.6 MiB (pdfium.wasm) | static | no |
 | `mediabunny` | `mediabunny` | 1.60.0 | **MPL-2.0** | 0 (bundled in JS; wraps WebCodecs, no wasm of its own) | bundled | no |
 | _(reserved, unused)_ | `@mediabunny/mp3-encoder` | 1.60.0 | MPL-2.0 (wrapper); LAME itself **LGPL** | ~130 KB gz (spawns its own worker) | static (once wired) | no |
+| `mediabunny`'s `toGif` op | `gifenc` | 1.0.3 | MIT | 0 (bundled in JS; ~5 KB before gzip) | bundled (inside the `mediabunny` chunk, not its own `EngineId`) | no |
 
 ### How engine assets ship
 

@@ -38,6 +38,7 @@ import type {
   EngineTask,
 } from "../types";
 import meta from "./engine.json";
+import { runToGif } from "./gif";
 
 const metadata = {
   ...(meta as Pick<
@@ -71,9 +72,12 @@ function supports(
   output: StepFormat,
 ): boolean {
   return (
-    op === "transcode" &&
-    (input === "mp4" || input === "mov") &&
-    output === "webm"
+    (op === "transcode" &&
+      (input === "mp4" || input === "mov") &&
+      output === "webm") ||
+    (op === "toGif" &&
+      (input === "mp4" || input === "mov" || input === "webm") &&
+      output === "gif")
   );
 }
 
@@ -210,6 +214,10 @@ async function run(task: EngineTask): Promise<EngineResult> {
     switch (task.op) {
       case "transcode":
         return await runTranscode(task);
+      case "toGif": {
+        const { bytes, mime } = await runToGif(task, metadata.id);
+        return { kind: "bytes", bytes: bytes.buffer as ArrayBuffer, mime };
+      }
       default:
         throw new EngineError(
           "unsupported",

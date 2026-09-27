@@ -89,6 +89,12 @@ loses a feature:
 Taken together, dropping GPL entirely is a bounded amount of work, not a
 rewrite. That is the point of keeping it at arms length.
 
+**2026-09-27:** the GIF mitigation above landed — `video-to-gif` runs on
+`gifenc` (MIT), not ffmpeg (see `src/lib/engines/mediabunny/gif.ts` and
+ADR-0010). ffmpeg's GPL path is now reached only for the legacy containers
+(avi, wmv, flv) this ADR's table lists — the "most-common reason a user
+reaches ffmpeg" is closed.
+
 ## Alternatives considered
 
 **License the whole project GPL.** Would end the question outright. Rejected:
