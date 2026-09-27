@@ -498,6 +498,16 @@ export const FORMATS = {
     magic: [],
     text: true,
   },
+  md: {
+    label: "Markdown",
+    ext: ["md", "markdown"],
+    mime: "text/markdown",
+    category: "document",
+    // Plain text, same reasoning as csv/json/yaml above: no container
+    // signature of its own, identified by extension.
+    magic: [],
+    text: true,
+  },
   xlsx: {
     label: "Excel Workbook",
     ext: ["xlsx"],

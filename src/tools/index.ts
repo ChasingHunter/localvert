@@ -17,6 +17,7 @@ import jsonToYaml from "@/tools/data/json-to-yaml";
 import xlsxToCsv from "@/tools/data/xlsx-to-csv";
 import xlsxToJson from "@/tools/data/xlsx-to-json";
 import yamlToJson from "@/tools/data/yaml-to-json";
+import markdownToPdf from "@/tools/document/markdown-to-pdf";
 import avifToJpg from "@/tools/image/avif-to-jpg";
 import avifToPng from "@/tools/image/avif-to-png";
 import compressJpg from "@/tools/image/compress-jpg";
@@ -108,6 +109,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   xlsxToCsv,
   xlsxToJson,
   yamlToJson,
+  markdownToPdf,
   avifToJpg,
   avifToPng,
   compressJpg,
