@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.3.0](https://github.com/ChasingHunter/localvert/compare/v0.2.0...v0.3.0) (2026-09-27)
+
+
+### Features
+
+* **engine:** decode and encode gif, bmp and ico in the raster pipeline ([d65d224](https://github.com/ChasingHunter/localvert/commit/d65d22455398fe755d9f35fa9aaf93d1e604103d))
+* **engine:** docx writer engine ([5461f0b](https://github.com/ChasingHunter/localvert/commit/5461f0b999d487e9bbcf919daa5719ed8f230cc3))
+* **engine:** pdfjs extractLayout op for structural PDF extraction ([c22f4c2](https://github.com/ChasingHunter/localvert/commit/c22f4c2d361990abea2938dd9e79ba5298aa65f9))
+* **tool:** aac and opus to mp3 ([9137c74](https://github.com/ChasingHunter/localvert/commit/9137c7472bac89150cd41eff9f3cd80f07e4f080))
+* **tool:** add page numbers to pdf ([59c34b2](https://github.com/ChasingHunter/localvert/commit/59c34b2f1fa70ab220e77707c2396d10027004ef))
+* **tool:** compress audio ([9cf9311](https://github.com/ChasingHunter/localvert/commit/9cf9311e1a2476d78cd1b13776443e8f8f61c2fd))
+* **tool:** compress png losslessly or with palette reduction ([52b5744](https://github.com/ChasingHunter/localvert/commit/52b5744043ccf067c822d8d1e29ae3eb310c40be))
+* **tool:** compress-jpg modes with a lossless default ([e0b9502](https://github.com/ChasingHunter/localvert/commit/e0b95028f7aa2fe1276b950126903c2e1c0eb65e))
+* **tool:** compress-webp modes with a lossless default ([7186323](https://github.com/ChasingHunter/localvert/commit/7186323ff3e6c60f8609160c79138eb39488aa99))
+* **tool:** epub to pdf ([b13a6ea](https://github.com/ChasingHunter/localvert/commit/b13a6eacf8bdb2022bb59d57341013377eb48e09))
+* **tool:** gif, bmp and ico conversions ([9310447](https://github.com/ChasingHunter/localvert/commit/9310447d8c4288170d59e2369b62830a935bf502))
+* **tool:** jpg to pdf and png to pdf ([9291a09](https://github.com/ChasingHunter/localvert/commit/9291a099f61aad990b3d91388f886b34a2205a3e))
+* **tool:** lossless compress-pdf mode ([9f2b032](https://github.com/ChasingHunter/localvert/commit/9f2b032c2ccb54727879fc8991e85f8ea379f427))
+* **tool:** m4a and flac to wav ([cb342a2](https://github.com/ChasingHunter/localvert/commit/cb342a230ae860120b59e68a798e088a3005c7b1))
+* **tool:** mp4, mov and webm to mp3 ([0467f7c](https://github.com/ChasingHunter/localvert/commit/0467f7c92b280c0e87132127186b8077bad5f23b))
+* **tool:** pdf to text ([f47c783](https://github.com/ChasingHunter/localvert/commit/f47c783cfca6fb77e6a30760bea3ca679215db0f))
+* **tool:** pdf to word ([84778d7](https://github.com/ChasingHunter/localvert/commit/84778d755efcfd028b5690542f6fd09f4ab980c7))
+* **tool:** txt and html to pdf ([a2347cb](https://github.com/ChasingHunter/localvert/commit/a2347cbbff209a05c26d9c2135f7200dde948a2b))
+* **tool:** watermark pdf ([65cc2a8](https://github.com/ChasingHunter/localvert/commit/65cc2a8a86f5c6bc77dd27189039f26bbc7d1d29))
+* **tool:** wma to mp3 ([e97aad6](https://github.com/ChasingHunter/localvert/commit/e97aad62b4b3399434ce1bef7138546cc37172bb))
+* **ui:** readable labels for select options ([1500382](https://github.com/ChasingHunter/localvert/commit/1500382413dec787fabb3b181e2af973bf1b124a))
+
+
+### Bug Fixes
+
+* **engine:** brand m4a output as M4A and accept isom-branded .m4a files ([bb9b6c4](https://github.com/ChasingHunter/localvert/commit/bb9b6c4d960945b786e1d850c1043575bd768176))
+* **tool:** give compress-jpg/webp target-size a real default, not required+showWhen ([95520b5](https://github.com/ChasingHunter/localvert/commit/95520b5743f82560b187d58e95d2a1f5179b00a7))
+
 ## [0.2.0](https://github.com/ChasingHunter/localvert/compare/v0.1.0...v0.2.0) (2026-09-27)
 
 
