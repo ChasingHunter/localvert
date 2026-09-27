@@ -100,20 +100,47 @@ function inputToBlob(input: EngineInput): Blob {
   }
 }
 
+/**
+ * Structural subset of the DOM's `FileSystemSyncAccessHandle` (a
+ * dedicated-worker-only global) that this adapter uses. Declared locally
+ * instead of referencing that lib type by name: `tsconfig.worker.json`
+ * (`WebWorker` lib, what this file actually runs under) declares it, but
+ * `tsconfig.browser-tests.json` (`DOM` lib, so browser tests can call
+ * OffscreenCanvas/etc. on vitest's real-browser instance directly) does
+ * not — and this file is typechecked under both, since adapter.browser.test.ts
+ * imports it. A structural type checks under either.
+ */
+interface OpfsSyncAccessHandle {
+  write(buffer: BufferSource, options?: { at?: number }): number;
+  flush(): void;
+  close(): void;
+  getSize(): number;
+}
+
+/** The subset of `FileSystemFileHandle` this adapter needs beyond what
+ * `DOM` lib already declares — same reasoning as `OpfsSyncAccessHandle`
+ * above; `createSyncAccessHandle` itself isn't in `DOM` lib's version of
+ * the interface. */
+interface FileHandleWithSyncAccess {
+  createSyncAccessHandle?(): Promise<OpfsSyncAccessHandle>;
+}
+
 /** True when `navigator.storage.getDirectory()` and, critically, dedicated-
  * worker-only `createSyncAccessHandle()` are both available — probed by
  * trying to open a handle rather than feature-testing the method name,
  * since a private-mode Safari can advertise the API but throw on use. */
 async function tryOpenOpfsSyncHandle(
   name: string,
-): Promise<FileSystemSyncAccessHandle | null> {
+): Promise<OpfsSyncAccessHandle | null> {
   try {
     if (!("storage" in navigator) || !navigator.storage.getDirectory) {
       return null;
     }
     const root = await navigator.storage.getDirectory();
     const dir = await root.getDirectoryHandle(OPFS_TEMP_DIR, { create: true });
-    const fileHandle = await dir.getFileHandle(name, { create: true });
+    const fileHandle = (await dir.getFileHandle(name, {
+      create: true,
+    })) as FileSystemFileHandle & FileHandleWithSyncAccess;
     // `createSyncAccessHandle` exists only in a dedicated worker context —
     // absent (or throws) on the main thread and in some private modes.
     if (typeof fileHandle.createSyncAccessHandle !== "function") return null;
@@ -146,7 +173,7 @@ class OpfsSizeTracker {
  * handle and any `getSize()` call after that throws.
  */
 function opfsWritable(
-  handle: FileSystemSyncAccessHandle,
+  handle: OpfsSyncAccessHandle,
   sizeTracker: OpfsSizeTracker,
 ): WritableStream<StreamTargetChunk> {
   return new WritableStream<StreamTargetChunk>({
@@ -221,7 +248,16 @@ async function runTranscode(task: EngineTask): Promise<EngineResult> {
 
   const mime = FORMATS.webm.mime;
   const opfsName = `${crypto.randomUUID()}.webm`;
-  const syncHandle = await tryOpenOpfsSyncHandle(opfsName);
+  // Test-only escape hatch for ADR-0010's `BufferTarget` fallback: forces it
+  // even in a real dedicated worker where OPFS is genuinely available, so
+  // adapter.browser.test.ts can exercise that path deterministically rather
+  // than needing a browser/mode that actually lacks OPFS. Never set by any
+  // real tool — `task.options` is the tool's parsed zod options object, and
+  // no tool schema declares this key.
+  const forceBufferTarget = task.options.__forceBufferTarget === true;
+  const syncHandle = forceBufferTarget
+    ? null
+    : await tryOpenOpfsSyncHandle(opfsName);
   const sizeTracker = new OpfsSizeTracker();
 
   const target = syncHandle
@@ -299,6 +335,17 @@ async function runTranscode(task: EngineTask): Promise<EngineResult> {
     if (syncHandle) {
       await cleanupFailedOpfsOutput(syncHandle, opfsName);
     }
+    // `conversion.cancel()` (triggered by `onAbort` above) rejects `execute()`
+    // with mediabunny's own `ConversionCanceledError`, not a `DOMException`
+    // `toEngineError` would recognize as an abort — normalize it here so an
+    // aborted task always surfaces as `EngineError("aborted")` like every
+    // other engine's abort path.
+    if (signal.aborted) {
+      throw new EngineError("aborted", "transcode aborted", {
+        engine: metadata.id,
+        cause: e,
+      });
+    }
     throw e;
   }
 }
@@ -310,7 +357,7 @@ async function runTranscode(task: EngineTask): Promise<EngineResult> {
  * failure happened before the target ever started writing), then removes
  * the partial file so it doesn't wait for the 24h sweep. */
 async function cleanupFailedOpfsOutput(
-  handle: FileSystemSyncAccessHandle,
+  handle: OpfsSyncAccessHandle,
   name: string,
 ): Promise<void> {
   try {
