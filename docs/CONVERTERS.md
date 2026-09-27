@@ -140,6 +140,8 @@ apply to any of them, so that column reads their own **Arity** instead.
 | `webm-to-mp3` | WebM | MP3 | mediabunny | Yes | Discards the video track; bitrate/sample rate/channels |
 | `aac-to-mp3` | AAC (raw ADTS) | MP3 | mediabunny | Yes | Bitrate/sample rate/channels |
 | `opus-to-mp3` | Opus (Ogg container) | MP3 | mediabunny | Yes | Bitrate/sample rate/channels |
+| `m4a-to-wav` | M4A | WAV | mediabunny | Yes | Sample rate/channels only — PCM has no bitrate knob |
+| `flac-to-wav` | FLAC | WAV | mediabunny | Yes | Sample rate/channels only — PCM has no bitrate knob |
 
 ## Document
 

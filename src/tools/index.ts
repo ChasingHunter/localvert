@@ -3,7 +3,9 @@ import type { ToolDefinition } from "@/lib/registry";
 import aacToMp3 from "@/tools/audio/aac-to-mp3";
 import extractAudio from "@/tools/audio/extract-audio";
 import flacToMp3 from "@/tools/audio/flac-to-mp3";
+import flacToWav from "@/tools/audio/flac-to-wav";
 import m4aToMp3 from "@/tools/audio/m4a-to-mp3";
+import m4aToWav from "@/tools/audio/m4a-to-wav";
 import movToMp3 from "@/tools/audio/mov-to-mp3";
 import mp3ToM4a from "@/tools/audio/mp3-to-m4a";
 import mp3ToOgg from "@/tools/audio/mp3-to-ogg";
@@ -103,7 +105,9 @@ export const TOOLS: readonly ToolDefinition[] = [
   aacToMp3,
   extractAudio,
   flacToMp3,
+  flacToWav,
   m4aToMp3,
+  m4aToWav,
   movToMp3,
   mp3ToM4a,
   mp3ToOgg,
