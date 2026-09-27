@@ -27,7 +27,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // Capped locally: 4+ parallel workers against one cold wrangler server
+  // pushed engine-heavy tests past their timeouts (2026-09-27, verified:
+  // same fresh build green with 1 worker, flaky with the default).
+  workers: process.env.CI ? 1 : 2,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
 
   use: {

@@ -163,7 +163,7 @@ async function findMarkAndApply(
 }
 
 test.describe("pdf-editor redaction", () => {
-  test.use({ viewport: { width: 1280, height: 1100 } });
+  test.use({ viewport: { width: 1280, height: 1100 }, actionTimeout: 10_000 });
   test.setTimeout(60_000);
 
   test("marking and applying without flatten removes only the marked word's text", async ({
