@@ -32,24 +32,34 @@ function expectEngines(
 }
 
 describe("compress-jpg", () => {
-  it("resolves decode + encode to jsquash-jpeg", () => {
-    expectEngines(compressJpg, [
-      { op: "decode", engine: "jsquash-jpeg" },
-      { op: "encode", engine: "jsquash-jpeg" },
-    ]);
+  // ADR-0013: a single "compress" op (jsquash-jpeg's own runCompress), not
+  // the generic decode/encode pipeline — see that adapter's doc comment on
+  // why every mode (including "lossless") needs the exact original bytes
+  // and the final result in the same call.
+  it("resolves compress to jsquash-jpeg", () => {
+    expectEngines(compressJpg, [{ op: "compress", engine: "jsquash-jpeg" }]);
   });
 
-  it("defaults parse, with quality set and targetSizeKB absent", () => {
+  it("defaults parse to mode visually-lossless with quality set and targetSizeKB defaulted", () => {
     const parsed = compressJpg.options.safeParse(compressJpg.defaults);
-    expect(parsed).toMatchObject({ success: true, data: { quality: 0.75 } });
-    expect(parsed.success && "targetSizeKB" in parsed.data).toBe(false);
-  });
-
-  it("accepts a valid targetSizeKB alongside the quality default", () => {
-    const parsed = compressJpg.options.safeParse({ targetSizeKB: 200 });
     expect(parsed).toMatchObject({
       success: true,
-      data: { targetSizeKB: 200, quality: 0.75 },
+      data: {
+        mode: "visually-lossless",
+        quality: 0.75,
+        targetSizeKB: 200,
+      },
+    });
+  });
+
+  it("accepts an explicit target-size mode with a custom targetSizeKB", () => {
+    const parsed = compressJpg.options.safeParse({
+      mode: "target-size",
+      targetSizeKB: 50,
+    });
+    expect(parsed).toMatchObject({
+      success: true,
+      data: { mode: "target-size", targetSizeKB: 50, quality: 0.75 },
     });
   });
 
@@ -61,11 +71,8 @@ describe("compress-jpg", () => {
 });
 
 describe("compress-webp", () => {
-  it("resolves decode + encode to jsquash-webp", () => {
-    expectEngines(compressWebp, [
-      { op: "decode", engine: "jsquash-webp" },
-      { op: "encode", engine: "jsquash-webp" },
-    ]);
+  it("resolves compress to jsquash-webp", () => {
+    expectEngines(compressWebp, [{ op: "compress", engine: "jsquash-webp" }]);
   });
 
   it("defaults parse", () => {
