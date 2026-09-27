@@ -5,7 +5,10 @@ import type {
   EngineResult,
 } from "@/lib/engines";
 import { EngineError, toEngineError } from "@/lib/engines";
+import { ENGINE_MANIFEST } from "@/lib/engines/manifest";
 import type { Capabilities, EngineId } from "@/lib/registry";
+import { classifyLoadFailure, isOffline } from "./engine-load-error";
+import { withIdleTimeout } from "./idle-timeout";
 import type {
   EngineHostApi,
   RunOutcome,
@@ -13,6 +16,33 @@ import type {
   RunStep,
 } from "./protocol";
 import { serializeEngineError } from "./protocol";
+
+/** No engine/asset fetch — however it's stuck (offline, a stalled connection,
+ * a service worker that never settles) — spins forever; see the "offline +
+ * never-cached engine" bug this exists to fix. 60s comfortably covers a slow
+ * real download (the consent-gated download path is separate and unbounded
+ * on purpose) while still failing well within what a user will wait on a
+ * "Loading…" spinner before assuming the app is broken. */
+const LOAD_IDLE_TIMEOUT_MS = 60_000;
+
+/** Idle window for a running step while online — see its use in `run`. */
+const RUN_IDLE_TIMEOUT_MS = 10 * 60_000;
+
+/** Slowest connection we still wait for before calling a load stuck. */
+const SLOW_LINK_BYTES_PER_SECOND = 50_000;
+
+/**
+ * The load timeout scales with the engine's download size: a fixed 60 s
+ * would wrongly kill a legitimate multi-megabyte engine (libreoffice ~74 MB)
+ * on a slow connection, since nothing resets the timer mid-download.
+ */
+export function loadTimeoutMs(engine: EngineId): number {
+  const bytes = ENGINE_MANIFEST[engine]?.totalBytes ?? 0;
+  return Math.max(
+    LOAD_IDLE_TIMEOUT_MS,
+    Math.ceil(bytes / SLOW_LINK_BYTES_PER_SECOND) * 1000,
+  );
+}
 
 /**
  * Runs inside the worker. Environment-neutral code, no DOM — see ADR-0005.
@@ -73,11 +103,12 @@ export function createEngineHost(
       } catch (cause) {
         // Deliberately not cached — a transient failure (a flaky fetch of
         // the wasm asset, say) should not permanently strand this engine.
-        throw new EngineError(
-          "load-failed",
-          `engine "${engine}" failed to load`,
-          { engine, cause },
-        );
+        throw classifyLoadFailure({
+          engine,
+          cause,
+          offline: isOffline(),
+          timedOut: false,
+        });
       } finally {
         loading.delete(engine);
       }
@@ -172,7 +203,26 @@ export function createEngineHost(
 
         let entry: CacheEntry;
         try {
-          entry = await loadEngine(step.engine, step.baseUrl);
+          // `loadEngine` reports no progress of its own, so `poke()` is called
+          // once up front and never again; the whole load must finish inside
+          // `loadTimeoutMs` (scaled to the engine's download size) or it is
+          // treated as stuck (the offline/never-cached-engine hang this
+          // guards against: a fetch that neither resolves nor rejects).
+          entry = await withIdleTimeout(
+            (poke) => {
+              poke();
+              return loadEngine(step.engine, step.baseUrl);
+            },
+            {
+              ms: loadTimeoutMs(step.engine),
+              onTimeout: () =>
+                classifyLoadFailure({
+                  engine: step.engine,
+                  offline: isOffline(),
+                  timedOut: true,
+                }),
+            },
+          );
         } catch (e) {
           return {
             ok: false,
@@ -197,22 +247,49 @@ export function createEngineHost(
         }
 
         try {
-          result = await entry.instance.run({
-            op: step.op,
-            input: currentInput,
-            // Only the first step can be many-to-one (ADR-0008: a
-            // many-to-one tool's pipeline is a single `merge`-shaped step) —
-            // every later step's input is the previous step's own single
-            // `EngineResult`, converted by `resultToInput` above.
-            inputs: i === 0 ? inputs : undefined,
-            inputFormat: step.inputFormat,
-            outputFormat: step.outputFormat,
-            options,
-            signal: controller.signal,
-            onProgress: onProgress
-              ? (fraction: number) => reportOverall((i + clamp01(fraction)) / n)
-              : undefined,
-          });
+          // Some adapters (e.g. jsquash-*) fetch their wasm lazily on first
+          // `run()` rather than in `load()` above — the same stuck-fetch
+          // hang can happen here too, so this gets the same idle-timeout
+          // treatment. Unlike the load timeout, `poke()` fires on every
+          // `onProgress` tick: a step that keeps reporting real progress
+          // (a long but healthy transcode) never times out, only one that
+          // goes silent for the full window does.
+          result = await withIdleTimeout(
+            (poke) =>
+              entry.instance.run({
+                op: step.op,
+                input: currentInput,
+                // Only the first step can be many-to-one (ADR-0008: a
+                // many-to-one tool's pipeline is a single `merge`-shaped
+                // step) — every later step's input is the previous step's
+                // own single `EngineResult`, converted by `resultToInput`
+                // above.
+                inputs: i === 0 ? inputs : undefined,
+                inputFormat: step.inputFormat,
+                outputFormat: step.outputFormat,
+                options,
+                signal: controller.signal,
+                onProgress: (fraction: number) => {
+                  poke();
+                  if (onProgress) {
+                    reportOverall((i + clamp01(fraction)) / n);
+                  }
+                },
+              }),
+            {
+              // Offline, a silent step is almost certainly a lazy wasm fetch
+              // that will never arrive. Online, a long silent step can be a
+              // healthy conversion that reports no progress (large PDF,
+              // ffmpeg) — give it a much wider window before calling it stuck.
+              ms: isOffline() ? LOAD_IDLE_TIMEOUT_MS : RUN_IDLE_TIMEOUT_MS,
+              onTimeout: () =>
+                classifyLoadFailure({
+                  engine: step.engine,
+                  offline: isOffline(),
+                  timedOut: true,
+                }),
+            },
+          );
         } catch (e) {
           return {
             ok: false,

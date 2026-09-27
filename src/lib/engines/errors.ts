@@ -4,6 +4,8 @@ export type EngineErrorCode =
   | "unsupported"
   | "aborted"
   | "load-failed"
+  | "load-timeout"
+  | "offline"
   | "decode-failed"
   | "encode-failed"
   | "out-of-memory"
