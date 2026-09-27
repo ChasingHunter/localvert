@@ -7,20 +7,16 @@
  * mode, quota errors, etc. all degrade to "acts as if no draft exists" rather
  * than an uncaught rejection).
  *
- * Shares the "localvert" database with `signature-store.ts`. `DB_VERSION` is
- * bumped here (and in that file, to match) so this store's
- * `onupgradeneeded` actually runs for anyone who already has the database at
- * version 1 — `indexedDB.open` throws `VersionError` if a later caller ever
- * asks for a version lower than what's on disk, so the two files' versions
- * must never drift apart.
+ * Shares the "localvert" database with `signature-store.ts`; both open it
+ * only through `openLocalDb` in `local-db.ts`, which creates every store.
  *
  * Never sent over the network — this file has no `fetch`/`XMLHttpRequest`
  * call, only `indexedDB`.
  */
 
-const DB_NAME = "localvert";
-const DB_VERSION = 2;
-const STORE_NAME = "drafts";
+import { type LocalDbStore, openLocalDb as openDb } from "./local-db";
+
+const STORE_NAME: LocalDbStore = "drafts";
 const KEY = "pdf-editor";
 
 /** The record stored for the one remembered draft. `bytes` is the exported
@@ -46,20 +42,6 @@ export function isValidDraftRecord(value: unknown): value is DraftRecord {
     typeof v.savedAt === "number" &&
     Number.isFinite(v.savedAt)
   );
-}
-
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
 }
 
 /** Saves `record` as the one remembered draft, replacing any previous one.

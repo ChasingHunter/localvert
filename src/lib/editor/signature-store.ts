@@ -12,28 +12,10 @@
  * uncaught rejection that breaks the dialog.
  */
 
-const DB_NAME = "localvert";
-// Bumped to 2 alongside `draft-store.ts`'s own `DB_VERSION` (E6b), which
-// adds a second object store ("drafts") to this same database. Both files'
-// versions must stay equal: `indexedDB.open` throws `VersionError` if either
-// one ever asks for a version lower than what's already on disk.
-const DB_VERSION = 2;
-const STORE_NAME = "signatures";
-const KEY = "default";
+import { type LocalDbStore, openLocalDb as openDb } from "./local-db";
 
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
+const STORE_NAME: LocalDbStore = "signatures";
+const KEY = "default";
 
 /** Saves `blob` (the trimmed signature PNG) as the one remembered signature,
  * replacing any previous one. Returns whether it actually saved. */
