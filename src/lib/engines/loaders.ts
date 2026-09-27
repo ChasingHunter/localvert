@@ -11,6 +11,7 @@ import type { EngineAdapter } from "./types";
 export const ENGINE_LOADERS = {
   canvas: () => import("./canvas/adapter"),
   exif: () => import("./exif/adapter"),
+  ffmpeg: () => import("./ffmpeg/adapter"),
   heic: () => import("./heic/adapter"),
   "jsquash-avif": () => import("./jsquash-avif/adapter"),
   "jsquash-jpeg": () => import("./jsquash-jpeg/adapter"),

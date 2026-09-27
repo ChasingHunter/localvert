@@ -286,6 +286,49 @@ export const FORMATS = {
     // tell them apart do so by extension, not by magic.
     magic: [[{ offset: 0, bytes: [0x1a, 0x45, 0xdf, 0xa3] }]],
   },
+  avi: {
+    label: "AVI",
+    ext: ["avi"],
+    mime: "video/x-msvideo",
+    category: "video",
+    // RIFF container, "AVI " form type at offset 8 — same shape as wav's
+    // RIFF/WAVE check above.
+    magic: [
+      [
+        { offset: 0, bytes: ascii("RIFF") },
+        { offset: 8, bytes: ascii("AVI ") },
+      ],
+    ],
+  },
+  wmv: {
+    label: "WMV",
+    ext: ["wmv"],
+    mime: "video/x-ms-wmv",
+    category: "video",
+    // ASF header GUID (Microsoft's Advanced Systems Format container, which
+    // WMV/WMA are both built on) — a fixed 16-byte GUID at offset 0, the
+    // same signature for every ASF file. wmv is the only ASF format any tool
+    // here accepts, so this format is treated as "wmv" outright rather than
+    // sniffed as a generic "asf" and refined by extension.
+    magic: [
+      [
+        {
+          offset: 0,
+          bytes: [
+            0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf, 0x11, 0xa6, 0xd9, 0x00,
+            0xaa, 0x00, 0x62, 0xce, 0x6c,
+          ],
+        },
+      ],
+    ],
+  },
+  flv: {
+    label: "FLV",
+    ext: ["flv"],
+    mime: "video/x-flv",
+    category: "video",
+    magic: [[{ offset: 0, bytes: ascii("FLV") }]],
+  },
   mp3: {
     label: "MP3",
     ext: ["mp3"],

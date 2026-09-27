@@ -2,6 +2,7 @@
 export type EngineId =
   | "canvas"
   | "exif"
+  | "ffmpeg"
   | "heic"
   | "jsquash-avif"
   | "jsquash-jpeg"

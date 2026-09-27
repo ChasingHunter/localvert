@@ -1,0 +1,18 @@
+{
+  "id": "ffmpeg",
+  "license": "GPL-2.0-or-later",
+  "location": "r2",
+  "needsIsolation": false,
+  "heavy": true,
+  "package": "@ffmpeg/core",
+  "files": [
+    {
+      "from": "dist/esm/ffmpeg-core.wasm",
+      "to": "ffmpeg-core.wasm"
+    },
+    {
+      "from": "dist/esm/ffmpeg-core.js",
+      "to": "ffmpeg-core.js"
+    }
+  ]
+}
