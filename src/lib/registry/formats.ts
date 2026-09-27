@@ -431,11 +431,12 @@ export const FORMATS = {
     mime: "audio/mp4",
     category: "audio",
     // ISO-BMFF "ftyp" box, same shape as mp4/mov above, major brand "M4A "
-    // (Apple's own tag for an audio-only MP4 container — what mediabunny's
-    // `Mp4OutputFormat` writes for an audio-only conversion). An m4a
-    // encoded with a generic "isom"/"mp42" major brand instead sniffs as
-    // `mp4` here — accepted gap, same shape as every other ftyp-brand note
-    // in this table.
+    // (Apple's own tag for an audio-only MP4 container). mediabunny's
+    // `Mp4OutputFormat` never writes it on its own, so the audio engine
+    // stamps it on every m4a it produces (`patchFtypMajorBrand` in
+    // src/lib/engines/mediabunny/output.ts). An m4a from elsewhere with a
+    // generic "isom"/"mp42" brand sniffs as `mp4`; `refineFormat` promotes
+    // it back to m4a by its .m4a extension.
     magic: [
       [
         { offset: 4, bytes: ascii("ftyp") },
@@ -810,6 +811,14 @@ export function refineFormat(
   if (sniffed === "wmv") {
     return (FORMATS.wma.ext as readonly string[]).includes(ext)
       ? "wma"
+      : sniffed;
+  }
+  // See the `m4a` format comment above: an m4a written with a generic
+  // "isom"/"mp42" major brand (common outside Apple's own tools) sniffs as
+  // `mp4`; a .m4a extension promotes it.
+  if (sniffed === "mp4") {
+    return (FORMATS.m4a.ext as readonly string[]).includes(ext)
+      ? "m4a"
       : sniffed;
   }
   // See the `ogg`/`opus` format comments above: both share the "OggS"

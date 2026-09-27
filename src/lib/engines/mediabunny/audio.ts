@@ -109,6 +109,7 @@ function outputPlan(output: StepFormat): {
   format: OutputFormat;
   mime: string;
   candidates: readonly AudioCodec[];
+  majorBrand?: string;
 } {
   switch (output) {
     case "mp3":
@@ -148,6 +149,10 @@ function outputPlan(output: StepFormat): {
         format: new Mp4OutputFormat(),
         mime: FORMATS.m4a.mime,
         candidates: ["aac"],
+        // mediabunny only ever writes an "isom"/"iso5" major brand, so an
+        // m4a it produces would sniff as mp4 (see FORMATS.m4a). Stamp
+        // Apple's audio-only brand instead — see `runConversion`.
+        majorBrand: "M4A ",
       };
     default:
       throw new EngineError(
@@ -235,7 +240,7 @@ export async function runAudioTranscode(
   signal.throwIfAborted();
 
   const outputFormat = chosenOutputFormat(task);
-  const { format, mime, candidates } = outputPlan(outputFormat);
+  const { format, mime, candidates, majorBrand } = outputPlan(outputFormat);
   const codec = await pickAudioCodec(candidates);
   if (!codec) {
     throw new EngineError(
@@ -254,6 +259,7 @@ export async function runAudioTranscode(
     // own `fileExtension` getter always includes the leading dot.
     ext: format.fileExtension.slice(1),
     mime,
+    ...(majorBrand !== undefined && { majorBrand }),
     video: { discard: true },
     audio: {
       codec,

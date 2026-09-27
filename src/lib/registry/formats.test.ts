@@ -190,6 +190,12 @@ describe("refineFormat", () => {
     expect(refineFormat("wmv", "noext")).toBe("wmv");
   });
 
+  it("upgrades an mp4 sniff to m4a for a .m4a filename (isom/mp42-branded m4a)", () => {
+    expect(refineFormat("mp4", "voice memo.m4a")).toBe("m4a");
+    expect(refineFormat("mp4", "clip.mp4")).toBe("mp4");
+    expect(refineFormat("mp4", "noext")).toBe("mp4");
+  });
+
   it("upgrades a zip sniff to xlsx for an .xlsx filename", () => {
     // xlsx is byte-for-byte a zip file per this scheme's magic (OOXML is a
     // ZIP container), so this is exactly what sniffFormat itself returns.

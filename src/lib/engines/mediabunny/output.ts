@@ -100,12 +100,44 @@ class OpfsSizeTracker {
   }
 }
 
+/**
+ * Overwrites an ISO-BMFF file's major brand (bytes 8-11, right after the
+ * leading `ftyp` box's size + type) with `brand`, if `data` — written at
+ * absolute file offset `position` — covers those bytes and the box type at
+ * 4-7 really is `ftyp`. Mutates `data` in place; a chunk that doesn't cover
+ * the brand is left alone, so it's safe to call on every chunk a
+ * `StreamTarget` writes, and on a whole `BufferTarget` buffer at position 0.
+ */
+export function patchFtypMajorBrand(
+  data: Uint8Array,
+  position: number,
+  brand: string,
+): void {
+  if (brand.length !== 4) {
+    throw new Error(`ftyp major brand must be 4 characters, got "${brand}"`);
+  }
+  const typeAt = 4 - position;
+  const brandAt = 8 - position;
+  if (typeAt < 0 || brandAt + 4 > data.byteLength) return;
+  const isFtyp =
+    data[typeAt] === 0x66 && // f
+    data[typeAt + 1] === 0x74 && // t
+    data[typeAt + 2] === 0x79 && // y
+    data[typeAt + 3] === 0x70; // p
+  if (!isFtyp) return;
+  for (let i = 0; i < 4; i++) data[brandAt + i] = brand.charCodeAt(i);
+}
+
 function opfsWritable(
   handle: OpfsSyncAccessHandle,
   sizeTracker: OpfsSizeTracker,
+  majorBrand: string | undefined,
 ): WritableStream<StreamTargetChunk> {
   return new WritableStream<StreamTargetChunk>({
     write(chunk) {
+      if (majorBrand !== undefined) {
+        patchFtypMajorBrand(chunk.data, chunk.position, majorBrand);
+      }
       handle.write(chunk.data, { at: chunk.position });
       sizeTracker.record(chunk.position, chunk.data.byteLength);
     },
@@ -151,6 +183,9 @@ export interface RunConversionArgs {
   format: OutputFormat;
   ext: string;
   mime: string;
+  /** Replaces the output's ISO-BMFF major brand (e.g. "M4A " for an
+   * audio-only mp4) — see `patchFtypMajorBrand`. */
+  majorBrand?: string;
   video?: ConversionVideoOptions;
   audio?: ConversionAudioOptions;
   trim?: { start?: number; end?: number };
@@ -167,7 +202,8 @@ export interface RunConversionArgs {
 export async function runConversion(
   args: RunConversionArgs,
 ): Promise<EngineResult> {
-  const { task, engineId, format, ext, mime, video, audio, trim } = args;
+  const { task, engineId, format, ext, mime, majorBrand, video, audio, trim } =
+    args;
   const { signal, onProgress } = task;
   signal.throwIfAborted();
 
@@ -187,7 +223,7 @@ export async function runConversion(
   const sizeTracker = new OpfsSizeTracker();
 
   const target = syncHandle
-    ? new StreamTarget(opfsWritable(syncHandle, sizeTracker))
+    ? new StreamTarget(opfsWritable(syncHandle, sizeTracker, majorBrand))
     : new BufferTarget();
 
   const output = new Output({ format, target });
@@ -249,6 +285,9 @@ export async function runConversion(
         "output too large for this browser; try a browser with OPFS support",
         { engine: engineId },
       );
+    }
+    if (majorBrand !== undefined) {
+      patchFtypMajorBrand(new Uint8Array(buffer), 0, majorBrand);
     }
     return { kind: "bytes", bytes: buffer, mime };
   } catch (e) {
