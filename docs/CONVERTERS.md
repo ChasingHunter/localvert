@@ -53,6 +53,17 @@ level, not through the full UI.
 | `raw-to-jpg` | Camera RAW (CR2, NEF, ARW, DNG, RAF, ORF, RW2, …) | JPEG | libraw → jsquash-jpeg | Yes | Camera white balance, sRGB, 8-bit; optional half-size decode; strips EXIF (incl. GPS) |
 | `raw-to-png` | Camera RAW (CR2, NEF, ARW, DNG, RAF, ORF, RW2, …) | PNG | libraw → jsquash-png | Yes | Camera white balance, sRGB, 8-bit; optional half-size decode; strips EXIF (incl. GPS) |
 | `image-to-text` | JPEG/PNG/WebP/BMP | Text (OCR) | tesseract | Yes | English only today (`language` select); OCR accuracy depends on the source image |
+| `gif-to-png` | GIF | PNG | canvas | Yes | First frame only (no animation) |
+| `gif-to-jpg` | GIF | JPEG | canvas | Yes | First frame only (no animation); background fill for transparency |
+| `bmp-to-png` | BMP | PNG | canvas | Yes | — |
+| `bmp-to-jpg` | BMP | JPEG | canvas | Yes | Background fill for transparency |
+| `ico-to-png` | ICO | PNG | canvas | Yes | Decodes the largest embedded size; PNG-compressed (Vista+) or legacy DIB entries |
+| `png-to-bmp` | PNG | BMP | canvas | Yes | 24-bit if fully opaque, else 32-bit with alpha; pure-TS encoder |
+| `jpg-to-bmp` | JPEG | BMP | canvas | Yes | Always 24-bit (no alpha in JPEG); pure-TS encoder |
+| `png-to-ico` | PNG | ICO | canvas | Yes | `sizes` preset (favicon 16/32/48, app +64/128/256, single 256); non-square source fit inside each square with transparent padding |
+| `jpg-to-ico` | JPEG | ICO | canvas | Yes | Same `sizes` preset as `png-to-ico` |
+| `png-to-gif` | PNG | GIF | canvas | Yes | Single frame (no animation); 256-color palette, 1-bit transparency, via gifenc |
+| `jpg-to-gif` | JPEG | GIF | canvas | Yes | Single frame (no animation); 256-color palette, via gifenc |
 
 ## Image operations
 

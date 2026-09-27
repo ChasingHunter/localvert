@@ -96,6 +96,39 @@ export const jxlDefaults: z.infer<typeof jxlOptions> = {
 export const pngOptions = z.object({});
 export const pngDefaults: z.infer<typeof pngOptions> = {};
 
+/** BMP is lossless (no quality knob) and its bit depth (24 vs 32-bit) is
+ * decided automatically by whether the source has transparency — see
+ * `canvas/bmp.ts`'s `encodeBmp` — so there's nothing left to expose here. */
+export const bmpOptions = z.object({});
+export const bmpDefaults: z.infer<typeof bmpOptions> = {};
+
+/** Single-frame GIF output — `canvas/gif.ts`'s `encodeGif` always quantizes
+ * to 256 colors with 1-bit transparency, gifenc's own fixed defaults, so
+ * there's no user-facing knob for it either. */
+export const gifOptions = z.object({});
+export const gifDefaults: z.infer<typeof gifOptions> = {};
+
+/**
+ * Shared by every `*-to-ico` tool — which sizes `canvas/ico.ts`'s
+ * `icoSizesForPreset` writes into the icon. A non-square source is fit
+ * inside each size's square with transparent padding (`runEncodeIco`'s doc
+ * comment), never cropped or stretched.
+ */
+export const icoOptions = z.object({
+  sizes: z
+    .enum(["favicon", "app", "single"])
+    .meta({
+      label: "Sizes",
+      control: "select",
+      help:
+        '"Favicon" (16/32/48px) covers browser tabs and bookmarks. "App" ' +
+        "adds the larger sizes (64–256px) desktop/taskbar icons use. " +
+        '"Single" writes just one 256px entry.',
+    })
+    .default("favicon"),
+});
+export const icoDefaults: z.infer<typeof icoOptions> = { sizes: "favicon" };
+
 /**
  * Shared by every `*-to-svg` tool — tracing options for the `tracer` engine
  * (`src/lib/engines/tracer/adapter.ts`), not pixel-encode options like the

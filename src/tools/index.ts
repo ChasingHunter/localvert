@@ -31,15 +31,23 @@ import powerpointToPdf from "@/tools/document/powerpoint-to-pdf";
 import wordToPdf from "@/tools/document/word-to-pdf";
 import avifToJpg from "@/tools/image/avif-to-jpg";
 import avifToPng from "@/tools/image/avif-to-png";
+import bmpToJpg from "@/tools/image/bmp-to-jpg";
+import bmpToPng from "@/tools/image/bmp-to-png";
 import compressJpg from "@/tools/image/compress-jpg";
 import compressWebp from "@/tools/image/compress-webp";
 import cropJpg from "@/tools/image/crop-jpg";
 import cropPng from "@/tools/image/crop-png";
 import cropWebp from "@/tools/image/crop-webp";
+import gifToJpg from "@/tools/image/gif-to-jpg";
+import gifToPng from "@/tools/image/gif-to-png";
 import heicToJpg from "@/tools/image/heic-to-jpg";
 import heicToPng from "@/tools/image/heic-to-png";
+import icoToPng from "@/tools/image/ico-to-png";
 import imageToText from "@/tools/image/image-to-text";
 import jpgToAvif from "@/tools/image/jpg-to-avif";
+import jpgToBmp from "@/tools/image/jpg-to-bmp";
+import jpgToGif from "@/tools/image/jpg-to-gif";
+import jpgToIco from "@/tools/image/jpg-to-ico";
 import jpgToJxl from "@/tools/image/jpg-to-jxl";
 import jpgToPng from "@/tools/image/jpg-to-png";
 import jpgToSvg from "@/tools/image/jpg-to-svg";
@@ -47,6 +55,9 @@ import jpgToWebp from "@/tools/image/jpg-to-webp";
 import jxlToJpg from "@/tools/image/jxl-to-jpg";
 import jxlToPng from "@/tools/image/jxl-to-png";
 import pngToAvif from "@/tools/image/png-to-avif";
+import pngToBmp from "@/tools/image/png-to-bmp";
+import pngToGif from "@/tools/image/png-to-gif";
+import pngToIco from "@/tools/image/png-to-ico";
 import pngToJpg from "@/tools/image/png-to-jpg";
 import pngToJxl from "@/tools/image/png-to-jxl";
 import pngToSvg from "@/tools/image/png-to-svg";
@@ -134,15 +145,23 @@ export const TOOLS: readonly ToolDefinition[] = [
   wordToPdf,
   avifToJpg,
   avifToPng,
+  bmpToJpg,
+  bmpToPng,
   compressJpg,
   compressWebp,
   cropJpg,
   cropPng,
   cropWebp,
+  gifToJpg,
+  gifToPng,
   heicToJpg,
   heicToPng,
+  icoToPng,
   imageToText,
   jpgToAvif,
+  jpgToBmp,
+  jpgToGif,
+  jpgToIco,
   jpgToJxl,
   jpgToPng,
   jpgToSvg,
@@ -150,6 +169,9 @@ export const TOOLS: readonly ToolDefinition[] = [
   jxlToJpg,
   jxlToPng,
   pngToAvif,
+  pngToBmp,
+  pngToGif,
+  pngToIco,
   pngToJpg,
   pngToJxl,
   pngToSvg,
