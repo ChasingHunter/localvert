@@ -123,7 +123,15 @@ apply to any of them, so that column reads their own **Arity** instead.
 
 | Slug | From | To | Engine | Batch | Notes |
 |---|---|---|---|---|---|
-| _none yet_ | | | | | Phase 3 |
+| `extract-audio` | MP4, MOV, WebM | MP3 (default), M4A, WAV, Ogg or Opus | mediabunny | Yes | Discards the video track; output format selectable; bitrate/sample rate/channels configurable for lossy targets |
+| `wav-to-mp3` | WAV | MP3 | mediabunny | Yes | Bitrate/sample rate/channels; MP3 uses the LAME wasm encoder (`@mediabunny/mp3-encoder`), no browser encodes MP3 natively |
+| `mp3-to-wav` | MP3 | WAV | mediabunny | Yes | Sample rate/channels only — PCM has no bitrate knob |
+| `flac-to-mp3` | FLAC | MP3 | mediabunny | Yes | Bitrate/sample rate/channels |
+| `m4a-to-mp3` | M4A | MP3 | mediabunny | Yes | Bitrate/sample rate/channels |
+| `ogg-to-mp3` | Ogg Vorbis (or Opus) | MP3 | mediabunny | Yes | Bitrate/sample rate/channels |
+| `mp3-to-ogg` | MP3 | Ogg | mediabunny | Yes | Encodes Opus (falls back to Vorbis); bitrate/sample rate/channels |
+| `wav-to-flac` | WAV | FLAC | mediabunny | Yes | Sample rate/channels only; fails with a clear error if this browser can't encode FLAC |
+| `mp3-to-m4a` | MP3 | M4A | mediabunny | Yes | Encodes AAC; bitrate/sample rate/channels; fails with a clear error if this browser can't encode AAC |
 
 ## Document
 

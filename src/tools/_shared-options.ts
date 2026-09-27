@@ -145,6 +145,56 @@ export const svgDefaults: z.infer<typeof svgOptions> = {
  * form (`src/components/options-form.tsx`), since no sensible x/y/width/
  * height control exists without the dropped image's own dimensions.
  */
+/**
+ * Shared by every audio tool on the `mediabunny` engine (Phase 3b). `select`
+ * controls only render `z.enum` string values (see `describeField` in
+ * `src/lib/options/fields.ts`), hence string literals — `mediabunny`
+ * adapter's `audio.ts` (`bitrateOf`/`sampleRateOf`/`numberOfChannelsOf`)
+ * parses them back to the numbers/`undefined` its `Conversion.init` audio
+ * options actually want. "keep" means "pass the source's own value through
+ * unchanged", the same convention as `svgOptions.detail` reads for its own
+ * select fields.
+ */
+export const audioBitrateSelect = z
+  .enum(["96", "128", "192", "256", "320"])
+  .meta({ label: "Bitrate", control: "select", unit: "kbps" })
+  .default("192");
+
+export const audioSampleRateSelect = z
+  .enum(["keep", "44100", "48000"])
+  .meta({ label: "Sample rate", control: "select" })
+  .default("keep");
+
+export const audioChannelsSelect = z
+  .enum(["keep", "mono", "stereo"])
+  .meta({ label: "Channels", control: "select" })
+  .default("keep");
+
+/** For a tool whose output codec is lossy (mp3, m4a/AAC, ogg/opus) — bitrate
+ * is a real knob there. */
+export const lossyAudioOptions = z.object({
+  bitrate: audioBitrateSelect,
+  sampleRate: audioSampleRateSelect,
+  channels: audioChannelsSelect,
+});
+export const lossyAudioDefaults: z.infer<typeof lossyAudioOptions> = {
+  bitrate: "192",
+  sampleRate: "keep",
+  channels: "keep",
+};
+
+/** For a tool whose output codec is lossless (wav/PCM, flac) — no bitrate
+ * knob; sample rate/channels still apply (resampling/downmixing is
+ * independent of the codec's own losslessness). */
+export const losslessAudioOptions = z.object({
+  sampleRate: audioSampleRateSelect,
+  channels: audioChannelsSelect,
+});
+export const losslessAudioDefaults: z.infer<typeof losslessAudioOptions> = {
+  sampleRate: "keep",
+  channels: "keep",
+};
+
 export const cropField = z
   .object({
     x: z.number().int().nonnegative(),
