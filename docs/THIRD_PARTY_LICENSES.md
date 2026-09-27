@@ -55,6 +55,7 @@ requires its own ADR and we must publish the modified source.
 | `read-excel-file` (xlsx read) | 9.3.10 | MIT | catamphetamine | https://gitlab.com/catamphetamine/read-excel-file |
 | `write-excel-file` (xlsx write) | 4.1.1 | MIT | catamphetamine | https://gitlab.com/catamphetamine/write-excel-file |
 | `typst.ts` / `typst-ts-web-compiler` (Markdown/PDF compile, `typst` 0.14.2 core) | 0.7.0 | Apache-2.0 | Myriad-Dreamin and typst.ts contributors; the Typst Project | https://github.com/Myriad-Dreamin/typst.ts |
+| `libreoffice` (`@bentopdf/libreoffice-wasm`, wraps LibreOfficeDev 24.8 built to wasm/pthreads) | 2.3.1 | MPL-2.0 (file-level copyleft — see below) | The Document Foundation and LibreOffice contributors; the package's maintainer (npm-only; no repository/README field) | https://www.npmjs.com/package/@bentopdf/libreoffice-wasm (package); https://git.libreoffice.org (LibreOffice core source, the actual MPL-2.0-covered work) |
 | `cmarker` (vendored Typst package, markdown -> Typst content) | 0.1.8 | MIT | Sabrina Jewson | https://github.com/SabrinaJewson/cmarker.typ (`vendor/typst-packages/preview/cmarker/0.1.8/`) |
 | Libertinus Serif (vendored font, body text) | v0.14.2 (typst-assets pin) | OFL-1.1 | The Libertinus Project Authors | https://github.com/alerque/libertinus (`vendor/typst-fonts/`) |
 | DejaVu Sans Mono (vendored font, raw/code text) | v0.14.2 (typst-assets pin) | Bitstream Vera License (+ Public Domain DejaVu changes) | Bitstream, Inc.; the DejaVu fonts team | https://dejavu-fonts.github.io (`vendor/typst-fonts/`) |
@@ -85,6 +86,18 @@ as MIT). `@mediabunny/mp3-encoder` additionally wraps a LAME wasm build
 (LGPL), wired into every mp3-output audio tool as of Phase 3b — its LGPL
 source-offer obligation is in the copyleft table below, alongside `heic`
 and `libraw`.
+
+`libreoffice` (`@bentopdf/libreoffice-wasm`) is MPL-2.0, the same file-level
+copyleft as `resvg`/`mediabunny` above: it only requires that modified *files*
+of the covered work (LibreOffice core, compiled to wasm) be published under
+MPL, not the combining application. We ship the unmodified upstream wasm/JS
+build, so this carries no obligation beyond attribution and the source link
+above — recorded here rather than in the copyleft table below, which is for
+GPL/LGPL's whole-work-level obligations. See
+[ADR-0012](adr/0012-libreoffice-office-to-pdf.md) for this package's
+provenance risk (single, anonymous npm maintainer; no repository or README) and
+why we still ship it: sandboxed in its own worker, and `connect-src 'self'`
+means it cannot exfiltrate anything even if it wanted to.
 
 `tracer` (`@image-tracer-ts/core`) is a TypeScript reimplementation of
 [imagetracerjs](https://github.com/jankovicsandras/imagetracerjs), which is
