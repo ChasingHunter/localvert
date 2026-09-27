@@ -75,6 +75,7 @@
     "fflate": "~0.8.3",
     "gifenc": "1.0.3",
     "heic-to": "^1.5.2",
+    "image-q": "4.0.0",
     "libraw-wasm": "^1.6.0",
     "lucide-react": "^1.48.0",
     "mediabunny": "1.60.0",
