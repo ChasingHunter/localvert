@@ -24,6 +24,9 @@ const port = Number(process.env.E2E_PORT ?? 8788);
 
 export default defineConfig({
   testDir: "./e2e",
+  // Runs once, after webServer is up and before any spec — see
+  // e2e/global-setup.ts's doc comment for the cold-start flake it fixes.
+  globalSetup: "./e2e/global-setup.ts",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
