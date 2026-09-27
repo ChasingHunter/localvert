@@ -198,13 +198,24 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
 
 - [x] Markdown → PDF (typst.ts 0.7.0 + vendored cmarker 0.1.8 and fonts; gzipped static
       compiler; CSP-safe glue patch, ADR-0011) (2026-09-27)
-- [ ] Office → PDF via LibreOffice wasm (~80 MB, **opt-in download gate**, MPL-2.0)
+- [x] Office → PDF via LibreOffice wasm (~74 MB gz, R2-hosted, **opt-in download gate**,
+      MPL-2.0; CSP-safe embind patch + pthread pool fix, ADR-0012) (2026-09-27)
 - [x] Text-ish conversions: csv/json/yaml/xlsx shipped (`data` engine:
       papaparse/yaml/read-excel-file/write-excel-file — json-to-yaml,
       yaml-to-json, json-to-xlsx, xlsx-to-json, csv-to-json, json-to-csv,
       csv-to-xlsx, xlsx-to-csv). Unblocked by a registry change: csv/json/
       yaml are `FormatSpec.text` formats, identified by extension with a
       NUL-byte guard instead of magic bytes (2026-09-27)
+
+## Phase 4.5 — Popular conversions + compression (v0.3.0)
+
+- [ ] Audio/video pages: mp4/mov/webm → mp3, aac/opus/wma → mp3, m4a/flac → wav
+- [ ] Images: gif, bmp, ico in and out (+ jpg/png → gif/bmp/ico)
+- [ ] PDF: pdf → text, jpg/png → pdf pages, watermark, page numbers
+- [ ] Compression done right (ADR-0013): lossless by default where possible — compress-png
+      (oxipng lossless / image-q palette), jpg/webp modes (lossless strip, visually lossless,
+      target size; never larger than input), compress-pdf lossless mode, compress audio
+- [ ] PDF → Word via LibreOffice ("layout approximate"); EPUB/HTML/TXT → PDF
 
 ## Phase 5 — Polish
 
