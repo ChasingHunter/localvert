@@ -93,7 +93,7 @@ describe("text edit (real pdfium worker)", () => {
     }
   });
 
-  it("falls back to a standard font when the new text has an unseen character", async () => {
+  it("keeps a non-embedded standard font even for a character the old text never had", async () => {
     const { engine, textEdit, terminate } = createPdfiumWorkerEngine();
     try {
       const fixture = await buildFixture();
@@ -105,15 +105,17 @@ describe("text edit (real pdfium worker)", () => {
       const sampleObject = objects.find((o) => o.text.includes("Sample"));
       if (!sampleObject) throw new Error("no 'Sample' text object found");
 
-      // A character ("€") this fixture's own text run never contains --
-      // exercises `needsFallbackFont`'s true branch against a real font.
+      // A character ("€") this fixture's own text run never contains.
       const result = await textEdit.replace(
         documentId,
         0,
         sampleObject.objectIndex,
         "€uro",
       );
-      expect(result.usedFallbackFont).toBe(true);
+      // Helvetica here is a non-embedded standard font: the viewer resolves it
+      // with every glyph, so no substitution is needed. The embedded-subset
+      // branch is covered by `needsFallbackFont`'s unit tests.
+      expect(result.usedFallbackFont).toBe(false);
     } finally {
       terminate();
     }

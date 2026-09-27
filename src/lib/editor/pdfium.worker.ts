@@ -131,7 +131,7 @@ main();
  */
 self.addEventListener("message", (event: MessageEvent) => {
   const data = event.data as TextEditRequest | undefined;
-  if (!data || data.type !== "localvert:text") return;
+  if (data?.type !== "localvert:text") return;
   const { id } = data;
   try {
     const value = handleTextEditRequest(data);
@@ -379,9 +379,10 @@ function listTextObjects(
 
 /** Replaces one TEXT page object's string in place — no reflow, a single
  * object only. Reuses the ORIGINAL font when possible; falls back to a
- * standard PDFium font (chosen from the original's base font name) when
- * `newText` has a character `oldText` didn't, since an embedded font is
- * very likely a subset with no glyph for it — see `needsFallbackFont`. */
+ * standard PDFium font (chosen from the original's base font name) when the
+ * original font is embedded and `newText` has a character `oldText` didn't,
+ * since an embedded font is very likely a subset with no glyph for it — see
+ * `needsFallbackFont`. */
 function replaceTextObject(
   documentId: string,
   pageIndex: number,
@@ -415,7 +416,13 @@ function replaceTextObject(
       // biome-ignore lint/suspicious/noExplicitAny: `DocumentContext.docPtr` isn't part of the public .d.ts (see `requirePdfium`'s doc comment).
       const docPtr = (ctx as any).docPtr as number;
 
-      const usedFallbackFont = needsFallbackFont(oldText, newText);
+      // Only an EMBEDDED font can be a glyph subset; a non-embedded font
+      // (e.g. standard Helvetica) is resolved by the viewer and has every
+      // character, so it never needs substituting.
+      const fontEmbedded =
+        module.FPDFFont_GetIsEmbedded(module.FPDFTextObj_GetFont(objPtr)) !== 0;
+      const usedFallbackFont =
+        fontEmbedded && needsFallbackFont(oldText, newText);
       const newObjPtr = usedFallbackFont
         ? module.FPDFPageObj_NewTextObj(
             docPtr,

@@ -63,7 +63,7 @@ function createTextEditClient(worker: Worker): TextEditClient {
       }, TEXT_EDIT_TIMEOUT_MS);
       function onMessage(event: MessageEvent) {
         const data = event.data as TextEditResultMessage | undefined;
-        if (!data || data.type !== "localvert:text:result" || data.id !== id) {
+        if (data?.type !== "localvert:text:result" || data.id !== id) {
           return;
         }
         clearTimeout(timer);
