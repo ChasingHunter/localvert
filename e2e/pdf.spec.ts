@@ -356,9 +356,10 @@ test.describe("compress-pdf", () => {
     // which doesn't reliably shrink an image-heavy PDF by much — select
     // "strong" explicitly so this test still exercises (and measures) real
     // image recompression, same as before the mode selector existed.
-    await page
-      .getByLabel("Compression", { exact: true })
-      .selectOption({ label: "strong" });
+    // The options form renders selects as a Radix combobox, not a native
+    // <select>, so `selectOption` doesn't apply: open it, pick the option.
+    await page.getByLabel("Compression", { exact: true }).click();
+    await page.getByRole("option", { name: /strong/i }).click();
 
     await page
       .locator('input[type="file"]')
