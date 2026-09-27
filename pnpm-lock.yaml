@@ -86,6 +86,9 @@ importers:
       '@jsquash/webp':
         specifier: ^1.5.0
         version: 1.5.0
+      '@mediabunny/flac-encoder':
+        specifier: 1.60.0
+        version: 1.60.0(mediabunny@1.60.0)
       '@mediabunny/mp3-encoder':
         specifier: 1.60.0
         version: 1.60.0(mediabunny@1.60.0)
@@ -899,6 +902,11 @@ packages:
 
   '@jsquash/webp@1.5.0':
     resolution: {integrity: sha512-KggLoj2MnRSfIqTeKe1EmbljTX2vuV7mh79k89PCL1pyqiDULcPM1L47twxXt0hkb68F70bXiL31MxsuoZtKFw==}
+
+  '@mediabunny/flac-encoder@1.60.0':
+    resolution: {integrity: sha512-h4wkyA/XnciSDpQ7ISQyTS/nexno5RZtLfGp4l8ivJ6sYjlSGR0X769R+Ns/HtLKDPu97VO6WCD1LgKWu8UmmQ==}
+    peerDependencies:
+      mediabunny: ^1.0.0
 
   '@mediabunny/mp3-encoder@1.60.0':
     resolution: {integrity: sha512-dcDS+hh0g6JBJissiTUkbRCjUFLM348qZQBGgsVawmr61CzJK9ZgN9f/9BzkVzTlhmxxriRx8jYCK+Anqx8mMQ==}
@@ -3750,6 +3758,10 @@ snapshots:
   '@jsquash/webp@1.5.0':
     dependencies:
       wasm-feature-detect: 1.9.0
+
+  '@mediabunny/flac-encoder@1.60.0(mediabunny@1.60.0)':
+    dependencies:
+      mediabunny: 1.60.0
 
   '@mediabunny/mp3-encoder@1.60.0(mediabunny@1.60.0)':
     dependencies:
