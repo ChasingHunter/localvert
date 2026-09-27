@@ -196,7 +196,8 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
 
 ## Phase 4 — Documents
 
-- [ ] Markdown → PDF (typst.ts)
+- [x] Markdown → PDF (typst.ts 0.7.0 + vendored cmarker 0.1.8 and fonts; gzipped static
+      compiler; CSP-safe glue patch, ADR-0011) (2026-09-27)
 - [ ] Office → PDF via LibreOffice wasm (~80 MB, **opt-in download gate**, MPL-2.0)
 - [x] Text-ish conversions: csv/json/yaml/xlsx shipped (`data` engine:
       papaparse/yaml/read-excel-file/write-excel-file — json-to-yaml,
