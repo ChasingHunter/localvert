@@ -14,6 +14,8 @@
  * Miniflare instance required. See `index.test.ts`.
  */
 
+import { COEP, CSP } from "./security-headers";
+
 /** "/engines/xl/<id>@<version>/<file...>" once the leading "/engines/" is stripped. */
 const KEY_PATTERN =
   /^xl\/[a-z0-9-]+@[0-9A-Za-z.+-]+\/[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/;
@@ -73,7 +75,14 @@ function objectHeaders(object: R2Object, key: string): Headers {
   // `public/_headers` is only applied to responses the Asset Worker serves.
   // This Worker's responses bypass that layer entirely, so the header has
   // to be set here explicitly or every xl-engine fetch would fail to load.
+  // (COEP and CSP get the same treatment just below, for the same reason.)
   headers.set("Cross-Origin-Resource-Policy", "same-origin");
+  // A worker's own COEP/CSP come from its SCRIPT'S OWN response, not the
+  // page that spawned it — required for the libreoffice adapter's nested
+  // `new Worker()` load (ADR-0012) to start at all under this app's
+  // cross-origin-isolated page. See `security-headers.ts`'s doc comment.
+  headers.set("Cross-Origin-Embedder-Policy", COEP);
+  headers.set("Content-Security-Policy", CSP);
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("Accept-Ranges", "bytes");
   return headers;

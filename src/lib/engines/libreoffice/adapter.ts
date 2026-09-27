@@ -121,6 +121,26 @@ export function isOutOfMemory(e: unknown): boolean {
   return /out of memory/i.test(message);
 }
 
+/**
+ * `ErrorEvent.message` is `undefined` (not the empty string) for the case
+ * this exists to fix: Chrome refusing to even start a worker whose script
+ * response fails a COEP/COOP/CSP check reports that failure as a bare
+ * `Event`-shaped `error` with no `message`/`filename`/`lineno` at all,
+ * rather than the `ErrorEvent` the classic-worker-script-load spec describes
+ * — so `e.message` alone produced the unhelpful "libreoffice worker failed
+ * to start: undefined". This falls back to whatever fields the event DOES
+ * carry, and names the likely cause when none of them do.
+ */
+export function describeWorkerError(e: ErrorEvent): string {
+  if (e.message) {
+    return e.filename
+      ? `${e.message} (${e.filename}:${e.lineno ?? 0})`
+      : e.message;
+  }
+  if (e.filename) return `${e.filename}:${e.lineno ?? 0}`;
+  return "worker script failed to load or was blocked (check the response's own COEP/CSP headers)";
+}
+
 async function fetchBytes(
   ctx: EngineLoadContext,
   file: string,
@@ -240,7 +260,7 @@ async function initNestedWorker(ctx: EngineLoadContext): Promise<NestedWorker> {
         reject(
           new EngineError(
             "load-failed",
-            `libreoffice worker failed to start: ${e.message}`,
+            `libreoffice worker failed to start: ${describeWorkerError(e)}`,
             { engine: metadata.id },
           ),
         );
@@ -415,7 +435,7 @@ async function runTranscode(
       reject(
         new EngineError(
           "internal",
-          `libreoffice worker crashed: ${e.message}`,
+          `libreoffice worker crashed: ${describeWorkerError(e)}`,
           { engine: metadata.id },
         ),
       );

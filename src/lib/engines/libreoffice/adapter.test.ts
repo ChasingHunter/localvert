@@ -1,7 +1,11 @@
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EngineLoadContext, EngineTask } from "../types";
-import libreoffice, { checkDeviceMemory, isOutOfMemory } from "./adapter";
+import libreoffice, {
+  checkDeviceMemory,
+  describeWorkerError,
+  isOutOfMemory,
+} from "./adapter";
 
 /**
  * Node-safe unit coverage only — this mirrors `../ffmpeg/no-bundled-glue
@@ -39,6 +43,43 @@ describe("libreoffice adapter", () => {
     expect(libreoffice.location).toBe("r2");
     expect(libreoffice.license).toBe("MPL-2.0");
     expect(libreoffice.marker).toBe("localvert-engine:libreoffice");
+  });
+});
+
+describe("describeWorkerError", () => {
+  // Regression for "libreoffice worker failed to start: undefined" — a
+  // worker whose script response fails a COEP/COOP/CSP check fires a bare
+  // Event-shaped `error` with no `message` at all (see the doc comment on
+  // `describeWorkerError` itself), which `e.message` alone rendered as the
+  // literal string "undefined".
+  it("falls back to a descriptive message when the event carries none", () => {
+    const event = { message: "", filename: "", lineno: 0 } as ErrorEvent;
+    expect(describeWorkerError(event)).toMatch(/COEP|CSP|blocked/i);
+  });
+
+  it("uses the event's own message when present", () => {
+    const event = { message: "boom", filename: "", lineno: 0 } as ErrorEvent;
+    expect(describeWorkerError(event)).toBe("boom");
+  });
+
+  it("appends filename:lineno when both message and filename are present", () => {
+    const event = {
+      message: "boom",
+      filename: "https://example.test/worker.js",
+      lineno: 42,
+    } as ErrorEvent;
+    expect(describeWorkerError(event)).toBe(
+      "boom (https://example.test/worker.js:42)",
+    );
+  });
+
+  it("uses filename:lineno alone when there is no message", () => {
+    const event = {
+      message: "",
+      filename: "https://example.test/worker.js",
+      lineno: 7,
+    } as ErrorEvent;
+    expect(describeWorkerError(event)).toBe("https://example.test/worker.js:7");
   });
 });
 

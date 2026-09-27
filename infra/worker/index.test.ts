@@ -1,5 +1,13 @@
+// This test file (unlike index.ts) runs under real Node (vitest), so it can
+// read `public/_headers` off disk — but `infra/tsconfig.json` deliberately
+// omits `@types/node` for the Workers runtime program (see its own comment),
+// so this one file opts back in just for itself rather than widening that.
+/// <reference types="node" />
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { handle } from "./index";
+import { COEP, CSP } from "./security-headers";
 
 /** Minimal stand-in for what `R2Bucket.get` resolves to — only the fields `handle()` reads. */
 type FakeR2Object = {
@@ -188,11 +196,44 @@ describe("handle", () => {
     expect(response.headers.get("Cross-Origin-Resource-Policy")).toBe(
       "same-origin",
     );
+    // A worker's own COEP/CSP come from its script's own response — required
+    // for the libreoffice adapter's nested `new Worker()` load (ADR-0012) to
+    // start under a cross-origin-isolated page. See security-headers.ts.
+    expect(response.headers.get("Cross-Origin-Embedder-Policy")).toBe(
+      "require-corp",
+    );
+    expect(response.headers.get("Content-Security-Policy")).toBe(CSP);
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Accept-Ranges")).toBe("bytes");
     expect(response.headers.get("Content-Length")).toBe("10");
     expect(putSpy).toHaveBeenCalledTimes(1);
     expect(assetsFetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps security-headers.ts byte-for-byte identical to public/_headers's COEP and CSP", () => {
+    // The two files can't literally share one constant (`public/_headers` is
+    // a static Cloudflare config file, not importable TypeScript) — this is
+    // the next best thing: a test that fails loudly the moment either one is
+    // edited without the other, instead of the two silently drifting apart.
+    const headersFile = readFileSync(
+      join(__dirname, "..", "..", "public", "_headers"),
+      "utf8",
+    );
+    const coepLine = headersFile
+      .split("\n")
+      .find((line: string) =>
+        line.trim().startsWith("Cross-Origin-Embedder-Policy"),
+      );
+    const cspLine = headersFile
+      .split("\n")
+      .find((line: string) =>
+        line.trim().startsWith("Content-Security-Policy"),
+      );
+    if (!coepLine || !cspLine) {
+      throw new Error("public/_headers is missing COEP or CSP");
+    }
+    expect(coepLine.trim()).toBe(`Cross-Origin-Embedder-Policy: ${COEP}`);
+    expect(cspLine.trim()).toBe(`Content-Security-Policy: ${CSP}`);
   });
 
   it("returns headers with no body for HEAD", async () => {
