@@ -89,6 +89,20 @@ export function SearchBar({
     },
     [scroll.provides],
   );
+  // `useScroll`'s `provides` is `plugin.provides.forDocument(documentId)` —
+  // a brand-new object every render (EMBEDPDF_NOTES.md gotcha #7's
+  // `.forDocument(id)` pattern, same root cause there). `scrollToHit`
+  // therefore gets a new identity every render too. Keeping it out of the
+  // debounce effect's deps (via this ref) matters here more than usual: with
+  // it IN the deps, every `setSearching`/`setResults` triggers a re-render,
+  // which changes `scrollToHit`'s identity, which re-runs the effect and
+  // starts a NEW debounced search before the previous one's `.then` can ever
+  // win the `requestIdRef` race — search never stops re-starting itself, so
+  // the "n of m" counter never appears no matter how long you wait.
+  const scrollToHitRef = useRef(scrollToHit);
+  useEffect(() => {
+    scrollToHitRef.current = scrollToHit;
+  }, [scrollToHit]);
 
   // Debounced search: re-runs `searchAllPages` `DEBOUNCE_MS` after the last
   // keystroke (or option toggle). `requestIdRef` discards a stale response
@@ -114,7 +128,7 @@ export function SearchBar({
           setResults(newResults);
           setCurrentIndex(0);
           setSearching(false);
-          scrollToHit(newResults[0]);
+          scrollToHitRef.current(newResults[0]);
         })
         .catch(() => {
           if (requestIdRef.current !== requestId) return;
@@ -124,7 +138,7 @@ export function SearchBar({
         });
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [open, engine, doc, keyword, matchCase, wholeWord, scrollToHit]);
+  }, [open, engine, doc, keyword, matchCase, wholeWord]);
 
   useEffect(() => {
     onResultsChange(results, currentIndex);
