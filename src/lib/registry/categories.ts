@@ -11,6 +11,7 @@ export const CATEGORIES = [
   "pdf",
   "document",
   "archive",
+  "data",
 ] as const;
 
 export type Category = (typeof CATEGORIES)[number];
@@ -56,6 +57,11 @@ export const CATEGORY_META: Record<Category, CategoryMeta> = {
   archive: {
     label: "Archive",
     description: "Zip, unzip and compress file archives.",
+    concurrency: "pool",
+  },
+  data: {
+    label: "Data",
+    description: "Convert between CSV, JSON, YAML and spreadsheet files.",
     concurrency: "pool",
   },
 };

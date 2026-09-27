@@ -452,6 +452,50 @@ export const FORMATS = {
     // this format but never `accept` it.
     magic: [],
   },
+  json: {
+    label: "JSON",
+    ext: ["json"],
+    mime: "application/json",
+    category: "data",
+    // A JSON document has no fixed container signature — it's whatever text
+    // its own grammar allows — but a real one always opens with `{` or `[`
+    // (this table only ever needs to sniff the array-of-objects / object
+    // shape the data tools round-trip). Narrow, best-effort, same shape as
+    // every other accepted gap in this table: a file opening with a BOM,
+    // leading whitespace, or a bare JSON scalar (`"a string"`, `42`) won't
+    // sniff and is rejected as unrecognized rather than misdetected.
+    magic: [
+      [{ offset: 0, bytes: [0x7b] }], // '{'
+      [{ offset: 0, bytes: [0x5b] }], // '['
+    ],
+  },
+  yaml: {
+    label: "YAML",
+    ext: ["yaml", "yml"],
+    mime: "application/yaml",
+    category: "data",
+    // Like JSON above, YAML has no container signature of its own. The one
+    // narrow, real convention this can key off is the "---" document-start
+    // marker — common, but far from universal (a YAML file with a single
+    // top-level mapping and no explicit document marker is legal and won't
+    // sniff). Accepted gap, same shape as the JSON entry above.
+    magic: [[{ offset: 0, bytes: ascii("---") }]],
+  },
+  xlsx: {
+    label: "Excel Workbook",
+    ext: ["xlsx"],
+    mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    category: "data",
+    // XLSX is a ZIP container (same signature as `zip` above, and as every
+    // other zip-based Office/OOXML format) — `sniffFormat` resolves a real
+    // .xlsx to `zip` first since `zip` is declared earlier in this table;
+    // `refineFormat` promotes it to `xlsx` by extension, the same pattern
+    // used for mkv/webm and opus/ogg above.
+    magic: [
+      [{ offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] }],
+      [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
+    ],
+  },
 } as const satisfies Record<string, FormatSpec>;
 
 export type FormatId = keyof typeof FORMATS;
@@ -552,6 +596,13 @@ export function refineFormat(
   if (sniffed === "ogg") {
     return (FORMATS.opus.ext as readonly string[]).includes(ext)
       ? "opus"
+      : sniffed;
+  }
+  // See the `xlsx` format comment above: it's a ZIP container, so a real
+  // .xlsx file always sniffs as `zip` first.
+  if (sniffed === "zip") {
+    return (FORMATS.xlsx.ext as readonly string[]).includes(ext)
+      ? "xlsx"
       : sniffed;
   }
   return sniffed;

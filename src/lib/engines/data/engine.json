@@ -1,0 +1,8 @@
+{
+  "id": "data",
+  "versionFrom": "papaparse",
+  "license": "MIT (papaparse, read-excel-file, write-excel-file) + ISC (yaml)",
+  "location": "bundled",
+  "needsIsolation": false,
+  "heavy": false
+}

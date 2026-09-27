@@ -54,7 +54,12 @@ const ALTERNATIVES = (
   // formats.ts) — sniffFormat always resolves it to "webm" (declared
   // first), by design. The mkv-specific upgrade path is covered by
   // `refineFormat`'s own describe block below instead.
-  .filter(({ id }) => id !== "mkv");
+  .filter(({ id }) => id !== "mkv")
+  // Same shape as mkv/webm above: xlsx shares zip's magic byte-for-byte
+  // (see xlsx's own comment in formats.ts) and always sniffs as "zip"
+  // (declared first); its upgrade path is covered by `refineFormat`'s own
+  // describe block instead.
+  .filter(({ id }) => id !== "xlsx");
 
 describe("sniffFormat", () => {
   it.each(ALTERNATIVES)("matches $name", ({ id, alternative }) => {
@@ -153,6 +158,19 @@ describe("refineFormat", () => {
   it("leaves an ogg sniff alone for a plain .ogg/.oga name", () => {
     expect(refineFormat("ogg", "clip.ogg")).toBe("ogg");
     expect(refineFormat("ogg", "clip.oga")).toBe("ogg");
+  });
+
+  it("upgrades a zip sniff to xlsx for an .xlsx filename", () => {
+    // xlsx is byte-for-byte a zip file per this scheme's magic (OOXML is a
+    // ZIP container), so this is exactly what sniffFormat itself returns.
+    expect(sniffFormat(headerFor(FORMATS.xlsx.magic[0]))).toBe("zip");
+    expect(refineFormat("zip", "book.xlsx")).toBe("xlsx");
+  });
+
+  it("leaves a zip sniff alone for a plain .zip name or an unrelated one", () => {
+    expect(refineFormat("zip", "archive.zip")).toBe("zip");
+    expect(refineFormat("zip", "archive.docx")).toBe("zip");
+    expect(refineFormat("zip", "noext")).toBe("zip");
   });
 });
 

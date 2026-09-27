@@ -10,6 +10,7 @@ import type { EngineAdapter } from "./types";
 
 export const ENGINE_LOADERS = {
   canvas: () => import("./canvas/adapter"),
+  data: () => import("./data/adapter"),
   exif: () => import("./exif/adapter"),
   ffmpeg: () => import("./ffmpeg/adapter"),
   heic: () => import("./heic/adapter"),
