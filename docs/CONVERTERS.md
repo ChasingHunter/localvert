@@ -108,6 +108,11 @@ apply to any of them, so that column reads their own **Arity** instead.
 |---|---|---|---|---|---|
 | `mp4-to-webm` | MP4, MOV | WebM | mediabunny | Yes | Re-encodes to VP9 (falls back to VP8) + Opus, whichever this browser's WebCodecs can encode; large outputs stream through OPFS rather than memory — see ADR-0010 |
 | `video-to-gif` | MP4, MOV, WebM | GIF | mediabunny (`toGif` op, gifenc) | Yes | Trims to `start`/`duration` (≤30s), samples at `fps` (≤30), scales to `width` (≤800px, even dims), quantizes to `colors` per frame — gifenc (MIT), not ffmpeg, per ADR-0002's GIF mitigation |
+| `webm-to-mp4` | WebM | MP4 | mediabunny | Yes | Re-encodes VP9-or-VP8/Opus to AVC/AAC; `quality` select (Low/Medium/High) |
+| `mov-to-mp4` | MOV | MP4 | mediabunny | Yes | Usually a fast remux (both ISOBMFF, h264/aac fits either container); falls back to a real transcode otherwise. `quality` select |
+| `mkv-to-mp4` | MKV | MP4 | mediabunny | Yes | Re-encodes VP9-or-VP8/Opus to AVC/AAC; `quality` select. MKV sniffing relies on `refineFormat`'s extension-based upgrade from WebM (shared EBML magic) |
+| `mp4-to-mov` | MP4 | MOV | mediabunny | Yes | Usually a fast remux; falls back to a real transcode otherwise. `quality` select |
+| `mov-to-webm` | MOV | WebM | mediabunny | Yes | Re-encodes to VP9-or-VP8 + Opus; `quality` select |
 
 ## Audio
 

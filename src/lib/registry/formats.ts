@@ -273,6 +273,19 @@ export const FORMATS = {
     // where it matters, or simply isn't a format any tool accepts yet.
     magic: [[{ offset: 0, bytes: [0x1a, 0x45, 0xdf, 0xa3] }]],
   },
+  mkv: {
+    label: "Matroska",
+    ext: ["mkv"],
+    mime: "video/x-matroska",
+    category: "video",
+    // Same EBML header as webm above — Matroska and WebM are the same
+    // container family and share this exact byte signature; only the EBML
+    // `DocType` element a few bytes in tells them apart, which this
+    // offset+bytes-only magic scheme can't express (same accepted gap noted
+    // on `webm`). A dropped .mkv sniffs as "webm" today; tools that need to
+    // tell them apart do so by extension, not by magic.
+    magic: [[{ offset: 0, bytes: [0x1a, 0x45, 0xdf, 0xa3] }]],
+  },
   zip: {
     label: "ZIP",
     ext: ["zip"],
@@ -377,8 +390,23 @@ export function refineFormat(
   sniffed: FormatId | null,
   filename: string,
 ): FormatId | null {
-  if (sniffed !== "tiff") return sniffed;
-  const ext = extOf(filename);
-  if (ext === null) return sniffed;
-  return (FORMATS.raw.ext as readonly string[]).includes(ext) ? "raw" : sniffed;
+  if (sniffed === "tiff") {
+    const ext = extOf(filename);
+    if (ext !== null && (FORMATS.raw.ext as readonly string[]).includes(ext)) {
+      return "raw";
+    }
+    return sniffed;
+  }
+  // Same shape as the tiff->raw refinement above: webm and mkv share the
+  // EBML header byte-for-byte (see both formats' `magic` comments), so
+  // `sniffFormat` always resolves to "webm" (declared first). An .mkv
+  // extension upgrades that to "mkv" here.
+  if (sniffed === "webm") {
+    const ext = extOf(filename);
+    if (ext !== null && (FORMATS.mkv.ext as readonly string[]).includes(ext)) {
+      return "mkv";
+    }
+    return sniffed;
+  }
+  return sniffed;
 }

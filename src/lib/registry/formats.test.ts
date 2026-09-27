@@ -30,13 +30,19 @@ function headerFor(patterns: readonly MagicPattern[]): Uint8Array<ArrayBuffer> {
  */
 const ALTERNATIVES = (
   Object.entries(FORMATS) as [FormatId, (typeof FORMATS)[FormatId]][]
-).flatMap(([id, spec]) =>
-  spec.magic.map((alternative, i) => ({
-    name: `${id} (alternative ${i})`,
-    id,
-    alternative,
-  })),
-);
+)
+  .flatMap(([id, spec]) =>
+    spec.magic.map((alternative, i) => ({
+      name: `${id} (alternative ${i})`,
+      id,
+      alternative,
+    })),
+  )
+  // mkv shares webm's EBML magic byte-for-byte (see mkv's own comment in
+  // formats.ts) — sniffFormat always resolves it to "webm" (declared
+  // first), by design. The mkv-specific upgrade path is covered by
+  // `refineFormat`'s own describe block below instead.
+  .filter(({ id }) => id !== "mkv");
 
 describe("sniffFormat", () => {
   it.each(ALTERNATIVES)("matches $name", ({ id, alternative }) => {
@@ -111,6 +117,20 @@ describe("refineFormat", () => {
 
   it("passes null through unchanged", () => {
     expect(refineFormat(null, "photo.cr2")).toBeNull();
+  });
+
+  it("upgrades a webm sniff to mkv when the filename has a .mkv extension", () => {
+    // mkv is byte-for-byte a webm file per this scheme's magic (both share
+    // the Matroska family's EBML header), so this is exactly what
+    // sniffFormat itself returns for one.
+    expect(sniffFormat(headerFor(FORMATS.mkv.magic[0]))).toBe("webm");
+    expect(refineFormat("webm", "clip.mkv")).toBe("mkv");
+  });
+
+  it("leaves a webm sniff alone for a plain .webm name or an unrelated one", () => {
+    expect(refineFormat("webm", "clip.webm")).toBe("webm");
+    expect(refineFormat("webm", "clip.mp4")).toBe("webm");
+    expect(refineFormat("webm", "noext")).toBe("webm");
   });
 });
 
