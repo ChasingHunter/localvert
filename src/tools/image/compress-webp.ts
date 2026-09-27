@@ -58,12 +58,13 @@ export default defineTool({
         label: "Target size",
         control: "number",
         unit: "KB",
-        required: true,
         showWhen: { field: "mode", equals: "target-size" },
       })
-      .optional(),
+      // A real default, not `required: true` — see compress-jpg.ts's
+      // identical field for why `required` + `showWhen` don't mix here.
+      .default(200),
   }),
-  defaults: { mode: "visually-lossless", quality: 0.75 },
+  defaults: { mode: "visually-lossless", quality: 0.75, targetSizeKB: 200 },
 
   pipeline: [
     {

@@ -62,12 +62,19 @@ export default defineTool({
         label: "Target size",
         control: "number",
         unit: "KB",
-        required: true,
         showWhen: { field: "mode", equals: "target-size" },
       })
-      .optional(),
+      // A real default (not `.optional()`, unlike the old standalone
+      // targetSizeKB field) rather than `required: true` — combining
+      // `required` with `showWhen` would make `requiredOptionKeys` (which
+      // has no notion of visibility) treat this as always-required, which
+      // both `OptionsForm`'s and `ToolRunner`'s required-field gates would
+      // then block on even in every OTHER mode, where this field isn't even
+      // shown. No precedent in the registry combines the two for that
+      // reason; see docs/adr/0013-compression-modes.md.
+      .default(200),
   }),
-  defaults: { mode: "visually-lossless", quality: 0.75 },
+  defaults: { mode: "visually-lossless", quality: 0.75, targetSizeKB: 200 },
 
   pipeline: [
     {
