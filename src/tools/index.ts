@@ -9,8 +9,12 @@ import mp3ToWav from "@/tools/audio/mp3-to-wav";
 import oggToMp3 from "@/tools/audio/ogg-to-mp3";
 import wavToFlac from "@/tools/audio/wav-to-flac";
 import wavToMp3 from "@/tools/audio/wav-to-mp3";
+import csvToJson from "@/tools/data/csv-to-json";
+import csvToXlsx from "@/tools/data/csv-to-xlsx";
+import jsonToCsv from "@/tools/data/json-to-csv";
 import jsonToXlsx from "@/tools/data/json-to-xlsx";
 import jsonToYaml from "@/tools/data/json-to-yaml";
+import xlsxToCsv from "@/tools/data/xlsx-to-csv";
 import xlsxToJson from "@/tools/data/xlsx-to-json";
 import yamlToJson from "@/tools/data/yaml-to-json";
 import avifToJpg from "@/tools/image/avif-to-jpg";
@@ -96,8 +100,12 @@ export const TOOLS: readonly ToolDefinition[] = [
   oggToMp3,
   wavToFlac,
   wavToMp3,
+  csvToJson,
+  csvToXlsx,
+  jsonToCsv,
   jsonToXlsx,
   jsonToYaml,
+  xlsxToCsv,
   xlsxToJson,
   yamlToJson,
   avifToJpg,

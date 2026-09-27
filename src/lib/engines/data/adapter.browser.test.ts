@@ -31,6 +31,10 @@ describe("data adapter", () => {
       expect(adapter.supports("transcode", "yaml", "json")).toBe(true);
       expect(adapter.supports("transcode", "json", "xlsx")).toBe(true);
       expect(adapter.supports("transcode", "xlsx", "json")).toBe(true);
+      expect(adapter.supports("transcode", "csv", "json")).toBe(true);
+      expect(adapter.supports("transcode", "json", "csv")).toBe(true);
+      expect(adapter.supports("transcode", "csv", "xlsx")).toBe(true);
+      expect(adapter.supports("transcode", "xlsx", "csv")).toBe(true);
     });
 
     it("rejects a non-transcode op", () => {
@@ -96,6 +100,77 @@ describe("data adapter", () => {
           }),
         ),
       ).rejects.toThrow(/array of objects/);
+    });
+
+    it("converts csv to json, respecting delimiter and dynamicTyping options", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+
+      const result = await instance.run(
+        baseTask({
+          input: { kind: "bytes", bytes: encode("name;age\nAda;36\nGrace;85") },
+          inputFormat: "csv",
+          outputFormat: "json",
+          options: { delimiter: "semicolon", dynamicTyping: true },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      const json = JSON.parse(new TextDecoder().decode(result.bytes));
+      expect(json).toEqual([
+        { name: "Ada", age: 36 },
+        { name: "Grace", age: 85 },
+      ]);
+    });
+
+    it("converts json to csv", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+
+      const result = await instance.run(
+        baseTask({
+          input: {
+            kind: "bytes",
+            bytes: encode(JSON.stringify([{ name: "Ada", age: 36 }])),
+          },
+          inputFormat: "json",
+          outputFormat: "csv",
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(result.mime).toBe("text/csv");
+      expect(new TextDecoder().decode(result.bytes)).toBe("name,age\r\nAda,36");
+    });
+
+    it("round-trips csv through xlsx and back", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+
+      const written = await instance.run(
+        baseTask({
+          input: { kind: "bytes", bytes: encode("name,age\nAda,36") },
+          inputFormat: "csv",
+          outputFormat: "xlsx",
+        }),
+      );
+      if (written.kind !== "bytes") throw new Error("expected bytes result");
+
+      const read = await instance.run(
+        baseTask({
+          input: { kind: "bytes", bytes: written.bytes },
+          inputFormat: "xlsx",
+          outputFormat: "csv",
+          options: { sheet: 1 },
+        }),
+      );
+      if (read.kind !== "bytes") throw new Error("expected bytes result");
+      expect(read.mime).toBe("text/csv");
+      expect(new TextDecoder().decode(read.bytes)).toBe("name,age\r\nAda,36");
     });
   });
 });

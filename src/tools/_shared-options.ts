@@ -195,6 +195,34 @@ export const losslessAudioDefaults: z.infer<typeof losslessAudioOptions> = {
   channels: "keep",
 };
 
+/**
+ * Shared by every tool that reads a CSV file (`csv-to-json`, `csv-to-xlsx`)
+ * — see `src/lib/engines/data/transforms.ts`'s `csvToJson` for what each
+ * option actually does. `delimiter`'s enum values double as their own
+ * select-option labels (`describeFields`'s "select" case, `src/lib/options/
+ * fields.ts` — a zod enum has no separate label slot), so this uses words
+ * rather than the literal `,`/`;`/`\t` characters; each data adapter's
+ * `delimiterOption` maps a value back to the real delimiter character
+ * papaparse expects, `"auto"` passed straight through for it to sniff.
+ */
+export const csvInputOptions = z.object({
+  delimiter: z
+    .enum(["auto", "comma", "semicolon", "tab"])
+    .meta({ label: "Delimiter", control: "select" })
+    .default("auto"),
+  dynamicTyping: z.boolean().meta({
+    label: "Detect numbers and booleans",
+    control: "switch",
+    help:
+      'Off keeps every cell a string — on, a cell like "42" or "true" ' +
+      "becomes a real number or boolean.",
+  }),
+});
+export const csvInputDefaults: z.infer<typeof csvInputOptions> = {
+  delimiter: "auto",
+  dynamicTyping: true,
+};
+
 export const cropField = z
   .object({
     x: z.number().int().nonnegative(),

@@ -9,15 +9,13 @@ import { test as base, expect } from "@playwright/test";
  * re-verifies the product's core promise (files never leave the browser) in
  * addition to whatever behaviour it's actually testing.
  *
- * `e2e/fixtures/sample.csv` exists for when a csv-accepting tool ships (see
- * this slice's own commit message / the planner's notes: `csv` has no
- * reliable magic-byte signature, so `FORMATS.csv` and any csv conversion
- * tool are blocked on a registry change — an extension-only accept path
- * `classifyFiles` doesn't have yet — not on anything in this file).
- * These tests exercise the two data tools that do ship this slice:
- * json-to-xlsx and xlsx-to-json, run back to back so the second's input is
- * the first's real output, round-tripping `sample.json` through an actual
- * xlsx file.
+ * The json-to-xlsx/xlsx-to-json pair runs back to back so the second's
+ * input is the first's real output, round-tripping `sample.json` through an
+ * actual xlsx file. csv-to-json and json-to-csv exercise `e2e/fixtures/
+ * sample.csv` — `csv` is a `text` format (no magic bytes, identified by
+ * extension — see docs/ENGINES.md's note on the `data` engine), which is
+ * exactly what a real browser `<input type="file">` drop needs to prove:
+ * a node-side unit test can inject its own sniff, this can't.
  */
 const ZIP_SIGNATURE = [0x50, 0x4b, 0x03, 0x04];
 
@@ -139,5 +137,48 @@ test.describe
         readFileSync(fixturePath("sample.json"), "utf8"),
       );
       expect(json).toEqual(original);
+    });
+
+    test("csv-to-json converts sample.csv to parsed JSON", async ({ page }) => {
+      await page.goto("/tools/csv-to-json");
+
+      await page
+        .locator('input[type="file"]')
+        .setInputFiles(fixturePath("sample.csv"));
+
+      const downloadLink = page.getByRole("link", { name: "Download" });
+      await expect(downloadLink).toBeVisible({ timeout: 15_000 });
+
+      const downloadPromise = page.waitForEvent("download");
+      await downloadLink.click();
+      const download = await downloadPromise;
+      const path = await download.path();
+      if (!path) throw new Error("download produced no local path");
+      const json = JSON.parse(readFileSync(path, "utf8"));
+
+      expect(json).toEqual([
+        { name: "Ada", age: 36 },
+        { name: "Grace", age: 85 },
+      ]);
+    });
+
+    test("json-to-csv converts sample.json to a CSV file", async ({ page }) => {
+      await page.goto("/tools/json-to-csv");
+
+      await page
+        .locator('input[type="file"]')
+        .setInputFiles(fixturePath("sample.json"));
+
+      const downloadLink = page.getByRole("link", { name: "Download" });
+      await expect(downloadLink).toBeVisible({ timeout: 15_000 });
+
+      const downloadPromise = page.waitForEvent("download");
+      await downloadLink.click();
+      const download = await downloadPromise;
+      const path = await download.path();
+      if (!path) throw new Error("download produced no local path");
+      const csv = readFileSync(path, "utf8");
+
+      expect(csv).toBe("name,age\r\nAda,36\r\nGrace,85");
     });
   });

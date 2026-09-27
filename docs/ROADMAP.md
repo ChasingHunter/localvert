@@ -198,11 +198,12 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
 
 - [ ] Markdown → PDF (typst.ts)
 - [ ] Office → PDF via LibreOffice wasm (~80 MB, **opt-in download gate**, MPL-2.0)
-- [ ] Text-ish conversions: csv/json/yaml/xlsx — json/yaml/xlsx shipped
-      (`data` engine: papaparse/yaml/read-excel-file/write-excel-file,
-      json-to-yaml/yaml-to-json/json-to-xlsx/xlsx-to-json) (2026-09-27); csv
-      blocked on a registry change (no magic-byte signature for `classifyFiles`
-      to sniff by — see docs/ENGINES.md's note on the `data` engine)
+- [x] Text-ish conversions: csv/json/yaml/xlsx shipped (`data` engine:
+      papaparse/yaml/read-excel-file/write-excel-file — json-to-yaml,
+      yaml-to-json, json-to-xlsx, xlsx-to-json, csv-to-json, json-to-csv,
+      csv-to-xlsx, xlsx-to-csv). Unblocked by a registry change: csv/json/
+      yaml are `FormatSpec.text` formats, identified by extension with a
+      NUL-byte guard instead of magic bytes (2026-09-27)
 
 ## Phase 5 — Polish
 

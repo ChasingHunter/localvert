@@ -13,6 +13,9 @@ import type {
 import meta from "./engine.json";
 import {
   assertSizeCap,
+  csvToJson,
+  type Delimiter,
+  jsonToCsv,
   jsonToYaml,
   objectsToSheetData,
   sheetDataToObjects,
@@ -43,6 +46,10 @@ const TRANSCODE_PAIRS: readonly [StepFormat, StepFormat][] = [
   ["yaml", "json"],
   ["json", "xlsx"],
   ["xlsx", "json"],
+  ["csv", "json"],
+  ["json", "csv"],
+  ["csv", "xlsx"],
+  ["xlsx", "csv"],
 ];
 
 function supports(
@@ -136,6 +143,18 @@ async function run(task: EngineTask): Promise<EngineResult> {
     if (inputFormat === "xlsx" && outputFormat === "json") {
       return await runXlsxToJson(task);
     }
+    if (inputFormat === "csv" && outputFormat === "json") {
+      return await runCsvToJson(task);
+    }
+    if (inputFormat === "json" && outputFormat === "csv") {
+      return await runJsonToCsv(task);
+    }
+    if (inputFormat === "csv" && outputFormat === "xlsx") {
+      return await runCsvToXlsx(task);
+    }
+    if (inputFormat === "xlsx" && outputFormat === "csv") {
+      return await runXlsxToCsv(task);
+    }
     throw new EngineError(
       "unsupported",
       `data engine cannot run "${task.op}" (${inputFormat} -> ${outputFormat})`,
@@ -176,28 +195,21 @@ async function runYamlToJson(task: EngineTask): Promise<EngineResult> {
   return textResult(json, "application/json");
 }
 
-async function runJsonToXlsx(task: EngineTask): Promise<EngineResult> {
-  const { input, signal, onProgress } = task;
-  signal.throwIfAborted();
-  const text = await inputToText(input);
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch (e) {
-    throw new EngineError("decode-failed", "failed to parse JSON", {
-      engine: metadata.id,
-      cause: e,
-    });
-  }
-  const sheetData = objectsToSheetData(parsed);
-  onProgress?.(0.4);
-
-  // Dynamic import, never at module top level — see invariant 3 (no engine
-  // in the core bundle) and every other adapter's own dynamic `import()`.
-  // `write-excel-file/browser` is the entry point that never touches
-  // `document` (see the on-disk source of `writeXlsxFileBrowser.js`: only
-  // its `toFile()` helper does, via `downloadBlob`, which this never calls),
-  // so it's safe to run inside a worker with no DOM.
+/**
+ * Array of flat objects -> a real xlsx `Blob`, one sheet named "Sheet1".
+ * Shared by `runJsonToXlsx` and `runCsvToXlsx` — both just differ in how
+ * they get to a `JsonRecord[]` in the first place.
+ *
+ * Dynamic import, never at module top level — see invariant 3 (no engine in
+ * the core bundle) and every other adapter's own dynamic `import()`.
+ * `write-excel-file/browser` is the entry point that never touches
+ * `document` (see the on-disk source of `writeXlsxFileBrowser.js`: only its
+ * `toFile()` helper does, via `downloadBlob`, which this never calls), so
+ * it's safe to run inside a worker with no DOM.
+ */
+async function writeXlsxBlob(
+  sheetData: ReturnType<typeof objectsToSheetData>,
+): Promise<ArrayBuffer> {
   const excel = await import("write-excel-file/browser");
   const writeXlsxFile: (
     data: import("write-excel-file/browser").SheetData,
@@ -207,32 +219,26 @@ async function runJsonToXlsx(task: EngineTask): Promise<EngineResult> {
     sheetData as import("write-excel-file/browser").SheetData,
     { sheet: "Sheet1" },
   ).toBlob();
-  onProgress?.(1);
-  return {
-    kind: "bytes",
-    bytes: await blob.arrayBuffer(),
-    mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  };
+  return blob.arrayBuffer();
 }
 
-async function runXlsxToJson(task: EngineTask): Promise<EngineResult> {
-  const { input, options, signal, onProgress } = task;
-  signal.throwIfAborted();
-  const buffer = await inputToArrayBuffer(input);
-  onProgress?.(0.2);
-
-  const sheet =
-    typeof options.sheet === "number" && options.sheet > 0 ? options.sheet : 1;
-
-  // Dynamic import — see the doc comment in `runJsonToXlsx` above. The
-  // `/web-worker` entry (vs. `/browser`) is what actually matters here:
-  // `readXlsxFileWebWorker.js` spawns its own nested `Worker` (via the
-  // `worker-f` package) instead of the browser entry's main-thread-only
-  // path, so it works from inside the engine's own worker.
+/**
+ * A real xlsx `ArrayBuffer` -> one sheet's raw rows (header row first).
+ * Shared by `runXlsxToJson` and `runXlsxToCsv`.
+ *
+ * Dynamic import — see `writeXlsxBlob`'s doc comment. The `/web-worker`
+ * entry (vs. `/browser`) is what actually matters here:
+ * `readXlsxFileWebWorker.js` spawns its own nested `Worker` (via the
+ * `worker-f` package) instead of the browser entry's main-thread-only path,
+ * so it works from inside the engine's own worker.
+ */
+async function readXlsxRows(
+  buffer: ArrayBuffer,
+  sheet: number,
+): Promise<readonly (readonly unknown[])[]> {
   const { readSheet } = await import("read-excel-file/web-worker");
-  let rows: readonly (readonly unknown[])[];
   try {
-    rows = (await readSheet(
+    return (await readSheet(
       buffer,
       sheet,
     )) as unknown as (readonly unknown[])[];
@@ -242,11 +248,133 @@ async function runXlsxToJson(task: EngineTask): Promise<EngineResult> {
       cause: e,
     });
   }
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new EngineError("decode-failed", "failed to parse JSON", {
+      engine: metadata.id,
+      cause: e,
+    });
+  }
+}
+
+/** `options.sheet` (1-based), defaulting to 1 for anything else — same rule `xlsx-to-json`/`xlsx-to-csv` both use. */
+function sheetOption(options: EngineTask["options"]): number {
+  return typeof options.sheet === "number" && options.sheet > 0
+    ? options.sheet
+    : 1;
+}
+
+/**
+ * `options.delimiter` -> the real delimiter character `csvToJson` expects.
+ * The tool-facing option value is a word (`"comma"`/`"semicolon"`/`"tab"`),
+ * not the literal character — see `csvInputOptions`' doc comment in
+ * `src/tools/_shared-options.ts` for why. Anything else, including the
+ * default `"auto"`, passes straight through for papaparse to sniff itself.
+ */
+function delimiterOption(options: EngineTask["options"]): Delimiter {
+  switch (options.delimiter) {
+    case "comma":
+      return ",";
+    case "semicolon":
+      return ";";
+    case "tab":
+      return "\t";
+    default:
+      return "auto";
+  }
+}
+
+/** `options.dynamicTyping` ("Detect numbers and booleans"), defaulting to on. */
+function dynamicTypingOption(options: EngineTask["options"]): boolean {
+  return options.dynamicTyping !== false;
+}
+
+async function runJsonToXlsx(task: EngineTask): Promise<EngineResult> {
+  const { input, signal, onProgress } = task;
+  signal.throwIfAborted();
+  const parsed = parseJson(await inputToText(input));
+  const sheetData = objectsToSheetData(parsed);
+  onProgress?.(0.4);
+  const bytes = await writeXlsxBlob(sheetData);
+  onProgress?.(1);
+  return {
+    kind: "bytes",
+    bytes,
+    mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  };
+}
+
+async function runXlsxToJson(task: EngineTask): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+  const buffer = await inputToArrayBuffer(input);
+  onProgress?.(0.2);
+  const rows = await readXlsxRows(buffer, sheetOption(options));
   onProgress?.(0.7);
   const objects = sheetDataToObjects(rows);
   const json = JSON.stringify(objects, null, 2);
   onProgress?.(1);
   return textResult(json, "application/json");
+}
+
+async function runCsvToJson(task: EngineTask): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+  const text = await inputToText(input);
+  const objects = csvToJson(text, {
+    delimiter: delimiterOption(options),
+    dynamicTyping: dynamicTypingOption(options),
+  });
+  onProgress?.(0.7);
+  const json = JSON.stringify(objects, null, 2);
+  onProgress?.(1);
+  return textResult(json, "application/json");
+}
+
+async function runJsonToCsv(task: EngineTask): Promise<EngineResult> {
+  const { input, signal, onProgress } = task;
+  signal.throwIfAborted();
+  const parsed = parseJson(await inputToText(input));
+  onProgress?.(0.5);
+  const csv = jsonToCsv(parsed);
+  onProgress?.(1);
+  return textResult(csv, "text/csv");
+}
+
+async function runCsvToXlsx(task: EngineTask): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+  const text = await inputToText(input);
+  const objects = csvToJson(text, {
+    delimiter: delimiterOption(options),
+    dynamicTyping: dynamicTypingOption(options),
+  });
+  const sheetData = objectsToSheetData(objects);
+  onProgress?.(0.5);
+  const bytes = await writeXlsxBlob(sheetData);
+  onProgress?.(1);
+  return {
+    kind: "bytes",
+    bytes,
+    mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  };
+}
+
+async function runXlsxToCsv(task: EngineTask): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+  const buffer = await inputToArrayBuffer(input);
+  onProgress?.(0.2);
+  const rows = await readXlsxRows(buffer, sheetOption(options));
+  onProgress?.(0.7);
+  const objects = sheetDataToObjects(rows);
+  const csv = jsonToCsv(objects);
+  onProgress?.(1);
+  return textResult(csv, "text/csv");
 }
 
 function dispose(): void {

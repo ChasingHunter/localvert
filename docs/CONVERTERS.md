@@ -156,11 +156,11 @@ apply to any of them, so that column reads their own **Arity** instead.
 | `yaml-to-json` | YAML | JSON | data | Yes | — |
 | `json-to-xlsx` | JSON | XLSX | data | Yes | JSON must be an array of objects; nested values are JSON-stringified into their cell; bold header row, single sheet named "Sheet1" |
 | `xlsx-to-json` | XLSX | JSON | data | Yes | `sheet` option (1-based, default 1) picks which sheet to read |
+| `csv-to-json` | CSV | JSON | data | Yes | `delimiter` (auto/comma/semicolon/tab) and "detect numbers and booleans" options |
+| `json-to-csv` | JSON | CSV | data | Yes | JSON must be an array of flat objects; nested values are JSON-stringified into their cell |
+| `csv-to-xlsx` | CSV | XLSX | data | Yes | Same csv options as `csv-to-json`; bold header row, single sheet named "Sheet1" |
+| `xlsx-to-csv` | XLSX | CSV | data | Yes | `sheet` option (1-based, default 1) picks which sheet to read |
 
-CSV conversions (`csv-to-json`, `json-to-csv`, `csv-to-xlsx`, `xlsx-to-csv`)
-are **not yet shippable**: CSV has no magic-byte signature the registry's
-`sniffFormat` can key off, so `classifyFiles` would reject every real CSV
-drop as unrecognized. The pure conversion logic already exists and is
-unit-tested (`src/lib/engines/data/transforms.ts`'s `csvToJson`/`jsonToCsv`)
-— see `docs/ENGINES.md`'s note on the `data` engine for the two options to
-unblock it.
+`csv`/`json`/`yaml` are `text` formats in the registry (no magic bytes,
+identified by extension with a NUL-byte guard) — see `docs/ENGINES.md`'s
+note on the `data` engine for the mechanism.

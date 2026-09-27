@@ -337,26 +337,18 @@ this project doesn't have a derivation mechanism for. A Dependabot bump of
 one of the other three needs a manual edit to both docs rows — flagged here
 so it isn't missed, not resolved by this slice.
 
-**`csv` is not a registered format yet.** `FORMATS` (`src/lib/registry/
-formats.ts`) requires every accepted (non-output-only) format to have at
-least one real magic-byte pattern — `formats.test.ts`'s "every sniffable
-format has at least one magic alternative" enforces it, and `classifyFiles`
-(`src/components/dropzone-logic.ts`) rejects any file that doesn't sniff,
-regardless of extension. CSV has no fixed byte signature at all (it's
-arbitrary delimited text — unlike JSON's `{`/`[` opener or YAML's `---`
-marker, both registered with a narrow, real, best-effort pattern), so it
-can't be an accepted input under the current registry without a new
-extension-only accept path. `src/lib/engines/data/transforms.ts`'s
-`csvToJson`/`jsonToCsv` are written and unit-tested regardless — they're
-plain functions, ready to wire in once the registry gains that path — but no
-`FORMATS.csv` entry or csv-conversion tool ships in this slice. See the
-commit that added this note for the two options considered: (1) add a
-`FormatSpec.acceptByExtensionOnly` flag `classifyFiles` checks when a sniff
-comes back `null`, or (2) give CSV a deliberately loose magic heuristic
-(e.g. "mostly printable ASCII in the first N bytes") — which the current
-`MagicPattern` type (fixed offset + exact bytes) can't express without
-widening that type too. Both are planner-level registry decisions, not
-something this slice should improvise.
+**`csv`, `json` and `yaml` are `text` formats, not magic-sniffed.** None of
+the three has a fixed byte signature — csv is arbitrary delimited text, and
+JSON/YAML's own grammars allow a leading BOM, whitespace, or (for YAML) no
+document marker at all, so no fixed-offset byte check reliably proves any of
+them. `FormatSpec.text` (`src/lib/registry/formats.ts`) marks a format this
+way instead of giving it `magic`, and `classifyFiles`
+(`src/components/dropzone-logic.ts`) falls back to the file's extension for
+one, gated on its first 4 KiB containing no NUL byte (`looksLikeText`) so
+binary junk renamed to `.csv`/`.json`/`.yaml` still gets rejected. Magic
+bytes always win when they match; this fallback only runs once the magic
+sniff has already come back empty. See `textFormatFromExtension`'s doc
+comment for the exact mechanism.
 
 `pnpm sync-engines` copies each "static"/"r2" engine's files into place
 (`public/engines/<id>@<version>/` for "static", `.engines-r2/xl/<id>@<
