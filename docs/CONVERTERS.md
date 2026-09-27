@@ -113,6 +113,11 @@ apply to any of them, so that column reads their own **Arity** instead.
 | `mkv-to-mp4` | MKV | MP4 | mediabunny | Yes | Re-encodes VP9-or-VP8/Opus to AVC/AAC; `quality` select. MKV sniffing relies on `refineFormat`'s extension-based upgrade from WebM (shared EBML magic) |
 | `mp4-to-mov` | MP4 | MOV | mediabunny | Yes | Usually a fast remux; falls back to a real transcode otherwise. `quality` select |
 | `mov-to-webm` | MOV | WebM | mediabunny | Yes | Re-encodes to VP9-or-VP8 + Opus; `quality` select |
+| `trim-video` | MP4, MOV, WebM, MKV | same container | mediabunny | Yes | Cuts to a start/end time in seconds; `end` must be greater than `start` (validated in the engine, not the option schema — see `video.ts`'s `validateTrim`) |
+| `mute-video` | MP4, MOV, WebM, MKV | same container | mediabunny | Yes | Discards the audio track; video copied without re-encode when the container/codec pair allows it |
+| `resize-video` | MP4, MOV, WebM, MKV | same container | mediabunny | Yes | `1080p`/`720p`/`480p` presets (height-based, width from aspect ratio) or a custom width/height + fit |
+| `compress-video` | MP4, MOV, WebM, MKV | same container | mediabunny | Yes | `quality` select (Low/Medium/High) plus an optional max-resolution cap |
+| `rotate-video` | MP4, MOV, WebM, MKV | same container | mediabunny | Yes | Rotates 90/180/270 degrees clockwise |
 
 ## Audio
 
