@@ -189,8 +189,8 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
       (2026-09-27)
 - [ ] Faster than realtime on 1080p via WebCodecs (needs a benchmark)
 - [x] GIF out via gifenc (MIT) instead of ffmpeg — `video-to-gif` (2026-09-27)
-- [ ] ffmpeg.wasm **fallback only**: avi, wmv, flv input (GPL — isolated
-      worker, lazy fetch, ADR-0002)
+- [x] ffmpeg.wasm **fallback only**: avi, wmv, flv input (GPL — isolated
+      worker, R2-hosted, consent-gated download, ADR-0002) (2026-09-27)
 - [x] Audio: mp3/wav/flac/ogg/m4a/opus, bitrate, sample-rate and channel control
       (mp3 via @mediabunny/mp3-encoder / LAME) (2026-09-27)
 
