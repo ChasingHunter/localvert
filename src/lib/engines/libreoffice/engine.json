@@ -18,7 +18,7 @@
     {
       "from": "assets/soffice.js",
       "to": "soffice.js",
-      "patch": "libreoffice-embind"
+      "patch": "libreoffice-glue"
     },
     {
       "from": "assets/soffice.worker.js",

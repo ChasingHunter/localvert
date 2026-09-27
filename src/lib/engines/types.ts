@@ -70,15 +70,16 @@ export interface EngineSourceFile {
    * this app's CSP (no `unsafe-eval`). See that function's doc comment and
    * ADR-0011.
    *
-   * `"libreoffice-embind"` — `patchLibreOfficeEmbind` in
-   * `scripts/sync-engines.ts` — replaces embind's two runtime code-
+   * `"libreoffice-glue"` — `patchLibreOfficeGlue` in
+   * `scripts/sync-engines.ts` — (1) replaces embind's two runtime code-
    * generation sites (`craftInvokerFunction`'s invoker, and the emval method
    * caller in `__emval_get_method_caller`) with the eval-free closures
    * Emscripten itself emits under `-sDYNAMIC_EXECUTION=0`, so soffice.js's
-   * bound-class methods run under this app's CSP too. See that function's
-   * doc comment and ADR-0012.
+   * bound-class methods run under this app's CSP too; (2) raises the
+   * prespawned pthread pool so Calc's import doesn't deadlock waiting on a
+   * Worker that can't start. See those functions' doc comments and ADR-0012.
    */
-  patch?: "typst-glue" | "libreoffice-embind";
+  patch?: "typst-glue" | "libreoffice-glue";
 }
 
 /**

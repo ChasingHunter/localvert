@@ -133,6 +133,20 @@ replacement has to be a general, correct reimplementation of Emscripten's own
 `docs/THIRD_PARTY_LICENSES.md` for the MPL-2.0 note this creates (`soffice.js`
 is now modified, not shipped verbatim).
 
+### Addendum (2026-09-27): pthread pool deadlock on spreadsheets
+
+Every xlsx hung forever inside `lok_documentLoad` while docx converted in
+seconds. `soffice.js` prespawns 4 pthread workers (`-sPTHREAD_POOL_SIZE=4`);
+Calc's import creates a fifth thread, Emscripten then constructs a new
+`Worker` on demand — and a nested worker cannot start while its creator is
+blocked waiting for it. A 5-worker pool converted the same file in under a
+second. `patchLibreOfficePthreadPool` now raises the literal to 8 (headroom
+over the measured 5), matched exactly once and failing `pnpm sync-engines`
+if the shape changes. Both patches run as the `"libreoffice-glue"` patch
+(`patchLibreOfficeGlue`). Cost: four more idle workers per LibreOffice
+session, each an instance on the shared memory — negligible next to the
+74 MB engine.
+
 ## Alternatives considered
 
 - **mammoth / docx-preview (JS-only docx renderers).** Rejected: coverage is

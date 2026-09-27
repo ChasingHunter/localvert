@@ -86,9 +86,9 @@ export interface SourceFile {
   package?: string;
   /** Ship this file gzipped — see `EngineSourceFile.gzip`'s doc comment. */
   gzip?: boolean;
-  /** Apply `patchTypstGlue`/`patchLibreOfficeEmbind` while copying — see
+  /** Apply `patchTypstGlue`/`patchLibreOfficeGlue` while copying — see
    * `EngineSourceFile.patch`'s doc comment. */
-  patch?: "typst-glue" | "libreoffice-embind";
+  patch?: "typst-glue" | "libreoffice-glue";
 }
 
 // ---------------------------------------------------------------------------
@@ -396,13 +396,56 @@ export function patchLibreOfficeEmbind(source: string): string {
   return patched;
 }
 
+// ---------------------------------------------------------------------------
+// libreoffice pthread pool patch (ADR-0012): prespawn enough workers that
+// no pthread_create has to wait for a brand-new Worker
+// ---------------------------------------------------------------------------
+
+/**
+ * `soffice.js` was built with `-sPTHREAD_POOL_SIZE=4`: four pthread workers
+ * are created and loaded before `main` runs. A `pthread_create` beyond those
+ * four makes Emscripten construct a *new* `Worker` on the spot — but a
+ * nested worker only starts once its creator returns to its event loop, and
+ * LibreOffice's thread is blocked inside `lok_documentLoad` waiting on the
+ * very thread it just asked for. Writer (docx) stays within four threads;
+ * Calc's xlsx import needs a fifth, so every spreadsheet deadlocked silently
+ * (traced 2026-09-27: `lok_documentLoad` never returned; the same file with
+ * a 5-worker pool converted in under a second).
+ *
+ * Raised to 8, not 5: 5 is what a trivial one-sheet workbook needs, and a
+ * worker that is never used costs one idle wasm instance on shared memory —
+ * far cheaper than a document that hangs. Matched on the exact literal,
+ * exactly once, like the embind patch — an upgrade that changes the pool
+ * shape fails `pnpm sync-engines` instead of shipping the deadlock back.
+ */
+const OLD_PTHREAD_POOL_SIZE = "var pthreadPoolSize=4;";
+export const LIBREOFFICE_PTHREAD_POOL_SIZE = 8;
+
+export function patchLibreOfficePthreadPool(source: string): string {
+  const count = source.split(OLD_PTHREAD_POOL_SIZE).length - 1;
+  if (count !== 1) {
+    throw new Error(
+      `[sync-engines] patchLibreOfficePthreadPool: expected exactly one "${OLD_PTHREAD_POOL_SIZE}", found ${count} — libreoffice-wasm's pthread pool shape changed, patch needs updating`,
+    );
+  }
+  return source.replace(
+    OLD_PTHREAD_POOL_SIZE,
+    `var pthreadPoolSize=${LIBREOFFICE_PTHREAD_POOL_SIZE};`,
+  );
+}
+
+/** Both soffice.js patches, in one pass: CSP-safe embind, then the pool. */
+export function patchLibreOfficeGlue(source: string): string {
+  return patchLibreOfficePthreadPool(patchLibreOfficeEmbind(source));
+}
+
 /** Dispatch table for `SourceFile.patch`. */
 const PATCHES: Record<
-  "typst-glue" | "libreoffice-embind",
+  "typst-glue" | "libreoffice-glue",
   (source: string) => string
 > = {
   "typst-glue": patchTypstGlue,
-  "libreoffice-embind": patchLibreOfficeEmbind,
+  "libreoffice-glue": patchLibreOfficeGlue,
 };
 
 /**
@@ -498,10 +541,10 @@ function readEngineSource(dir: string, id: string): EngineSource {
     if (
       file.patch !== undefined &&
       file.patch !== "typst-glue" &&
-      file.patch !== "libreoffice-embind"
+      file.patch !== "libreoffice-glue"
     ) {
       fail(
-        `"files[${i}].patch" must be "typst-glue" or "libreoffice-embind" if present`,
+        `"files[${i}].patch" must be "typst-glue" or "libreoffice-glue" if present`,
       );
     }
     return {
@@ -512,7 +555,7 @@ function readEngineSource(dir: string, id: string): EngineSource {
         : {}),
       ...(file.gzip !== undefined ? { gzip: file.gzip as boolean } : {}),
       ...(file.patch !== undefined
-        ? { patch: file.patch as "typst-glue" | "libreoffice-embind" }
+        ? { patch: file.patch as "typst-glue" | "libreoffice-glue" }
         : {}),
     };
   });

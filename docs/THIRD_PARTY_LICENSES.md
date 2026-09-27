@@ -101,7 +101,9 @@ runtime code-generation sites in `soffice.js` (`craftInvokerFunction` and the
 `new Function(...)`-based invoker construction with the eval-free closures
 Emscripten itself emits under `-sDYNAMIC_EXECUTION=0` — so the module runs
 under this app's CSP (`script-src` has no `unsafe-eval`, and never will — see
-CLAUDE.md's invariants). Because this modifies a file of the covered work, the
+CLAUDE.md's invariants). `patchLibreOfficePthreadPool` also raises the
+prespawned pthread pool literal from 4 to 8 (spreadsheet import deadlocked on
+4 — ADR-0012 addendum). Because this modifies a file of the covered work, the
 plain-JS `soffice.js` we serve publicly *is* that modified source, satisfying
 MPL-2.0's file-level obligation directly (no separate source offer needed
 beyond what's already served); the source link above remains for the rest of
