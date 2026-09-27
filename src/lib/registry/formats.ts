@@ -566,6 +566,20 @@ export const FORMATS = {
     magic: [],
     text: true,
   },
+  epub: {
+    label: "EPUB",
+    ext: ["epub"],
+    mime: "application/epub+zip",
+    category: "document",
+    // EPUB is a ZIP container (the OCF/"EPUB as zip" packaging spec) — same
+    // signature as xlsx/docx/etc above. `sniffFormat` resolves a real .epub
+    // to `zip` first (`zip` is declared earlier); `refineFormat` promotes it
+    // by extension, same pattern as the other zip-based office formats.
+    magic: [
+      [{ offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] }],
+      [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
+    ],
+  },
   xlsx: {
     label: "Excel Workbook",
     ext: ["xlsx"],
@@ -849,7 +863,15 @@ export function refineFormat(
   // .xlsx file always sniffs as `zip` first. Every other OOXML/ODF office
   // format shares the same signature — promote by extension the same way.
   if (sniffed === "zip") {
-    const zipFormats = ["xlsx", "docx", "pptx", "odt", "ods", "odp"] as const;
+    const zipFormats = [
+      "xlsx",
+      "docx",
+      "pptx",
+      "odt",
+      "ods",
+      "odp",
+      "epub",
+    ] as const;
     for (const id of zipFormats) {
       if ((FORMATS[id].ext as readonly string[]).includes(ext)) return id;
     }

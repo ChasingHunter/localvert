@@ -26,6 +26,7 @@ import jsonToYaml from "@/tools/data/json-to-yaml";
 import xlsxToCsv from "@/tools/data/xlsx-to-csv";
 import xlsxToJson from "@/tools/data/xlsx-to-json";
 import yamlToJson from "@/tools/data/yaml-to-json";
+import epubToPdf from "@/tools/document/epub-to-pdf";
 import excelToPdf from "@/tools/document/excel-to-pdf";
 import htmlToPdf from "@/tools/document/html-to-pdf";
 import markdownToPdf from "@/tools/document/markdown-to-pdf";
@@ -149,6 +150,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   xlsxToCsv,
   xlsxToJson,
   yamlToJson,
+  epubToPdf,
   excelToPdf,
   htmlToPdf,
   markdownToPdf,

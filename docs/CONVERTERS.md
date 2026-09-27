@@ -173,6 +173,8 @@ them, so that column reads their own **Arity** instead.
 | `powerpoint-to-pdf` | PowerPoint (PPTX, PPT), OpenDocument Presentation | PDF | libreoffice | Yes | Same engine/limits as `word-to-pdf` (ADR-0012). |
 | `txt-to-pdf` | Text | PDF | libreoffice | Yes | Same engine/limits as `word-to-pdf` (ADR-0012 addendum), via LibreOffice Writer's "Text" import filter. |
 | `html-to-pdf` | HTML | PDF | libreoffice | Yes | Same engine/limits as `word-to-pdf` (ADR-0012 addendum). External images/stylesheets never load (`connect-src 'self'`) — only what's embedded in the file renders. |
+| `epub-to-pdf` | EPUB | PDF | epub, libreoffice | Yes | Two-step pipeline: the `epub` engine (pure JS, `fflate`) unzips the epub and concatenates its spine's XHTML chapters into one HTML document (images inlined as `data:` URIs or dropped with a note), then `libreoffice`'s HTML import renders it (ADR-0012 addendum). Layout is approximate — EPUB's own reflowable styling isn't preserved. PDF→Word/EPUB import is not supported by this LibreOffice build — see the same addendum. |
+
 ## Archive
 
 | Slug | From | To | Engine | Batch | Notes |

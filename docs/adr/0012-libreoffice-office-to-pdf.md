@@ -202,6 +202,32 @@ other engine, so a dropped HTML file's external images/`@import`ed
 stylesheets simply fail to load — stated in `html-to-pdf`'s own description,
 not discovered later as a silent rendering gap.
 
+### Addendum (2026-09-28): epub-to-pdf via a new `epub` engine
+
+`epub-to-pdf` needed a second engine, since LibreOffice has no EPUB import
+filter at all (absent from both the `ne`/`fe` tables and the filter-name
+table `q` — epub only appears in the wrapper's own extension-normalization
+table, never as an actual import path). EPUB is just a zip of XHTML
+chapters plus an OPF manifest naming their reading order, and `fflate`
+(already a dependency, the streaming ZIP sink's writer) can read a zip
+synchronously with no new dependency — so `epub-to-pdf` is a two-step
+pipeline: a new `epub` engine (`src/lib/engines/epub/`, pure JS, `bundled`
+location, no wasm) unzips the file, resolves `META-INF/container.xml` ->
+the OPF's `<manifest>`/`<spine>`, concatenates each spine chapter's
+`<body>` in order into one HTML document (images inlined as `data:` URIs
+resolved against the zip's own files, or dropped with an inline HTML
+comment when the zip doesn't actually contain the referenced file — never
+a silently-broken relative path), and hands that HTML to the exact same
+`libreoffice` `html -> pdf` step `html-to-pdf` uses. Deliberately not a full
+XML parser: `container.xml`/OPF are small, fixed-shape documents, and this
+reads them with regexes over each self-contained tag rather than pull in a
+general (namespace-aware) XML library for it. No NCX/nav fallback, no
+encrypted EPUBs, no fixed-layout metadata — spine order only, per the
+brief; EPUB's own reflowable CSS isn't preserved either, since the output is
+plain HTML into LibreOffice's own HTML import, not a CSS-aware renderer.
+Documented in `epub-to-pdf`'s description as approximate layout, same
+caveat `markdown-to-pdf` already states for its own image handling.
+
 ## Alternatives considered
 
 - **mammoth / docx-preview (JS-only docx renderers).** Rejected: coverage is

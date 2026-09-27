@@ -67,9 +67,9 @@ const ALTERNATIVES = (
   // paths are covered by `refineFormat`'s own describe block instead.
   .filter(
     ({ id }) =>
-      !(["xlsx", "docx", "pptx", "odt", "ods", "odp"] as FormatId[]).includes(
-        id,
-      ),
+      !(
+        ["xlsx", "docx", "pptx", "odt", "ods", "odp", "epub"] as FormatId[]
+      ).includes(id),
   )
   // Same shape again: xls/ppt share doc's OLE CFB magic byte-for-byte (see
   // doc's own comment in formats.ts) and always sniff as "doc" (declared
@@ -215,6 +215,7 @@ describe("refineFormat", () => {
     ["odt", "letter.odt"],
     ["ods", "sheet.ods"],
     ["odp", "slides.odp"],
+    ["epub", "book.epub"],
   ] as const)("upgrades a zip sniff to %s for a %s filename", (id, name) => {
     expect(sniffFormat(headerFor(FORMATS[id].magic[0]))).toBe("zip");
     expect(refineFormat("zip", name)).toBe(id);
