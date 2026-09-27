@@ -16,6 +16,7 @@ import {
 import { collectToBlob } from "@/lib/sinks";
 import type { RunStep, WorkerPool, ZipResult } from "@/lib/workers";
 import { zipInWorker } from "@/lib/workers";
+import { readOpfsFile, sweepOpfsTemp } from "./opfs-temp";
 import type { JobStore } from "./store";
 
 /**
@@ -73,6 +74,12 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
   // multiple outputs (ADR-0008) — so `zipOutputs` doesn't need to know which
   // arity produced a given job.
   const outputBlobs = new Map<string, { name: string; blob: Blob }[]>();
+
+  // ADR-0010: sweeps `/localvert-tmp/` once per app load, deleting any OPFS
+  // temp file older than 24h — catches a crashed tab or a closed window that
+  // never got to `store.remove`'s own per-job delete. Fire-and-forget: never
+  // blocks job engine creation, and failure here is not load-bearing.
+  void sweepOpfsTemp();
 
   // One FIFO chain per "single"-concurrency category (see CATEGORY_META) —
   // a small semaphore of concurrency 1. "pool" categories skip this
@@ -324,13 +331,25 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
     const { tool, id, file, parsedOptions, result } = args;
 
     if (result.kind === "opfs") {
-      // OPFS-spilled outputs aren't wired up on the main thread yet — see
-      // docs/ROADMAP.md for when the OPFS sink lands.
+      // ADR-0010: a large media output the engine spilled to OPFS instead
+      // of holding in memory. `readOpfsFile` hands back a disk-backed
+      // `File` (a `Blob` subclass) without reading its bytes here — treated
+      // exactly like every other blob output from this point on, including
+      // the zip sink, which only ever needed a `{name, blob}` pair.
+      const opfsFile = await readOpfsFile(result.path);
+      const name = outputFileName(tool, file.name, parsedOptions);
+      const url = createObjectURL(opfsFile);
+      outputBlobs.set(id, [{ name, blob: opfsFile }]);
+
       store.getState().update(id, {
-        status: "error",
-        error: {
-          code: "unsupported",
-          message: "OPFS outputs are not supported yet",
+        status: "done",
+        progress: 1,
+        output: {
+          name,
+          mime: result.mime,
+          size: result.size,
+          url,
+          opfsPath: result.path,
         },
       });
       return;

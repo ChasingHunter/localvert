@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { EngineErrorCode } from "@/lib/engines";
 import type { FormatId } from "@/lib/registry";
+import { deleteOpfsFile } from "./opfs-temp";
 
 /**
  * MAIN THREAD. One conversion job, as tracked by the UI — not to be
@@ -18,8 +19,17 @@ export interface Job {
   /** 0..1. */
   progress: number;
   error?: { code: EngineErrorCode; message: string };
-  /** One-to-one and many-to-one jobs (ADR-0008): a single output file. */
-  output?: { name: string; mime: string; size: number; url: string };
+  /** One-to-one and many-to-one jobs (ADR-0008): a single output file.
+   * `opfsPath` is set when the engine spilled this output to OPFS (ADR-0010)
+   * rather than holding it in memory — `remove`/`clear` delete that file
+   * alongside revoking the object URL. */
+  output?: {
+    name: string;
+    mime: string;
+    size: number;
+    url: string;
+    opfsPath?: string;
+  };
   /** One-to-many jobs (ADR-0008, e.g. `split-pdf`): every output file, in
    * the order the engine produced them. `blob` rides alongside `url` so the
    * job card's per-job "Download all (.zip)" can hand the zip sink real
@@ -65,13 +75,19 @@ export function createJobStore() {
     },
     remove(id) {
       const job = get().jobs.find((j) => j.id === id);
-      if (job?.output) URL.revokeObjectURL(job.output.url);
+      if (job?.output) {
+        URL.revokeObjectURL(job.output.url);
+        if (job.output.opfsPath) void deleteOpfsFile(job.output.opfsPath);
+      }
       for (const output of job?.outputs ?? []) URL.revokeObjectURL(output.url);
       set((state) => ({ jobs: state.jobs.filter((j) => j.id !== id) }));
     },
     clear() {
       for (const job of get().jobs) {
-        if (job.output) URL.revokeObjectURL(job.output.url);
+        if (job.output) {
+          URL.revokeObjectURL(job.output.url);
+          if (job.output.opfsPath) void deleteOpfsFile(job.output.opfsPath);
+        }
         for (const output of job.outputs ?? []) URL.revokeObjectURL(output.url);
       }
       set({ jobs: [] });
