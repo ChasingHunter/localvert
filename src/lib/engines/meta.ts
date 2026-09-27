@@ -22,6 +22,15 @@ export interface EngineMeta {
    * See `scripts/gen-registry.ts`'s `EngineSourceMeta.kind`.
    */
   kind: "job" | "session";
+  /**
+   * ADR-0002 rule 4: whether this engine's first download must be gated
+   * behind an explicit user prompt naming its size and license (see
+   * `src/lib/engines/consent.ts`) before its assets are fetched. Defaults to
+   * `false` in the generated manifest — most engines (native, bundled,
+   * small static wasm) need no such gate; only a large, non-permissively-
+   * licensed download like `ffmpeg` sets this `true`.
+   */
+  consent: boolean;
   assets: readonly EngineAsset[];
   /**
    * The npm package `sync-engines` copies assets from. Required iff

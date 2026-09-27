@@ -4,6 +4,7 @@
   "location": "r2",
   "needsIsolation": false,
   "heavy": true,
+  "consent": true,
   "package": "@ffmpeg/core",
   "files": [
     {

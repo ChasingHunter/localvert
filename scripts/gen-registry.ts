@@ -212,6 +212,13 @@ export interface EngineSourceMeta {
    */
   kind: "job" | "session";
   /**
+   * ADR-0002 rule 4: gate this engine's first download behind an explicit
+   * consent prompt (see `src/lib/engines/consent.ts`). Optional in
+   * `engine.json`, defaults to `false` — set `true` only for an engine whose
+   * download is large and/or non-permissively licensed (e.g. `ffmpeg`).
+   */
+  consent?: boolean;
+  /**
    * Hand-written version. Required for "native" (wraps a browser API — no
    * installed package to derive from) and for "bundled" without
    * `versionFrom` (our own code, e.g. `exif`). Forbidden for "static"/"r2"
@@ -299,6 +306,10 @@ export function parseEngineMeta(
     fail(`"kind" must be "job" or "session"`);
   }
   const kind: "job" | "session" = j.kind === "session" ? "session" : "job";
+  if (j.consent !== undefined && typeof j.consent !== "boolean") {
+    fail(`"consent" must be a boolean`);
+  }
+  const consent = j.consent === true;
 
   // "package"/"files" name the npm package and files `sync-engines` copies
   // the engine's assets from, and (for "static"/"r2") the package
@@ -405,6 +416,7 @@ export function parseEngineMeta(
     needsIsolation: j.needsIsolation as boolean,
     heavy: j.heavy as boolean,
     kind,
+    consent,
     ...(version !== undefined ? { version } : {}),
     ...(versionFrom !== undefined ? { versionFrom } : {}),
     ...(pkg !== undefined && files !== undefined
@@ -703,6 +715,7 @@ export function genEngineManifest(metas: readonly EngineMetaLike[]): string {
       `    needsIsolation: ${m.needsIsolation},`,
       `    heavy: ${m.heavy},`,
       `    kind: "${m.kind}",`,
+      `    consent: ${m.consent},`,
       `    assets: [${assets}],`,
       `    baseUrl: "${baseUrl}",`,
       `    totalBytes: ${totalBytes},`,
