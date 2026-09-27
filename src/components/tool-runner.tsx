@@ -29,6 +29,12 @@ import { TOOL_LOADERS } from "@/tools/loaders";
  */
 const ENGINE_SOURCE_URLS: Partial<Record<EngineId, string>> = {
   ffmpeg: "https://github.com/ffmpegwasm/ffmpeg.wasm",
+  // The npm package's own page — it has no repository field or README (see
+  // docs/adr/0012-libreoffice-office-to-pdf.md's provenance note). The
+  // corresponding LibreOffice *core* source (MPL-2.0's actual obligation,
+  // since this package is a wasm build of it, not a fork) is linked from
+  // that ADR instead of here — this dialog only ever shows one link.
+  libreoffice: "https://www.npmjs.com/package/@bentopdf/libreoffice-wasm",
 };
 
 /**
