@@ -86,6 +86,12 @@ importers:
       '@mediabunny/mp3-encoder':
         specifier: 1.60.0
         version: 1.60.0(mediabunny@1.60.0)
+      '@myriaddreamin/typst-ts-web-compiler':
+        specifier: 0.7.0
+        version: 0.7.0
+      '@myriaddreamin/typst.ts':
+        specifier: 0.7.0
+        version: 0.7.0(@myriaddreamin/typst-ts-web-compiler@0.7.0)
       '@resvg/resvg-wasm':
         specifier: ^2.6.2
         version: 2.6.2
@@ -892,6 +898,20 @@ packages:
     resolution: {integrity: sha512-dcDS+hh0g6JBJissiTUkbRCjUFLM348qZQBGgsVawmr61CzJK9ZgN9f/9BzkVzTlhmxxriRx8jYCK+Anqx8mMQ==}
     peerDependencies:
       mediabunny: ^1.0.0
+
+  '@myriaddreamin/typst-ts-web-compiler@0.7.0':
+    resolution: {integrity: sha512-nMwMcfOBy5pABPDuVM7/u8425SxhPUM+OJe6daqqgVOT3+neCTz4JKwx2L8XasfEHTNvd0cUI07LR9q5ADo7Gw==}
+
+  '@myriaddreamin/typst.ts@0.7.0':
+    resolution: {integrity: sha512-JtO5Td/1QesH1IBKAZtbayFNK8u2sl3iz18Y67uYqBEdcXiu3z+wpZcDDKlmVJvAcCgSjHTnuk6ZLfkYclrGGQ==}
+    peerDependencies:
+      '@myriaddreamin/typst-ts-renderer': ^0.7.0
+      '@myriaddreamin/typst-ts-web-compiler': ^0.7.0
+    peerDependenciesMeta:
+      '@myriaddreamin/typst-ts-renderer':
+        optional: true
+      '@myriaddreamin/typst-ts-web-compiler':
+        optional: true
 
   '@napi-rs/canvas-android-arm64@1.0.9':
     resolution: {integrity: sha512-4LGXk2/0HVzE29K8SzML5WubgCp++B1FH3qgl35XmSZE+lLdr6P9VRQEnZ0MCLZMTSuJP41yyhtoiVNEuvrTIA==}
@@ -2457,6 +2477,9 @@ packages:
   idb-keyval@6.3.0:
     resolution: {integrity: sha512-um+2dgAWmYsu615EXpWVwSmapJhON0G43t3Ka/EVaohzPQXSMqKEqeDK/oIW3Ow+BXaF2PvSc+oBTFp793A5Ow==}
 
+  idb@7.1.1:
+    resolution: {integrity: sha512-gchesWBzyvGHRO9W8tzUWFDycow5gwjvFKfyV9FF32Y7F50yZMp7mP+T2mJIWFx49zicqyC4uefHM17o6xKIVQ==}
+
   idb@8.0.3:
     resolution: {integrity: sha512-LtwtVyVYO5BqRvcsKuB2iUMnHwPVByPCXFXOpuU96IZPPoPN6xjOGxZQ74pgSVVLQWtUOYgyeL4GE98BY5D3wg==}
 
@@ -3723,6 +3746,14 @@ snapshots:
   '@mediabunny/mp3-encoder@1.60.0(mediabunny@1.60.0)':
     dependencies:
       mediabunny: 1.60.0
+
+  '@myriaddreamin/typst-ts-web-compiler@0.7.0': {}
+
+  '@myriaddreamin/typst.ts@0.7.0(@myriaddreamin/typst-ts-web-compiler@0.7.0)':
+    dependencies:
+      idb: 7.1.1
+    optionalDependencies:
+      '@myriaddreamin/typst-ts-web-compiler': 0.7.0
 
   '@napi-rs/canvas-android-arm64@1.0.9':
     optional: true
@@ -5163,6 +5194,8 @@ snapshots:
   html-entities@2.6.0: {}
 
   idb-keyval@6.3.0: {}
+
+  idb@7.1.1: {}
 
   idb@8.0.3: {}
 
