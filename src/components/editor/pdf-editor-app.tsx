@@ -70,6 +70,7 @@ import {
   Underline as UnderlineIcon,
   Undo2,
   Waves,
+  X,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -289,6 +290,15 @@ export function PdfEditorApp() {
     const first = accepted[0];
     if (first) setFile(first.file);
   }, []);
+  // Owner-reported fix, 2026-09-27 -- "Close" toolbar action. `Editor` (deep
+  // inside `<EmbedPDF>`) calls `documentManager.closeDocument` itself (same
+  // call `PageOrganizer.handleApply` already uses) and then this, purely to
+  // reset the state that lives up HERE, above `<EmbedPDF>` -- clearing `file`
+  // makes the drop zone reappear so "open another file" is just dropping one.
+  const handleClosed = useCallback(() => {
+    setFile(null);
+    setLoaded(false);
+  }, []);
 
   // E6b — local draft restore banner. Checked once, on mount, before any
   // file is opened; a draft only ever matters at that point (once a document
@@ -349,6 +359,7 @@ export function PdfEditorApp() {
           engineReady={engineReady}
           file={file}
           onLoadedChange={setLoaded}
+          onClosed={handleClosed}
           textEdit={engineHandle.textEdit}
         />
       </EmbedPDF>
@@ -365,6 +376,8 @@ interface EditorShellProps {
    * remounting subtree). Opened as soon as everything below is ready. */
   file: File | null;
   onLoadedChange: (loaded: boolean) => void;
+  /** Owner-reported fix, 2026-09-27 -- see `EditorProps.onClosed`. */
+  onClosed: () => void;
   textEdit: TextEditClient;
 }
 
@@ -372,6 +385,7 @@ function EditorShell({
   engineReady,
   file,
   onLoadedChange,
+  onClosed,
   textEdit,
 }: EditorShellProps) {
   const documentManager = useDocumentManagerCapability();
@@ -436,6 +450,7 @@ function EditorShell({
       fileName={activeDocument.name ?? "document.pdf"}
       pageCount={activeDocument.document?.pageCount ?? 0}
       textEdit={textEdit}
+      onClosed={onClosed}
     />
   );
 }
@@ -445,9 +460,21 @@ interface EditorProps {
   fileName: string;
   pageCount: number;
   textEdit: TextEditClient;
+  /** Owner-reported fix, 2026-09-27 -- "Close" (see the toolbar button
+   * below). Called AFTER `documentManager.closeDocument` resolves, so
+   * `PdfEditorApp` (which owns the `file`/`loaded` state above `<EmbedPDF>`
+   * -- see that component's doc comment on why) can reset back to the drop
+   * zone. */
+  onClosed: () => void;
 }
 
-function Editor({ documentId, fileName, pageCount, textEdit }: EditorProps) {
+function Editor({
+  documentId,
+  fileName,
+  pageCount,
+  textEdit,
+  onClosed,
+}: EditorProps) {
   // Scoped to `documentId`, for everything that acts on THIS document's
   // annotations (create/select/delete/setActiveTool). Style pickers, below,
   // instead go through the unscoped `useAnnotationCapability()` — tool
@@ -1230,6 +1257,28 @@ function Editor({ documentId, fileName, pageCount, textEdit }: EditorProps) {
     if (!enabled) deleteDraft();
   }, []);
 
+  // Owner-reported fix, 2026-09-27 -- "Close" toolbar action, so the user can
+  // close the open PDF and open another without reloading the page. Confirms
+  // first if there are unsaved changes (the history plugin's own undo stack
+  // -- the same signal `handleUndo`'s disabled state already reads), then
+  // closes the document the same way `PageOrganizer.handleApply` does
+  // (`DocumentManagerCapability.closeDocument`, cited in that file) and hands
+  // control back to `PdfEditorApp` via `onClosed` so it can return to the
+  // drop zone.
+  const handleClose = useCallback(async () => {
+    const dirty = history.provides?.canUndo() ?? false;
+    if (
+      dirty &&
+      !window.confirm(
+        "You have unsaved changes. Close this PDF without exporting?",
+      )
+    ) {
+      return;
+    }
+    await documentManager.provides?.closeDocument(documentId).toPromise();
+    onClosed();
+  }, [history.provides, documentManager.provides, documentId, onClosed]);
+
   // E6b — pinch-to-zoom (touch). Two active pointers on the viewport → the
   // ratio of their current span to the span at the previous move event drives
   // `zoom.provides.requestZoomBy` (`@embedpdf/plugin-zoom`'s
@@ -1469,6 +1518,16 @@ function Editor({ documentId, fileName, pageCount, textEdit }: EditorProps) {
           disabled={printStatus !== null}
         >
           <Printer aria-hidden="true" />
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label="Close"
+          onClick={handleClose}
+        >
+          <X aria-hidden="true" />
         </Button>
 
         <label className="flex items-center gap-1 text-xs text-ink-muted">
