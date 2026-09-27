@@ -104,14 +104,14 @@ is `location: "r2"`, fetched from R2 at runtime, never committed), rule 2
 own dedicated worker via `src/lib/workers/pool.ts`, confirmed by
 `pool.test.ts`'s heavy-pool coverage) and rule 6 (only these three legacy
 containers reach it; every common video/audio path stays on mediabunny) are
-all in place. **Rule 4's download gate and rule 5's in-app source-offer
-link are not yet wired up** — this slice shipped the engine, tools, format
-detection, R2 upload path and local-R2 e2e seeding, but the user-facing
-consent dialog in front of the ~31 MB fetch (naming the GPL license and
-linking THIRD_PARTY_LICENSES.md/upstream source) is still open work. Until
-it lands, dropping an avi/wmv/flv file downloads the engine silently on
-first use — out of step with this ADR's own rule 4 and worth closing before
-these three tools are treated as done.
+all in place. Rules 4 and 5 landed the same day: `engine.json`'s
+`consent: true` flows into the engine manifest, and `ToolRunner` routes every
+job submission through a consent dialog (`engine-consent-dialog.tsx`) that
+states the download size and license and links the upstream source and
+THIRD_PARTY_LICENSES.md before anything is fetched. Consent is remembered per
+engine version in localStorage; declining leaves the files un-run. Covered
+end to end by `e2e/legacy-video.spec.ts` (cancel, consent, same-origin R2
+fetch, remembered consent across tools).
 
 ## Alternatives considered
 
