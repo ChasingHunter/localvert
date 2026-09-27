@@ -57,6 +57,7 @@ import rotatePdf from "@/tools/pdf/rotate-pdf";
 import sanitizePdf from "@/tools/pdf/sanitize-pdf";
 import splitPdf from "@/tools/pdf/split-pdf";
 import unlockPdf from "@/tools/pdf/unlock-pdf";
+import mp4ToWebm from "@/tools/video/mp4-to-webm";
 
 export const TOOLS: readonly ToolDefinition[] = [
   avifToJpg,
@@ -116,6 +117,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   sanitizePdf,
   splitPdf,
   unlockPdf,
+  mp4ToWebm,
 ];
 
 export const TOOLS_BY_SLUG: ReadonlyMap<string, ToolDefinition> = new Map(

@@ -106,7 +106,7 @@ apply to any of them, so that column reads their own **Arity** instead.
 
 | Slug | From | To | Engine | Batch | Notes |
 |---|---|---|---|---|---|
-| _none yet_ | | | | | Phase 3 |
+| `mp4-to-webm` | MP4, MOV | WebM | mediabunny | Yes | Re-encodes to VP9 (falls back to VP8) + Opus, whichever this browser's WebCodecs can encode; large outputs stream through OPFS rather than memory — see ADR-0010 |
 
 ## Audio
 

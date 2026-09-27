@@ -59,4 +59,5 @@ export const TOOL_LOADERS = {
   "sanitize-pdf": () => import("./pdf/sanitize-pdf"),
   "split-pdf": () => import("./pdf/split-pdf"),
   "unlock-pdf": () => import("./pdf/unlock-pdf"),
+  "mp4-to-webm": () => import("./video/mp4-to-webm"),
 } satisfies Record<string, () => Promise<{ default: ToolDefinition }>>;
