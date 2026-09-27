@@ -373,7 +373,12 @@ for (const tool of TOOLS) {
       }
     }
 
-    const downloadLink = page.getByRole("link", { name: "Download" }).first();
+    // `exact`: several tool cards under "Related tools" mention a download in
+    // their accessible name, and a substring match clicked one of them
+    // (excel-to-pdf navigated to powerpoint-to-pdf).
+    const downloadLink = page
+      .getByRole("link", { name: "Download", exact: true })
+      .first();
     await expect(downloadLink).toBeVisible({
       timeout: heavy ? 150_000 : 20_000,
     });
