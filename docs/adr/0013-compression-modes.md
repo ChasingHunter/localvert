@@ -33,6 +33,7 @@ explicit choices, never the default:
 | `compress-png` | oxipng repack, metadata dropped, pixels bit-identical | `smaller` — image-q palette reduction (≤256 colours, optional dither) + oxipng |
 | `compress-jpg` | metadata strip only (`exif` engine, byte-level, no re-encode) | `visually-lossless` (**default** — see below), `strong`, `custom`, `target-size` |
 | `compress-webp` | metadata strip only | same four lossy modes as `compress-jpg` |
+| _(webp lossless, expanded)_ | this is a byte-level strip, deliberately **not** `jsquash-webp`'s own encoder-level `lossless: true` — re-encoding an already-lossy WebP (a photo, the common case) losslessly re-derives every pixel exactly, which produces a *bigger* file than the lossy source, the opposite of what a compress tool promises |
 | `compress-pdf` | pdf-lib re-save with object streams, no image recompression | `balanced`/`strong` — existing per-image JPEG re-encode |
 | `compress-audio` | *(none — see below)* | bitrate select (64/96/128 kbps, default 96) + channel option |
 
