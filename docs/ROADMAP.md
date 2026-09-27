@@ -177,9 +177,10 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
 - [x] E4 True redaction (verified by text/image extraction) + sanitize (metadata, JS, attachments)
       — PDFium text redaction plus optional page rasterisation for images/graphics under a box;
       `sanitize-pdf` tool and a "Remove hidden data" export option (2026-09-27)
-- [ ] E5 Edit existing text: remove original text objects, insert replacement (font substitution
-      where glyphs missing; no reflow)
-- [ ] E6 Polish: search, select/copy, shortcuts, touch, print, local draft autosave
+- [x] E5 Edit existing text: remove original text objects, insert replacement (font substitution
+      where glyphs missing; no reflow) (2026-09-27)
+- [x] E6 Polish: search, select/copy, shortcuts, touch, print, local draft autosave (opt-in,
+      local IndexedDB only) (2026-09-27)
 
 ## Phase 3 — Video and audio
 
