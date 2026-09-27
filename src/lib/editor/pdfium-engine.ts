@@ -1,5 +1,10 @@
 import { WebWorkerEngine } from "@embedpdf/engines/worker";
 import type { PdfEngine } from "@embedpdf/models";
+import type {
+  TextEditReplaceResult,
+  TextEditResultMessage,
+  TextObjectInfo,
+} from "@/lib/editor/text-edit-protocol";
 
 /**
  * MAIN THREAD. Spawns `pdfium.worker.ts` (our own worker, our own wasm
@@ -25,8 +30,63 @@ import type { PdfEngine } from "@embedpdf/models";
  * yet. Both are called out as follow-up work in
  * docs/editor/EMBEDPDF_NOTES.md.
  */
+/** Rejects a `textEdit` call that never got a reply — a stuck worker or an
+ * `objectIndex`/`documentId` mismatch should surface as an error, never a
+ * silent hang (per the E5 brief). */
+const TEXT_EDIT_TIMEOUT_MS = 10_000;
+
+let nextTextEditRequestId = 0;
+
+/** A small typed client for the `localvert:text` protocol
+ * (`text-edit-protocol.ts`) — the raw-PDFium text-editing ops
+ * `pdfium.worker.ts` answers on its own `self.addEventListener("message",
+ * ...)` channel, separate from `EngineRunner`'s `WebWorkerEngine` protocol
+ * above. Talks to the SAME worker instance (one `postMessage` channel, two
+ * independent request/response protocols living on it). */
+export interface TextEditClient {
+  list(documentId: string, pageIndex: number): Promise<TextObjectInfo[]>;
+  replace(
+    documentId: string,
+    pageIndex: number,
+    objectIndex: number,
+    newText: string,
+  ): Promise<TextEditReplaceResult>;
+}
+
+function createTextEditClient(worker: Worker): TextEditClient {
+  function send<T>(request: Record<string, unknown>): Promise<T> {
+    const id = `text-edit-${nextTextEditRequestId++}`;
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        worker.removeEventListener("message", onMessage);
+        reject(new Error(`localvert:text — request "${id}" timed out`));
+      }, TEXT_EDIT_TIMEOUT_MS);
+      function onMessage(event: MessageEvent) {
+        const data = event.data as TextEditResultMessage | undefined;
+        if (!data || data.type !== "localvert:text:result" || data.id !== id) {
+          return;
+        }
+        clearTimeout(timer);
+        worker.removeEventListener("message", onMessage);
+        if (data.ok) resolve(data.value as T);
+        else reject(new Error(data.error ?? "localvert:text — unknown error"));
+      }
+      worker.addEventListener("message", onMessage);
+      worker.postMessage({ type: "localvert:text", id, ...request });
+    });
+  }
+
+  return {
+    list: (documentId, pageIndex) =>
+      send({ op: "list", documentId, pageIndex }),
+    replace: (documentId, pageIndex, objectIndex, newText) =>
+      send({ op: "replace", documentId, pageIndex, objectIndex, newText }),
+  };
+}
+
 export function createPdfiumWorkerEngine(): {
   engine: PdfEngine;
+  textEdit: TextEditClient;
   /**
    * Resolves once `pdfium.worker.ts` has actually finished fetching +
    * initializing wasm and called `EngineRunner.ready()` — the point where
@@ -60,6 +120,7 @@ export function createPdfiumWorkerEngine(): {
   const engine = new WebWorkerEngine(worker);
   return {
     engine,
+    textEdit: createTextEditClient(worker),
     ready: engine.readyTask.toPromise().then(() => undefined),
     terminate() {
       worker.terminate();

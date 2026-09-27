@@ -64,6 +64,7 @@ import {
   Signature,
   Square as SquareIcon,
   Strikethrough,
+  TextCursorInput,
   Type,
   Underline as UnderlineIcon,
   Undo2,
@@ -85,7 +86,10 @@ import {
 } from "@/lib/editor/draft-store";
 import { flattenExportedForms } from "@/lib/editor/flatten-forms";
 import { flattenRedactedPagesToImages } from "@/lib/editor/flatten-redacted-pages";
-import { createPdfiumWorkerEngine } from "@/lib/editor/pdfium-engine";
+import {
+  createPdfiumWorkerEngine,
+  type TextEditClient,
+} from "@/lib/editor/pdfium-engine";
 import {
   pinchRatioToZoomDelta,
   pointerDistance,
@@ -100,6 +104,7 @@ import type { ReplacePageImage } from "@/lib/engines/pdf-lib/adapter";
 import { FormLayer, isFillableWidget } from "./form-layer";
 import { RedactionLayer, type RedactionMark } from "./redaction-layer";
 import { SearchBar, SearchHighlightLayer } from "./search-bar";
+import { TextEditLayer } from "./text-edit-layer";
 
 /** Cap on pages the print flow will render at once -- rendering (and holding
  * in memory as object URLs) hundreds of full-page PNGs at once is exactly
@@ -337,6 +342,7 @@ export function PdfEditorApp() {
           engineReady={engineReady}
           file={file}
           onLoadedChange={setLoaded}
+          textEdit={engineHandle.textEdit}
         />
       </EmbedPDF>
     </div>
@@ -352,9 +358,15 @@ interface EditorShellProps {
    * remounting subtree). Opened as soon as everything below is ready. */
   file: File | null;
   onLoadedChange: (loaded: boolean) => void;
+  textEdit: TextEditClient;
 }
 
-function EditorShell({ engineReady, file, onLoadedChange }: EditorShellProps) {
+function EditorShell({
+  engineReady,
+  file,
+  onLoadedChange,
+  textEdit,
+}: EditorShellProps) {
   const documentManager = useDocumentManagerCapability();
   const { activeDocumentId, activeDocument } = useActiveDocument();
   const { pluginsReady } = useRegistry();
@@ -416,6 +428,7 @@ function EditorShell({ engineReady, file, onLoadedChange }: EditorShellProps) {
       documentId={activeDocumentId}
       fileName={activeDocument.name ?? "document.pdf"}
       pageCount={activeDocument.document?.pageCount ?? 0}
+      textEdit={textEdit}
     />
   );
 }
@@ -424,9 +437,10 @@ interface EditorProps {
   documentId: string;
   fileName: string;
   pageCount: number;
+  textEdit: TextEditClient;
 }
 
-function Editor({ documentId, fileName, pageCount }: EditorProps) {
+function Editor({ documentId, fileName, pageCount, textEdit }: EditorProps) {
   // Scoped to `documentId`, for everything that acts on THIS document's
   // annotations (create/select/delete/setActiveTool). Style pickers, below,
   // instead go through the unscoped `useAnnotationCapability()` — tool
@@ -525,6 +539,12 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
   // remove-by-id, so a monotonic counter (never reused, even across pages)
   // is enough -- no uuid dependency needed.
   const [redactMode, setRedactMode] = useState(false);
+  // E5 -- edit existing text. Its own mode flag, same shape as `redactMode`:
+  // mutually exclusive with every annotation tool AND with redact mode,
+  // since `TextEditLayer`'s click-to-edit outlines must never compete with
+  // another gesture layer for pointer events over the page.
+  const [textEditMode, setTextEditMode] = useState(false);
+  const [textEditNotice, setTextEditNotice] = useState<string | null>(null);
   const [marks, setMarks] = useState<Record<number, RedactionMark[]>>({});
   const nextMarkId = useRef(0);
   const addMark = useCallback((pageIndex: number, rect: Rect) => {
@@ -698,6 +718,7 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
       // every annotation tool -- the two gesture layers must never both want
       // pointer events over the page at once.
       setRedactMode(false);
+      setTextEditMode(false);
       // No style context passed here: the style-defaults effect below fires
       // right after `activeTool` changes and pushes the current picker values
       // onto the tool via `setToolDefaults` — the mechanism that actually
@@ -709,8 +730,43 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
 
   const enterRedactMode = useCallback(() => {
     annotation.provides?.setActiveTool(null);
+    setTextEditMode(false);
     setRedactMode(true);
   }, [annotation.provides]);
+
+  const enterTextEditMode = useCallback(() => {
+    annotation.provides?.setActiveTool(null);
+    setRedactMode(false);
+    setTextEditNotice(null);
+    setTextEditMode(true);
+  }, [annotation.provides]);
+
+  // Same "no render-refresh API" gap `applyRedactions` documents below --
+  // `textEdit.replace` mutates PDFium's live state directly, with nothing to
+  // tell the render plugin to re-fetch this page's bitmap. Re-opening the
+  // just-exported bytes under a fresh `documentId` is the same proven
+  // fallback `PageOrganizer.handleApply` and `applyRedactions` both use.
+  const handleTextReplaced = useCallback(
+    async (usedFallbackFont: boolean) => {
+      setTextEditNotice(
+        usedFallbackFont
+          ? "Font substituted — the original font didn't include every new character."
+          : null,
+      );
+      const provides = documentManager.provides;
+      if (!exportProvides || !provides) return;
+      const bytes = await exportProvides.saveAsCopy().toPromise();
+      await provides.closeDocument(documentId).toPromise();
+      const { task } = await provides
+        .openDocumentBuffer({ buffer: bytes, name: fileName })
+        .toPromise();
+      await task.toPromise();
+      // Stays in Edit text mode (per the brief) -- the new document mounts
+      // under a fresh `documentId`, so `Editor` itself remounts with it and
+      // `textEditMode` naturally carries over as this component's own state.
+    },
+    [documentManager.provides, exportProvides, documentId, fileName],
+  );
 
   // Pushes the style pickers onto the active tool's *defaults* whenever they
   // change, so the NEXT annotation created picks up the new color/stroke/font
@@ -1097,7 +1153,7 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
           <FormLayer
             documentId={documentId}
             pageIndex={layout.pageIndex}
-            toolActive={activeTool !== null || redactMode}
+            toolActive={activeTool !== null || redactMode || textEditMode}
             onWidgetsLoaded={handleWidgetsLoaded}
           />
           <RedactionLayer
@@ -1114,6 +1170,13 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
             results={searchResults}
             currentIndex={searchCurrentIndex}
           />
+          <TextEditLayer
+            documentId={documentId}
+            pageIndex={layout.pageIndex}
+            active={textEditMode}
+            textEdit={textEdit}
+            onReplaced={handleTextReplaced}
+          />
         </PagePointerProvider>
       </div>
     ),
@@ -1121,12 +1184,15 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
       documentId,
       activeTool,
       redactMode,
+      textEditMode,
       marks,
       handleWidgetsLoaded,
       addMark,
       removeMark,
       searchResults,
       searchCurrentIndex,
+      textEdit,
+      handleTextReplaced,
     ],
   );
 
@@ -1170,6 +1236,17 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
           onClick={enterRedactMode}
         >
           <Eraser aria-hidden="true" />
+        </Button>
+
+        <Button
+          type="button"
+          variant={textEditMode ? "default" : "outline"}
+          size="icon"
+          aria-label="Edit text"
+          aria-pressed={textEditMode}
+          onClick={enterTextEditMode}
+        >
+          <TextCursorInput aria-hidden="true" />
         </Button>
 
         <Button
@@ -1398,6 +1475,12 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
             Apply redactions
           </Button>
         </div>
+      )}
+
+      {textEditMode && textEditNotice && (
+        <p role="status" className="text-xs text-ink-muted">
+          {textEditNotice}
+        </p>
       )}
 
       <ApplyRedactionsDialog
