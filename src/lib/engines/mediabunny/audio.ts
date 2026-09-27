@@ -13,6 +13,7 @@
  * means the same code path serves `extract-audio` (mp4/mov/webm -> audio)
  * and a plain audio-to-audio re-encode identically.
  */
+import { registerFlacEncoder } from "@mediabunny/flac-encoder";
 import { registerMp3Encoder } from "@mediabunny/mp3-encoder";
 import {
   type AudioCodec,
@@ -73,6 +74,7 @@ export function supportsAudioTranscode(
 }
 
 let mp3EncoderRegistered = false;
+let flacEncoderRegistered = false;
 
 /** Registers the LAME wasm MP3 encoder (WebCodecs itself has no MP3
  * encoder in any browser) exactly once per worker, and only when the
@@ -84,6 +86,18 @@ async function ensureMp3Encoder(): Promise<void> {
     registerMp3Encoder();
   }
   mp3EncoderRegistered = true;
+}
+
+/** Registers the libFLAC wasm encoder exactly once per worker, and only
+ * when the browser doesn't already have a native one — Chromium has no
+ * built-in FLAC encoder at all (only decode), so this is what makes
+ * wav-to-flac work there; mirrors `ensureMp3Encoder` above. */
+async function ensureFlacEncoder(): Promise<void> {
+  if (flacEncoderRegistered) return;
+  if (!(await canEncodeAudio("flac"))) {
+    registerFlacEncoder();
+  }
+  flacEncoderRegistered = true;
 }
 
 /** Picks the output container + the codec candidates worth trying for it,
@@ -151,6 +165,7 @@ async function pickAudioCodec(
 ): Promise<AudioCodec | null> {
   for (const codec of candidates) {
     if (codec === "mp3") await ensureMp3Encoder();
+    if (codec === "flac") await ensureFlacEncoder();
     if (codec.startsWith("pcm-")) return codec; // mediabunny encodes PCM itself.
     if (await canEncodeAudio(codec)) return codec;
   }

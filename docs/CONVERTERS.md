@@ -133,7 +133,7 @@ apply to any of them, so that column reads their own **Arity** instead.
 | `m4a-to-mp3` | M4A | MP3 | mediabunny | Yes | Bitrate/sample rate/channels |
 | `ogg-to-mp3` | Ogg Vorbis (or Opus) | MP3 | mediabunny | Yes | Bitrate/sample rate/channels |
 | `mp3-to-ogg` | MP3 | Ogg | mediabunny | Yes | Encodes Opus (falls back to Vorbis); bitrate/sample rate/channels |
-| `wav-to-flac` | WAV | FLAC | mediabunny | Yes | Sample rate/channels only; fails with a clear error if this browser can't encode FLAC |
+| `wav-to-flac` | WAV | FLAC | mediabunny | Yes | Sample rate/channels only; FLAC uses the libFLAC wasm encoder (`@mediabunny/flac-encoder`), no browser encodes FLAC natively |
 | `mp3-to-m4a` | MP3 | M4A | mediabunny | Yes | Encodes AAC; bitrate/sample rate/channels; fails with a clear error if this browser can't encode AAC |
 
 ## Document

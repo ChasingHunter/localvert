@@ -48,6 +48,7 @@ requires its own ADR and we must publish the modified source.
 | `@embedpdf/core` + `plugin-document-manager`, `plugin-viewport`, `plugin-scroll`, `plugin-render`, `plugin-zoom`, `plugin-thumbnail`, `plugin-selection`, `plugin-interaction-manager`, `plugin-annotation`, `plugin-history`, `plugin-export` (the PDF editor's viewer UI) | 2.15.1 | MIT | EmbedPDF contributors | https://github.com/embedpdf/embed-pdf-viewer |
 | `mediabunny` (WebCodecs container mux/demux for video and audio) | 1.60.0 | MPL-2.0 (file-level copyleft — see below) | Vanilagy | https://github.com/Vanilagy/mediabunny |
 | `@mediabunny/mp3-encoder` (wraps a LAME wasm build; wired into every mp3-output audio tool as of Phase 3b) | 1.60.0 | MPL-2.0 (wrapper); LAME itself is LGPL | Vanilagy; the LAME project | https://github.com/Vanilagy/mediabunny |
+| `@mediabunny/flac-encoder` (wraps a libFLAC wasm build; wired into wav-to-flac and every other flac-output audio tool) | 1.60.0 | MPL-2.0 (wrapper); libFLAC itself is BSD | Vanilagy; the FLAC project (Xiph.Org Foundation) | https://github.com/Vanilagy/mediabunny |
 | `gifenc` (pure-JS GIF encoder + color quantizer; `video-to-gif`'s `toGif` op, replacing ffmpeg for GIF output per ADR-0002) | 1.0.3 | MIT | Matt DesLauriers | https://github.com/mattdesl/gifenc |
 | `ffmpeg` (`@ffmpeg/core`, wraps FFmpeg built with libx264) | 0.12.10 | **GPL-2.0-or-later** (via x264) — see the copyleft table below | ffmpegwasm contributors; the FFmpeg project; x264 (VideoLAN) | https://github.com/ffmpegwasm/ffmpeg.wasm |
 | `papaparse` (CSV parse/unparse) | 5.7.0 | MIT | Matt Holt and Papa Parse contributors | https://github.com/mholt/PapaParse |
@@ -85,7 +86,10 @@ build, so this carries no obligation beyond attribution. See
 as MIT). `@mediabunny/mp3-encoder` additionally wraps a LAME wasm build
 (LGPL), wired into every mp3-output audio tool as of Phase 3b — its LGPL
 source-offer obligation is in the copyleft table below, alongside `heic`
-and `libraw`.
+and `libraw`. `@mediabunny/flac-encoder` wraps a libFLAC wasm build instead —
+libFLAC is BSD-3-Clause (permissive), so unlike the mp3-encoder it carries no
+copyleft obligation beyond attribution, recorded here rather than in the
+copyleft table below.
 
 `libreoffice` (`@bentopdf/libreoffice-wasm`) is MPL-2.0, the same file-level
 copyleft as `resvg`/`mediabunny` above: it only requires that modified *files*

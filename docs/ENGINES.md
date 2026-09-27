@@ -212,12 +212,15 @@ Phase 3b adds `mediabunny`'s audio side (`src/lib/engines/mediabunny/
 audio.ts`, dispatched from the same `transcode` op via `adapter.ts`'s
 `supports`/`run`): mp3, wav (PCM), flac, ogg (opus/vorbis) and m4a (aac)
 outputs, plus extracting the audio track from mp4/mov/webm (`video: {
-discard: true }`). `@mediabunny/mp3-encoder` (the LAME wasm encoder) is now
-wired in — `ensureMp3Encoder` registers it once per worker, only when
-`canEncodeAudio("mp3")` says the browser has no native MP3 encoder (none
-currently do). flac/aac targets are still probed via `canEncodeAudio` first;
-an unsupported browser gets a clear "can't encode flac/aac" error rather
-than a silent format change. Shares the same OPFS-primary/`BufferTarget`-
+discard: true }`). `@mediabunny/mp3-encoder` (the LAME wasm encoder) and
+`@mediabunny/flac-encoder` (libFLAC) are now wired in — `ensureMp3Encoder`/
+`ensureFlacEncoder` register them once per worker, only when
+`canEncodeAudio("mp3"/"flac")` says the browser has no native encoder for
+that codec (no browser has a native FLAC *encoder* — Chromium can only
+decode FLAC — so this is what makes wav-to-flac work there at all). aac
+targets are still probed via `canEncodeAudio` first; an unsupported browser
+gets a clear "can't encode aac" error rather than a silent format change.
+Shares the same OPFS-primary/`BufferTarget`-
 fallback plumbing as the video side, kept as a small intentional duplicate
 in `audio.ts` rather than an import from `adapter.ts` (whose OPFS helpers
 aren't exported) to avoid colliding with an in-flight refactor of that
@@ -284,7 +287,7 @@ see `scripts/embedpdf-deps.test.ts`'s guard and ADR-0009.
 | `pdfjs` | `pdfjs-dist` | 6.3.289 | Apache-2.0 | ~4.8 MiB (pdf.mjs + pdf.worker.mjs + cmaps + standard_fonts) | static | no |
 | `tesseract` | `tesseract.js` (+ `tesseract.js-core`, `@tesseract.js-data/eng`) | 7.0.0 | Apache-2.0 (data: MIT) | ~16 MiB (JS glue + worker + 2 wasm core tiers + English "best_int" model) | static | no |
 | `pdfium` | `@embedpdf/pdfium` | 2.15.1 | MIT | ~4.6 MiB (pdfium.wasm) | static | no |
-| `mediabunny` | `mediabunny` + `@mediabunny/mp3-encoder` | 1.60.0 | **MPL-2.0** (wrapper); the mp3-encoder's LAME core itself is **LGPL** | 0 for `mediabunny` itself (wraps WebCodecs, no wasm of its own); `@mediabunny/mp3-encoder` bundles its own inline worker + base64-encoded LAME wasm (~130 KB gz), imported only from `audio.ts` (never `dist/modules/*`, which self-references and would hang Turbopack) | bundled | no |
+| `mediabunny` | `mediabunny` + `@mediabunny/mp3-encoder` + `@mediabunny/flac-encoder` | 1.60.0 | **MPL-2.0** (wrapper); the mp3-encoder's LAME core is **LGPL**, the flac-encoder's libFLAC core is **BSD** | 0 for `mediabunny` itself (wraps WebCodecs, no wasm of its own); `@mediabunny/mp3-encoder` and `@mediabunny/flac-encoder` each bundle their own inline worker + base64-encoded wasm (~130 KB gz each), imported only from `audio.ts` (never `dist/modules/*`, which self-references and would hang Turbopack) | bundled | no |
 | `mediabunny`'s `toGif` op | `gifenc` | 1.0.3 | MIT | 0 (bundled in JS; ~5 KB before gzip) | bundled (inside the `mediabunny` chunk, not its own `EngineId`) | no |
 | `ffmpeg` | `@ffmpeg/core` (single-thread, not `-mt` — no `SharedArrayBuffer` needed) | 0.12.10 | **GPL-2.0-or-later** | ~31 MiB (0.11 MiB JS glue + ~30.7 MiB wasm) | r2 | no |
 | `data` | `papaparse` 5.7.0 + `yaml` 2.9.1 + `read-excel-file` 9.3.10 + `write-excel-file` 4.1.1 | see note below | MIT (papaparse, read-excel-file, write-excel-file) + ISC (yaml) | 0 (bundled in JS; all four are pure JS, no wasm) | bundled | no |
