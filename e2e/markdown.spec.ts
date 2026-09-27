@@ -104,7 +104,15 @@ test.describe("markdown to pdf (typst engine, ADR-0011)", () => {
       0,
     );
 
-    const downloadLink = page.getByRole("link", { name: "Download" });
+    // Scoped to the job list (`<ul>`, role "list") rather than the whole
+    // page: this tool's "Related tools" section includes the libreoffice
+    // document tools, whose own descriptions mention "download" (the ~74 MB
+    // one-time engine download) — a page-wide `getByRole("link", { name:
+    // "Download" })` (substring match) also matches those cards. Same fix
+    // as `e2e/office.spec.ts`.
+    const downloadLink = page
+      .getByRole("list")
+      .getByRole("link", { name: "Download" });
     await expect(downloadLink).toBeVisible({ timeout: 60_000 });
 
     expect(

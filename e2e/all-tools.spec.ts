@@ -90,17 +90,31 @@ const SECOND_FIXTURE_BY_FORMAT: Partial<Record<FormatId, string>> = {
   pdf: "b.pdf",
 };
 
+/** Overrides `primaryFixture`'s generic per-format lookup for a specific
+ * slug — needed when the tool's own `accepts` order would otherwise pick a
+ * fixture that doesn't exercise it meaningfully. `image-to-text` accepts
+ * jpg first, which would pick `photo-small.jpg` (a real photo, no text at
+ * all) over a fixture actually built to contain text — see
+ * `scripts/gen-ocr-fixture.ts`. */
+const FIXTURE_OVERRIDE_BY_SLUG: Partial<Record<string, Fixture>> = {
+  "image-to-text": { format: "png", file: "ocr-text.png" },
+};
+
 /** How to fill a tool's required option fields before submitting, keyed by
- * slug then option key. Only `protect-pdf` needs this today. */
+ * slug then option key. */
 const REQUIRED_FIELD_VALUES: Record<string, Record<string, string>> = {
   "protect-pdf": { password: "e2e-smoke-test-pw" },
+  "delete-pdf-pages": { pages: "1" },
 };
 
 /** Every option field's rendered `<Label>` text is `.meta({label})` from
  * the tool's own schema — `Password` for both `protect-pdf` and
- * `unlock-pdf`, the only `control: "password"` field in the registry. */
+ * `unlock-pdf`, the only `control: "password"` field in the registry;
+ * `delete-pdf-pages`'s required `pages` field renders as "Pages to
+ * delete". */
 const REQUIRED_FIELD_LABELS: Record<string, string> = {
   password: "Password",
+  pages: "Pages to delete",
 };
 
 /**
@@ -154,6 +168,8 @@ interface Fixture {
 
 /** The first `accepts` format this spec has a fixture for, if any. */
 function primaryFixture(tool: ToolDefinition): Fixture | undefined {
+  const override = FIXTURE_OVERRIDE_BY_SLUG[tool.slug];
+  if (override) return override;
   for (const format of tool.accepts) {
     const file = FIXTURE_BY_FORMAT[format];
     if (file) return { format, file };
@@ -248,12 +264,17 @@ const CONVERTED: string[] = [];
 
 for (const tool of TOOLS) {
   const engines = toolEngines(tool);
-  // ffmpeg/tesseract engines and every video transcode (mediabunny) get real
-  // wasm work to do — generous timeout. Everything else stays at the
-  // project default (30s), plenty for a canvas/pdf-lib/data-format op.
+  // ffmpeg/tesseract/libreoffice/typst engines and every video transcode
+  // (mediabunny) get real wasm work to do — generous timeout. libreoffice
+  // additionally boots a whole LibreOfficeKit instance (~74 MB download +
+  // Emscripten instantiation, ADR-0012) and typst compiles a real document —
+  // both comfortably slower than the project default. Everything else stays
+  // at the project default (30s), plenty for a canvas/pdf-lib/data-format op.
   const heavy =
     engines.includes("ffmpeg") ||
     engines.includes("tesseract") ||
+    engines.includes("libreoffice") ||
+    engines.includes("typst") ||
     tool.category === "video";
 
   const fixture = tool.kind === "app" ? undefined : primaryFixture(tool);
