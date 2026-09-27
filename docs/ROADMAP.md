@@ -216,7 +216,10 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
 - [x] Compression done right (ADR-0013, 2026-09-28): lossless by default where possible — compress-png
       (oxipng lossless / image-q palette), jpg/webp modes (lossless strip, visually lossless,
       target size; never larger than input), compress-pdf lossless mode, compress audio
-- [ ] PDF → Word via LibreOffice ("layout approximate"); EPUB/HTML/TXT → PDF
+- [x] PDF → Word, layout approximate and text-only for now — pdf.js structure extraction + our own
+      docx writer, since LibreOffice here imports PDFs into Draw only (ADR-0014); TXT/HTML/EPUB → PDF
+      via LibreOffice (EPUB unpacked to HTML first) (2026-09-28)
+- [ ] PDF → Word images (follow-up to ADR-0014)
 
 ## Phase 5 — Polish
 
