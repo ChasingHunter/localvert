@@ -286,6 +286,106 @@ export const FORMATS = {
     // tell them apart do so by extension, not by magic.
     magic: [[{ offset: 0, bytes: [0x1a, 0x45, 0xdf, 0xa3] }]],
   },
+  mp3: {
+    label: "MP3",
+    ext: ["mp3"],
+    mime: "audio/mpeg",
+    category: "audio",
+    // An ID3v2 tag (most encoders write one) or a bare MPEG frame header —
+    // the frame sync is 11 set bits (0xFF + top 3 bits of the next byte),
+    // which this offset+exact-bytes scheme can't express as a mask, so each
+    // alternative below pins one common MPEG-1 Layer III sync byte pair
+    // instead (0xFF 0xFB/0xF3/0xF2/0xFA/0xE3/0xE2 cover the sync + version/
+    // layer/protection combinations real encoders actually emit). An
+    // untagged file using a byte pair not listed here is an accepted gap,
+    // same shape as the raw/tiff/webm notes above.
+    magic: [
+      [{ offset: 0, bytes: ascii("ID3") }],
+      [{ offset: 0, bytes: [0xff, 0xfb] }],
+      [{ offset: 0, bytes: [0xff, 0xf3] }],
+      [{ offset: 0, bytes: [0xff, 0xf2] }],
+      [{ offset: 0, bytes: [0xff, 0xfa] }],
+      [{ offset: 0, bytes: [0xff, 0xe3] }],
+      [{ offset: 0, bytes: [0xff, 0xe2] }],
+    ],
+  },
+  wav: {
+    label: "WAV",
+    ext: ["wav"],
+    mime: "audio/wav",
+    category: "audio",
+    // RIFF container, "WAVE" form type at offset 8 — same shape as webp's
+    // RIFF/WEBP check above.
+    magic: [
+      [
+        { offset: 0, bytes: ascii("RIFF") },
+        { offset: 8, bytes: ascii("WAVE") },
+      ],
+    ],
+  },
+  flac: {
+    label: "FLAC",
+    ext: ["flac"],
+    mime: "audio/flac",
+    category: "audio",
+    magic: [[{ offset: 0, bytes: ascii("fLaC") }]],
+  },
+  ogg: {
+    label: "Ogg Vorbis",
+    ext: ["ogg", "oga"],
+    mime: "audio/ogg",
+    category: "audio",
+    // The "OggS" page header is shared by every codec Ogg can carry
+    // (Vorbis, Opus, …) — telling them apart needs the codec identifier a
+    // variable number of bytes into the first page's payload, which this
+    // offset+exact-bytes scheme can't locate reliably. A dropped `.opus`
+    // file therefore also sniffs as `ogg` here; `refineFormat` below
+    // upgrades it to `opus` by extension, the same pattern as raw/tiff.
+    magic: [[{ offset: 0, bytes: ascii("OggS") }]],
+  },
+  opus: {
+    label: "Opus",
+    ext: ["opus"],
+    mime: "audio/opus",
+    category: "audio",
+    // Same "OggS" container signature as `ogg` above — see that format's
+    // comment. Declared after `ogg` so a real Opus file's raw sniff always
+    // resolves to `ogg` first; `refineFormat` is what actually promotes it
+    // to `opus` for a file named `*.opus`.
+    magic: [[{ offset: 0, bytes: ascii("OggS") }]],
+  },
+  m4a: {
+    label: "M4A",
+    ext: ["m4a"],
+    mime: "audio/mp4",
+    category: "audio",
+    // ISO-BMFF "ftyp" box, same shape as mp4/mov above, major brand "M4A "
+    // (Apple's own tag for an audio-only MP4 container — what mediabunny's
+    // `Mp4OutputFormat` writes for an audio-only conversion). An m4a
+    // encoded with a generic "isom"/"mp42" major brand instead sniffs as
+    // `mp4` here — accepted gap, same shape as every other ftyp-brand note
+    // in this table.
+    magic: [
+      [
+        { offset: 4, bytes: ascii("ftyp") },
+        { offset: 8, bytes: ascii("M4A ") },
+      ],
+    ],
+  },
+  aac: {
+    label: "AAC",
+    ext: ["aac"],
+    mime: "audio/aac",
+    category: "audio",
+    // Raw ADTS bitstream: 12-bit sync word 0xFFF, then MPEG version/layer/
+    // protection-absence bits. 0xFF 0xF1 (MPEG-4, no CRC) and 0xFF 0xF9
+    // (MPEG-2, no CRC) are the pair real encoders emit; other protection/
+    // version combinations are an accepted gap, same shape as mp3 above.
+    magic: [
+      [{ offset: 0, bytes: [0xff, 0xf1] }],
+      [{ offset: 0, bytes: [0xff, 0xf9] }],
+    ],
+  },
   zip: {
     label: "ZIP",
     ext: ["zip"],
@@ -390,23 +490,26 @@ export function refineFormat(
   sniffed: FormatId | null,
   filename: string,
 ): FormatId | null {
+  const ext = extOf(filename);
+  if (ext === null) return sniffed;
   if (sniffed === "tiff") {
-    const ext = extOf(filename);
-    if (ext !== null && (FORMATS.raw.ext as readonly string[]).includes(ext)) {
-      return "raw";
-    }
-    return sniffed;
+    return (FORMATS.raw.ext as readonly string[]).includes(ext)
+      ? "raw"
+      : sniffed;
   }
-  // Same shape as the tiff->raw refinement above: webm and mkv share the
-  // EBML header byte-for-byte (see both formats' `magic` comments), so
-  // `sniffFormat` always resolves to "webm" (declared first). An .mkv
-  // extension upgrades that to "mkv" here.
+  // webm and mkv share the EBML header byte-for-byte, so `sniffFormat`
+  // resolves to "webm" (declared first); an .mkv extension upgrades it.
   if (sniffed === "webm") {
-    const ext = extOf(filename);
-    if (ext !== null && (FORMATS.mkv.ext as readonly string[]).includes(ext)) {
-      return "mkv";
-    }
-    return sniffed;
+    return (FORMATS.mkv.ext as readonly string[]).includes(ext)
+      ? "mkv"
+      : sniffed;
+  }
+  // See the `ogg`/`opus` format comments above: both share the "OggS"
+  // signature, so a real .opus file always sniffs as `ogg` first.
+  if (sniffed === "ogg") {
+    return (FORMATS.opus.ext as readonly string[]).includes(ext)
+      ? "opus"
+      : sniffed;
   }
   return sniffed;
 }

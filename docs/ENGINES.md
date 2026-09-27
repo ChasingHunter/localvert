@@ -196,17 +196,30 @@ single page image, not a PDF.
 
 `mediabunny` doesn't fit the decode/transform/encode shape either — it's a
 `"kind": "job"` engine (ADR-0010) that drives WebCodecs directly rather than
-wrapping a wasm codec of its own. Its one op so far, `transcode`, hands an
-mp4/webm/mov `Input` (over a `BlobSource` reading the dropped `File`
-incrementally, never a full read) through `mediabunny.Conversion` to a webm
-`Output` — VP9 video + Opus audio, falling back to VP8 if the browser can't
-encode VP9, chosen via `canEncodeVideo`/`canEncodeAudio` capability probes
-before the job starts. Output streams through OPFS
-(`FileSystemSyncAccessHandle`, worker-only) via `StreamTarget` rather than
-buffering the whole encode in memory; see ADR-0010 for the full mechanism and
-the `BufferTarget` fallback when OPFS isn't available. `@mediabunny/mp3-encoder`
-is installed but not wired into this engine yet — reserved for an audio
-transcode op.
+wrapping a wasm codec of its own. Its `transcode` op hands an mp4/webm/mov
+`Input` (over a `BlobSource` reading the dropped `File` incrementally, never
+a full read) through `mediabunny.Conversion` to a webm `Output` — VP9 video +
+Opus audio, falling back to VP8 if the browser can't encode VP9, chosen via
+`canEncodeVideo`/`canEncodeAudio` capability probes before the job starts.
+Output streams through OPFS (`FileSystemSyncAccessHandle`, worker-only) via
+`StreamTarget` rather than buffering the whole encode in memory; see
+ADR-0010 for the full mechanism and the `BufferTarget` fallback when OPFS
+isn't available.
+
+Phase 3b adds `mediabunny`'s audio side (`src/lib/engines/mediabunny/
+audio.ts`, dispatched from the same `transcode` op via `adapter.ts`'s
+`supports`/`run`): mp3, wav (PCM), flac, ogg (opus/vorbis) and m4a (aac)
+outputs, plus extracting the audio track from mp4/mov/webm (`video: {
+discard: true }`). `@mediabunny/mp3-encoder` (the LAME wasm encoder) is now
+wired in — `ensureMp3Encoder` registers it once per worker, only when
+`canEncodeAudio("mp3")` says the browser has no native MP3 encoder (none
+currently do). flac/aac targets are still probed via `canEncodeAudio` first;
+an unsupported browser gets a clear "can't encode flac/aac" error rather
+than a silent format change. Shares the same OPFS-primary/`BufferTarget`-
+fallback plumbing as the video side, kept as a small intentional duplicate
+in `audio.ts` rather than an import from `adapter.ts` (whose OPFS helpers
+aren't exported) to avoid colliding with an in-flight refactor of that
+plumbing into `output.ts`.
 
 Its second op, `toGif` (Phase 3c, `src/lib/engines/mediabunny/gif.ts`), reads
 mp4/mov/webm through `mediabunny.CanvasSink` (which handles resizing and
@@ -269,8 +282,7 @@ see `scripts/embedpdf-deps.test.ts`'s guard and ADR-0009.
 | `pdfjs` | `pdfjs-dist` | 6.3.289 | Apache-2.0 | ~4.8 MiB (pdf.mjs + pdf.worker.mjs + cmaps + standard_fonts) | static | no |
 | `tesseract` | `tesseract.js` (+ `tesseract.js-core`, `@tesseract.js-data/eng`) | 7.0.0 | Apache-2.0 (data: MIT) | ~16 MiB (JS glue + worker + 2 wasm core tiers + English "best_int" model) | static | no |
 | `pdfium` | `@embedpdf/pdfium` | 2.15.1 | MIT | ~4.6 MiB (pdfium.wasm) | static | no |
-| `mediabunny` | `mediabunny` | 1.60.0 | **MPL-2.0** | 0 (bundled in JS; wraps WebCodecs, no wasm of its own) | bundled | no |
-| _(reserved, unused)_ | `@mediabunny/mp3-encoder` | 1.60.0 | MPL-2.0 (wrapper); LAME itself **LGPL** | ~130 KB gz (spawns its own worker) | static (once wired) | no |
+| `mediabunny` | `mediabunny` + `@mediabunny/mp3-encoder` | 1.60.0 | **MPL-2.0** (wrapper); the mp3-encoder's LAME core itself is **LGPL** | 0 for `mediabunny` itself (wraps WebCodecs, no wasm of its own); `@mediabunny/mp3-encoder` bundles its own inline worker + base64-encoded LAME wasm (~130 KB gz), imported only from `audio.ts` (never `dist/modules/*`, which self-references and would hang Turbopack) | bundled | no |
 | `mediabunny`'s `toGif` op | `gifenc` | 1.0.3 | MIT | 0 (bundled in JS; ~5 KB before gzip) | bundled (inside the `mediabunny` chunk, not its own `EngineId`) | no |
 
 ### How engine assets ship

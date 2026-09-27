@@ -47,7 +47,7 @@ requires its own ADR and we must publish the modified source.
 | `@embedpdf/models`, `@embedpdf/engines` (the PDF editor's engine API and worker-side runner, `EngineRunner`/`WebWorkerEngine`/`PdfEngine`) | 2.15.1 | MIT | EmbedPDF contributors | https://github.com/embedpdf/embed-pdf-viewer |
 | `@embedpdf/core` + `plugin-document-manager`, `plugin-viewport`, `plugin-scroll`, `plugin-render`, `plugin-zoom`, `plugin-thumbnail`, `plugin-selection`, `plugin-interaction-manager`, `plugin-annotation`, `plugin-history`, `plugin-export` (the PDF editor's viewer UI) | 2.15.1 | MIT | EmbedPDF contributors | https://github.com/embedpdf/embed-pdf-viewer |
 | `mediabunny` (WebCodecs container mux/demux for video and audio) | 1.60.0 | MPL-2.0 (file-level copyleft — see below) | Vanilagy | https://github.com/Vanilagy/mediabunny |
-| `@mediabunny/mp3-encoder` (wraps a LAME wasm build; reserved for a future audio slice, not wired into any tool yet) | 1.60.0 | MPL-2.0 (wrapper); LAME itself is LGPL | Vanilagy; the LAME project | https://github.com/Vanilagy/mediabunny |
+| `@mediabunny/mp3-encoder` (wraps a LAME wasm build; wired into every mp3-output audio tool as of Phase 3b) | 1.60.0 | MPL-2.0 (wrapper); LAME itself is LGPL | Vanilagy; the LAME project | https://github.com/Vanilagy/mediabunny |
 | `gifenc` (pure-JS GIF encoder + color quantizer; `video-to-gif`'s `toGif` op, replacing ffmpeg for GIF output per ADR-0002) | 1.0.3 | MIT | Matt DesLauriers | https://github.com/mattdesl/gifenc |
 
 `jsquash-webp`'s underlying codec is libwebp, Copyright 2010 Google Inc.,
@@ -73,9 +73,9 @@ build, so this carries no obligation beyond attribution. See
 [ADR-0010](adr/0010-media-pipeline.md) (and the corrected mediabunny row in
 [ADR-0002](adr/0002-mit-license-gpl-isolation.md), which previously listed it
 as MIT). `@mediabunny/mp3-encoder` additionally wraps a LAME wasm build
-(LGPL) — reserved for a future audio slice; if and when it's wired into a
-tool, its LGPL source-offer obligation goes in the copyleft table below
-alongside `heic` and `libraw`.
+(LGPL), wired into every mp3-output audio tool as of Phase 3b — its LGPL
+source-offer obligation is in the copyleft table below, alongside `heic`
+and `libraw`.
 
 `tracer` (`@image-tracer-ts/core`) is a TypeScript reimplementation of
 [imagetracerjs](https://github.com/jankovicsandras/imagetracerjs), which is
@@ -94,6 +94,7 @@ beyond attribution. Each is loaded at arms length as described above.
 |---|---|---|---|
 | `heic` (`heic-to`, wraps libheif) | LGPL-3.0 | Source offer for the LGPL library; users must be able to relink against a modified libheif | We ship `heic-to`'s published build unmodified, fetched from npm at build time and never vendored or patched (ADR-0002) — the link to https://github.com/hoppergee/heic-to above satisfies the source offer. `heic-to` itself wraps libheif compiled to asm.js/wasm, unmodified from upstream. |
 | `libraw` (`libraw-wasm`, wraps LibRaw) | LGPL-2.1 / CDDL-1.0 dual (LibRaw itself; the `libraw-wasm` JS/wasm wrapper is ISC) | Source offer for LibRaw; users must be able to relink against a modified LibRaw | We ship `libraw-wasm`'s published build unmodified, fetched from npm at build time and never vendored or patched (ADR-0002) — https://github.com/ybouane/LibRaw-Wasm satisfies the source offer. `libraw-wasm` itself wraps LibRaw compiled to WebAssembly via Emscripten, unmodified from upstream. |
+| `@mediabunny/mp3-encoder` (wraps LAME) | LGPL (LAME itself; the `@mediabunny/mp3-encoder` JS/wasm wrapper is MPL-2.0) | Source offer for LAME; users must be able to relink against a modified LAME | We ship `@mediabunny/mp3-encoder`'s published build unmodified, fetched from npm at build time and never vendored or patched — https://github.com/Vanilagy/mediabunny (package directory `packages/mp3-encoder`) satisfies the source offer. It wraps LAME compiled to WebAssembly, unmodified from upstream. |
 
 ## Build and development dependencies
 

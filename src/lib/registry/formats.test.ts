@@ -24,6 +24,18 @@ function headerFor(patterns: readonly MagicPattern[]): Uint8Array<ArrayBuffer> {
 }
 
 /**
+ * `opus` deliberately shares its only magic alternative with `ogg` (see
+ * that format's comment in formats.ts — telling them apart needs bytes
+ * this offset+exact-match scheme can't locate) and is refined by extension
+ * instead. Its bytes therefore sniff as `ogg`, the earlier-declared format,
+ * not itself — this map is the generic test's escape hatch for that one
+ * intentional exception, the same shape as `OUTPUT_ONLY` further down.
+ */
+const RESOLVES_AS: Partial<Record<FormatId, FormatId>> = {
+  opus: "ogg",
+};
+
+/**
  * One row per magic alternative across every format, so each OR branch —
  * both GIF versions, both TIFF byte orders, both ZIP signatures, every HEIC
  * brand, both AVIF brands — gets its own assertion, not just one per format.
@@ -46,7 +58,7 @@ const ALTERNATIVES = (
 
 describe("sniffFormat", () => {
   it.each(ALTERNATIVES)("matches $name", ({ id, alternative }) => {
-    expect(sniffFormat(headerFor(alternative))).toBe(id);
+    expect(sniffFormat(headerFor(alternative))).toBe(RESOLVES_AS[id] ?? id);
   });
 
   it("returns null for input shorter than any matching signature", () => {
@@ -131,6 +143,16 @@ describe("refineFormat", () => {
     expect(refineFormat("webm", "clip.webm")).toBe("webm");
     expect(refineFormat("webm", "clip.mp4")).toBe("webm");
     expect(refineFormat("webm", "noext")).toBe("webm");
+  });
+
+  it("upgrades an ogg sniff to opus for a .opus filename", () => {
+    expect(sniffFormat(headerFor(FORMATS.ogg.magic[0]))).toBe("ogg");
+    expect(refineFormat("ogg", "clip.opus")).toBe("opus");
+  });
+
+  it("leaves an ogg sniff alone for a plain .ogg/.oga name", () => {
+    expect(refineFormat("ogg", "clip.ogg")).toBe("ogg");
+    expect(refineFormat("ogg", "clip.oga")).toBe("ogg");
   });
 });
 

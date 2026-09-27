@@ -23,6 +23,7 @@ import type {
   EngineResult,
   EngineTask,
 } from "../types";
+import { runAudioTranscode, supportsAudioTranscode } from "./audio";
 import meta from "./engine.json";
 import { runToGif } from "./gif";
 import { runConversion } from "./output";
@@ -68,7 +69,8 @@ function supports(
     (op === "transcode" &&
       isVideoContainer(input) &&
       isVideoContainer(output)) ||
-    (op === "toGif" && isVideoContainer(input) && output === "gif")
+    (op === "toGif" && isVideoContainer(input) && output === "gif") ||
+    supportsAudioTranscode(op, input, output)
   );
 }
 
@@ -76,7 +78,13 @@ async function run(task: EngineTask): Promise<EngineResult> {
   try {
     switch (task.op) {
       case "transcode":
-        return await runVideo(task);
+        return supportsAudioTranscode(
+          task.op,
+          task.inputFormat,
+          task.outputFormat,
+        )
+          ? await runAudioTranscode(task)
+          : await runVideo(task);
       case "toGif": {
         const { bytes, mime } = await runToGif(task, metadata.id);
         return { kind: "bytes", bytes: bytes.buffer as ArrayBuffer, mime };
