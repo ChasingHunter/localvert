@@ -102,6 +102,9 @@ const FIXTURE_BY_FORMAT: Partial<Record<FormatId, string>> = {
   wmv: "sample.wmv",
   txt: "sample.txt",
   html: "sample.html",
+  // Two-chapter EPUB 3 (spine order differs from manifest order, so the
+  // epub engine's spine ordering is exercised), zipped with Python's stdlib.
+  epub: "sample.epub",
 };
 
 /** A second, distinct fixture of the same format — only needed by
