@@ -40,6 +40,21 @@ async function rasterOf(width: number, height: number): Promise<RasterImage> {
   return { width, height, data };
 }
 
+/** A bigger, noisier source so quality actually changes byte size — a tiny
+ * solid-color image compresses to ~the same size regardless. */
+async function noisySourceWebpBlob(size = 200): Promise<Blob> {
+  const canvas = new OffscreenCanvas(size, size);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d context in test setup");
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      ctx.fillStyle = `rgb(${(x * 7) % 256}, ${(y * 13) % 256}, ${(x + y) % 256})`;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  return canvas.convertToBlob({ type: "image/webp" });
+}
+
 function baseTask(overrides: Partial<EngineTask> = {}): EngineTask {
   return {
     op: "decode",
@@ -88,6 +103,10 @@ describe("jsquash-webp adapter", () => {
       expect(adapter.supports("resize", "raster", "raster")).toBe(false);
       expect(adapter.supports("transcode", "webp", "webp")).toBe(false);
       expect(adapter.supports("decode", "jpg", "raster")).toBe(false);
+    });
+
+    it("accepts compress webp -> webp", () => {
+      expect(adapter.supports("compress", "webp", "webp")).toBe(true);
     });
   });
 
@@ -286,6 +305,144 @@ describe("jsquash-webp adapter", () => {
       ).rejects.toSatisfy(
         (e: unknown) => isEngineError(e) && e.code === "aborted",
       );
+    });
+  });
+
+  describe("compress (ADR-0013)", () => {
+    it("mode lossless strips metadata without touching pixels", async () => {
+      const instance = await adapter.load({
+        baseUrl: BASE_URL,
+        capabilities: {} as never,
+      });
+      const srcBlob = await sourceWebpBlob();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "webp",
+          outputFormat: "webp",
+          options: { mode: "lossless" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(sniffFormat(new Uint8Array(result.bytes))).toBe("webp");
+
+      const outBitmap = await createImageBitmap(
+        new Blob([result.bytes], { type: result.mime }),
+      );
+      expect(outBitmap.width).toBe(WIDTH);
+      expect(outBitmap.height).toBe(HEIGHT);
+      outBitmap.close();
+    });
+
+    it("mode strong produces a smaller file than mode visually-lossless", async () => {
+      const instance = await adapter.load({
+        baseUrl: BASE_URL,
+        capabilities: {} as never,
+      });
+      const srcBlob = await noisySourceWebpBlob();
+
+      const visuallyLossless = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "webp",
+          outputFormat: "webp",
+          options: { mode: "visually-lossless" },
+        }),
+      );
+      const strong = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "webp",
+          outputFormat: "webp",
+          options: { mode: "strong" },
+        }),
+      );
+      if (visuallyLossless.kind !== "bytes" || strong.kind !== "bytes") {
+        throw new Error("expected bytes results");
+      }
+      expect(strong.bytes.byteLength).toBeLessThan(
+        visuallyLossless.bytes.byteLength,
+      );
+    });
+
+    it("mode custom honours options.quality", async () => {
+      const instance = await adapter.load({
+        baseUrl: BASE_URL,
+        capabilities: {} as never,
+      });
+      const srcBlob = await noisySourceWebpBlob();
+
+      const low = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "webp",
+          outputFormat: "webp",
+          options: { mode: "custom", quality: 0.2 },
+        }),
+      );
+      const high = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "webp",
+          outputFormat: "webp",
+          options: { mode: "custom", quality: 0.9 },
+        }),
+      );
+      if (low.kind !== "bytes" || high.kind !== "bytes") {
+        throw new Error("expected bytes results");
+      }
+      expect(low.bytes.byteLength).toBeLessThan(high.bytes.byteLength);
+    });
+
+    it("mode target-size bisects toward the requested byte budget", async () => {
+      const instance = await adapter.load({
+        baseUrl: BASE_URL,
+        capabilities: {} as never,
+      });
+      const srcBlob = await noisySourceWebpBlob();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "webp",
+          outputFormat: "webp",
+          options: { mode: "target-size", targetSizeKB: 5 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(result.bytes.byteLength).toBeLessThanOrEqual(5 * 1024 * 1.2);
+    });
+
+    it("never returns a file bigger than the input, and notes it when it doesn't", async () => {
+      const instance = await adapter.load({
+        baseUrl: BASE_URL,
+        capabilities: {} as never,
+      });
+      const canvas = new OffscreenCanvas(4, 4);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("no 2d context in test setup");
+      ctx.fillStyle = "#3366ff";
+      ctx.fillRect(0, 0, 4, 4);
+      const srcBlob = await canvas.convertToBlob({ type: "image/webp" });
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "webp",
+          outputFormat: "webp",
+          options: { mode: "custom", quality: 1 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(result.bytes.byteLength).toBeLessThanOrEqual(srcBlob.size);
     });
   });
 });

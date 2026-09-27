@@ -4,7 +4,9 @@ import type { Operation, StepFormat } from "@/lib/registry";
 import { FORMATS } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
+import { stripWebp } from "../exif/strip";
 import { ENGINE_MANIFEST } from "../manifest";
+import { neverLarger } from "../shared/never-larger";
 import { encodeToTargetSize } from "../shared/target-size";
 import type {
   EngineAdapter,
@@ -73,6 +75,11 @@ function supports(
       return input === "webp" && output === "raster";
     case "encode":
       return input === "raster" && output === "webp";
+    // ADR-0013: compress-webp's single byte-to-byte step (runCompress below)
+    // rather than the generic ADR-0007 raster pipeline — see the identical
+    // reasoning on jsquash-jpeg's own "compress" case.
+    case "compress":
+      return input === "webp" && output === "webp";
     default:
       return false;
   }
@@ -165,6 +172,8 @@ async function load(ctx: EngineLoadContext): Promise<EngineInstance> {
           return await runDecode(task, ensureDecodeReady);
         case "encode":
           return await runEncode(task, ensureEncodeReady);
+        case "compress":
+          return await runCompress(task, ensureDecodeReady, ensureEncodeReady);
         default:
           throw new EngineError(
             "unsupported",
@@ -324,6 +333,164 @@ async function runEncode(
 
   onProgress?.(1);
   return { kind: "bytes", bytes, mime: FORMATS.webp.mime };
+}
+
+type CompressMode =
+  | "lossless"
+  | "visually-lossless"
+  | "strong"
+  | "custom"
+  | "target-size";
+
+/** Same fixed-quality-per-mode reasoning as jsquash-jpeg's own
+ * `QUALITY_BY_MODE` — one predictable number (0.85) shared across jpg/webp
+ * so "visually lossless" means the same thing regardless of format. */
+const QUALITY_BY_MODE: Record<"visually-lossless" | "strong", number> = {
+  "visually-lossless": 0.85,
+  strong: 0.6,
+};
+
+/**
+ * compress (webp -> webp, ADR-0013): a single byte-to-byte step, not the
+ * generic ADR-0007 raster pipeline — `mode: "lossless"` is a metadata strip
+ * only (the `exif` engine's `stripWebp`), *not* this adapter's own
+ * `encode`-level `lossless: true` flag — re-encoding an already-lossy WebP
+ * losslessly re-derives every pixel exactly, which produces a *bigger* file
+ * than the lossy source on the common case (a photo), the opposite of what
+ * a compress tool promises. Every mode's never-larger check needs the exact
+ * original input bytes alongside its own final result, which a two-step
+ * decode/encode handoff can't give it.
+ */
+async function runCompress(
+  task: EngineTask,
+  ensureDecodeReady: () => Promise<void>,
+  ensureEncodeReady: () => Promise<void>,
+): Promise<EngineResult> {
+  const { input, options, signal, onProgress } = task;
+  signal.throwIfAborted();
+
+  const originalBytes = await inputToBytes(input);
+  signal.throwIfAborted();
+  onProgress?.(0.1);
+
+  const mode: CompressMode =
+    options.mode === "visually-lossless" ||
+    options.mode === "strong" ||
+    options.mode === "custom" ||
+    options.mode === "target-size"
+      ? options.mode
+      : "lossless";
+
+  if (mode === "lossless") {
+    let stripped: ArrayBuffer;
+    try {
+      stripped = stripWebp(new Uint8Array(originalBytes)).buffer as ArrayBuffer;
+    } catch (e) {
+      throw new EngineError("decode-failed", "failed to strip webp metadata", {
+        engine: metadata.id,
+        cause: e,
+      });
+    }
+    onProgress?.(1);
+    const picked = neverLarger(originalBytes, stripped);
+    return {
+      kind: "bytes",
+      bytes: picked.bytes,
+      mime: FORMATS.webp.mime,
+      ...(picked.note ? { note: picked.note } : {}),
+    };
+  }
+
+  await ensureDecodeReady();
+  signal.throwIfAborted();
+  onProgress?.(0.25);
+
+  let decoded: ImageData;
+  try {
+    decoded = await decode(originalBytes);
+  } catch (e) {
+    throw new EngineError("decode-failed", "failed to decode webp", {
+      engine: metadata.id,
+      cause: e,
+    });
+  }
+  signal.throwIfAborted();
+  onProgress?.(0.4);
+
+  await ensureEncodeReady();
+  signal.throwIfAborted();
+  onProgress?.(0.5);
+
+  const encodeAtQuality = async (quality: number): Promise<ArrayBuffer> => {
+    try {
+      return await encode(decoded, {
+        quality: Math.round(clamp01(quality) * 100),
+        lossless: 0,
+      });
+    } catch (e) {
+      throw new EngineError("encode-failed", "failed to encode webp", {
+        engine: metadata.id,
+        cause: e,
+      });
+    }
+  };
+
+  let encoded: ArrayBuffer;
+  if (mode === "target-size") {
+    const targetSizeKB = options.targetSizeKB;
+    if (typeof targetSizeKB !== "number" || targetSizeKB <= 0) {
+      throw new EngineError(
+        "internal",
+        "target-size mode requires a positive targetSizeKB",
+        { engine: metadata.id },
+      );
+    }
+    let iteration = 0;
+    const result = await encodeToTargetSize(
+      async (quality) => {
+        const out = await encodeAtQuality(quality);
+        iteration += 1;
+        onProgress?.(0.5 + 0.4 * Math.min(iteration / 8, 1));
+        return out;
+      },
+      targetSizeKB * 1024,
+      { signal },
+    );
+    encoded = result.bytes;
+  } else {
+    const quality =
+      mode === "custom"
+        ? typeof options.quality === "number"
+          ? options.quality
+          : 0.75
+        : QUALITY_BY_MODE[mode];
+    encoded = await encodeAtQuality(quality);
+  }
+  onProgress?.(0.9);
+
+  let strippedOriginal: ArrayBuffer;
+  try {
+    strippedOriginal = stripWebp(new Uint8Array(originalBytes))
+      .buffer as ArrayBuffer;
+  } catch {
+    // Malformed input would already have failed the decode above.
+    strippedOriginal = originalBytes;
+  }
+
+  const picked = neverLarger(
+    strippedOriginal,
+    encoded,
+    "This WebP was already about as small as it gets at this quality — " +
+      "kept the original (with metadata removed).",
+  );
+
+  onProgress?.(1);
+  return {
+    kind: "bytes",
+    bytes: picked.bytes,
+    mime: FORMATS.webp.mime,
+    ...(picked.note ? { note: picked.note } : {}),
+  };
 }
 
 export default defineEngine({

@@ -74,7 +74,7 @@ order (decode [+ transform] [+ encode]).
 | Slug | From | To | Engine | Batch | Notes |
 |---|---|---|---|---|---|
 | `compress-jpg` | JPEG | JPEG | jsquash-jpeg, exif | Yes | Mode: lossless (metadata strip), visually-lossless (default), strong, custom quality, or target size (KB). Never bigger than the input |
-| `compress-webp` | WebP | WebP | jsquash-webp | Yes | Target size (KB) or quality |
+| `compress-webp` | WebP | WebP | jsquash-webp, exif | Yes | Mode: lossless (metadata strip), visually-lossless (default), strong, custom quality, or target size (KB). Never bigger than the input |
 | `compress-png` | PNG | PNG | jsquash-png | Yes | Mode: lossless (oxipng, default) or smaller (image-q palette reduction + oxipng, optional dither). Never bigger than the input |
 | `resize-image-jpg` | JPEG | JPEG | jsquash-jpeg, jsquash-resize | Yes | Width/height, fit, allow upscale |
 | `resize-image-png` | PNG | PNG | jsquash-png, jsquash-resize | Yes | Width/height, fit, allow upscale |
