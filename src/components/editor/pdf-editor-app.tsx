@@ -510,6 +510,9 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
       // new content on its next render.
       const provides = documentManager.provides;
       if (provides) {
+        // Close the pre-redaction copy first, as the page organizer does, so
+        // it doesn't linger in the worker's memory.
+        await provides.closeDocument(documentId).toPromise();
         const { task } = await provides
           .openDocumentBuffer({ buffer: bytes, name: fileName })
           .toPromise();
@@ -526,6 +529,7 @@ function Editor({ documentId, fileName, pageCount }: EditorProps) {
     flattenRedactedToImages,
     documentManager.provides,
     fileName,
+    documentId,
   ]);
 
   // `history.provides.canUndo()`/`canRedo()` are plain methods, not reactive
