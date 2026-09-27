@@ -1,0 +1,381 @@
+import { readFileSync } from "node:fs";
+import { test as base, expect } from "@playwright/test";
+import type { FormatId, ToolDefinition } from "@/lib/registry";
+import { FORMATS } from "@/lib/registry";
+import { TOOLS } from "@/tools";
+
+/**
+ * Smoke-tests *every* tool page in the registry, driven straight from
+ * `TOOLS` (`src/tools/index.ts`) — a new tool is covered the moment
+ * `pnpm gen` picks it up, with no per-tool spec required.
+ *
+ * Two levels of coverage per tool, in order:
+ *
+ * 1. **Render.** Visit `/tools/<slug>`, assert the `h1` matches the tool's
+ *    title, no CSP violation fired, the page is cross-origin isolated, and
+ *    no uncaught page error was thrown. This alone is what would have
+ *    caught `mute-video`'s render crash and `raw-to-png`'s broken options
+ *    form months earlier than either was actually found.
+ * 2. **Real conversion**, only when a fixture exists for one of the tool's
+ *    `accepts` formats (see `FIXTURE_BY_FORMAT` below): drop it, satisfy
+ *    whatever the tool needs to run (an ffmpeg download-consent dialog, a
+ *    crop confirm, a required option, a second file for a many-to-one
+ *    tool), download the result and check its magic bytes against
+ *    `tool.produces` (`FORMATS[id].magic` for a binary format; a
+ *    content-shape check for a `text` one, which has no fixed signature).
+ *
+ * `kind: "app"` tools (currently only `pdf-editor`) stop after the render
+ * check — they don't go through the job pipeline this spec's drop/download
+ * flow assumes, and get their own dedicated specs (`e2e/pdf-editor*.spec.ts`).
+ *
+ * ## Adding a fixture for a new format
+ *
+ * A tool with no fixture for any `accepts` format shows up in this file's
+ * `NO_FIXTURE` list (printed once, at collection time, and again as this
+ * spec's own skip reason for every affected tool — never silent). To cover
+ * it:
+ *
+ * 1. If a real sample file is small and cheap to hand (most binary
+ *    formats), drop it in `e2e/fixtures/` and add it to `FIXTURE_BY_FORMAT`
+ *    below.
+ * 2. If a real file is impractical to fabricate by hand but a library
+ *    already in `node_modules` can write one losslessly (as
+ *    `write-excel-file` did for `sample.xlsx`, or a raw PCM header for
+ *    `sample.wav`), write a small throwaway Node script, run it once, commit
+ *    the output next to the other fixtures — same pattern as `e2e/pdf.spec.ts`'s
+ *    doc comment describes for `a.pdf`/`photos.pdf`.
+ * 3. If neither is cheap (a real codec-encoded audio/video container like
+ *    mp3/flac/mov/webm/mkv/wmv, or a proprietary raw/heic image), leave it
+ *    out — it'll surface in `NO_FIXTURE` instead of being silently skipped.
+ * 4. A many-to-one tool (`arity: "many-to-one"`) additionally needs a
+ *    *second*, distinct fixture of the same format in
+ *    `SECOND_FIXTURE_BY_FORMAT`.
+ * 5. A tool with `requiredOptionKeys` (e.g. `protect-pdf`'s password) needs
+ *    an entry in `REQUIRED_FIELD_VALUES` below, or it's treated the same as
+ *    a missing fixture — printed and skipped, never guessed at.
+ */
+
+function fixturePath(name: string): string {
+  return `e2e/fixtures/${name}`;
+}
+
+/** One fixture per format this spec knows how to drop. Real files where
+ * cheap; `sample.xlsx`/`sample.wav`/`sample.yaml` were generated once by a
+ * throwaway script (see this file's doc comment, item 2) and committed. */
+const FIXTURE_BY_FORMAT: Partial<Record<FormatId, string>> = {
+  jpg: "photo-small.jpg",
+  png: "not-a-jpg.png",
+  webp: "sample.webp",
+  avif: "sample.avif",
+  jxl: "sample.jxl",
+  svg: "sample.svg",
+  tiff: "sample.tiff",
+  psd: "sample.psd",
+  pdf: "a.pdf",
+  md: "sample.md",
+  csv: "sample.csv",
+  json: "sample.json",
+  yaml: "sample.yaml",
+  xlsx: "sample.xlsx",
+  mp4: "sample.mp4",
+  avi: "sample.avi",
+  flv: "sample.flv",
+  wav: "sample.wav",
+};
+
+/** A second, distinct fixture of the same format — only needed by
+ * `arity: "many-to-one"` tools (`merge-pdf`, `images-to-pdf`). */
+const SECOND_FIXTURE_BY_FORMAT: Partial<Record<FormatId, string>> = {
+  jpg: "photo-medium.jpg",
+  pdf: "b.pdf",
+};
+
+/** How to fill a tool's required option fields before submitting, keyed by
+ * slug then option key. Only `protect-pdf` needs this today. */
+const REQUIRED_FIELD_VALUES: Record<string, Record<string, string>> = {
+  "protect-pdf": { password: "e2e-smoke-test-pw" },
+};
+
+/** Every option field's rendered `<Label>` text is `.meta({label})` from
+ * the tool's own schema — `Password` for both `protect-pdf` and
+ * `unlock-pdf`, the only `control: "password"` field in the registry. */
+const REQUIRED_FIELD_LABELS: Record<string, string> = {
+  password: "Password",
+};
+
+/**
+ * Sniffs `bytes` against `FORMATS[id]`'s own magic-byte table — the same
+ * source of truth `sniffFormat` uses on drop, so this spec can never drift
+ * from what the app itself considers "looks like an mp4"/"looks like a
+ * png"/etc. `text` formats (json/yaml/csv/md/txt) declare no magic at all
+ * (see formats.ts), so they get a content-shape check instead.
+ */
+function hasMagic(bytes: Uint8Array, id: FormatId): boolean {
+  const spec = FORMATS[id];
+  if (spec.magic.length > 0) {
+    return spec.magic.some((alternative) =>
+      alternative.every((pattern) =>
+        pattern.bytes.every((b, i) => bytes[pattern.offset + i] === b),
+      ),
+    );
+  }
+  const text = Buffer.from(bytes).toString("utf8");
+  switch (id) {
+    case "json":
+      try {
+        JSON.parse(text);
+        return true;
+      } catch {
+        return false;
+      }
+    case "yaml":
+    case "md":
+    case "txt":
+      return text.trim().length > 0;
+    case "csv":
+      return text.includes(",") || text.includes("\n");
+    default:
+      return false;
+  }
+}
+
+function toolEngines(tool: ToolDefinition): string[] {
+  return Array.from(
+    new Set(
+      tool.pipeline.flatMap((step) => step.candidates.map((c) => c.engine)),
+    ),
+  );
+}
+
+interface Fixture {
+  format: FormatId;
+  file: string;
+}
+
+/** The first `accepts` format this spec has a fixture for, if any. */
+function primaryFixture(tool: ToolDefinition): Fixture | undefined {
+  for (const format of tool.accepts) {
+    const file = FIXTURE_BY_FORMAT[format];
+    if (file) return { format, file };
+  }
+  return undefined;
+}
+
+interface Fixtures {
+  /** Autouse: fails the test if any request left the page's own origin. */
+  privacyGuard: undefined;
+  /** Autouse: fails the test if the browser ever reported a CSP violation. */
+  cspGuard: undefined;
+}
+
+const test = base.extend<Fixtures>({
+  privacyGuard: [
+    async ({ page, baseURL }, use) => {
+      const ownOrigin = new URL(baseURL ?? "http://localhost:8788").origin;
+      const foreign: string[] = [];
+      page.on("request", (request) => {
+        const origin = new URL(request.url()).origin;
+        if (origin !== ownOrigin) foreign.push(request.url());
+      });
+
+      await use(undefined);
+
+      expect(
+        foreign,
+        "no request should ever leave the page's own origin — files never leave the browser",
+      ).toEqual([]);
+
+      const isolated = await page.evaluate(() => self.crossOriginIsolated);
+      expect(
+        isolated,
+        "page must be cross-origin isolated (COOP/COEP from public/_headers)",
+      ).toBe(true);
+    },
+    { auto: true },
+  ],
+
+  cspGuard: [
+    async ({ page }, use) => {
+      const violations: string[] = [];
+      await page.exposeFunction("__onCspViolation", (detail: string) => {
+        violations.push(detail);
+      });
+      await page.addInitScript(() => {
+        document.addEventListener("securitypolicyviolation", (e) => {
+          // @ts-expect-error — bridged in by exposeFunction above.
+          window.__onCspViolation(`${e.violatedDirective}: ${e.blockedURI}`);
+        });
+      });
+
+      await use(undefined);
+
+      expect(violations, "no CSP violation should occur").toEqual([]);
+    },
+    { auto: true },
+  ],
+});
+
+/** Clicks through the ffmpeg download-consent dialog if this drop triggered
+ * one (`ADR-0002` rule 4 — only `ffmpeg` is `consent: true` today). Most
+ * tools never show it, so this waits briefly and moves on rather than
+ * failing when it doesn't appear. */
+async function acceptConsentIfShown(page: import("@playwright/test").Page) {
+  const dialog = page.getByRole("dialog", { name: /Download the .+ engine\?/ });
+  try {
+    await dialog.waitFor({ state: "visible", timeout: 5_000 });
+  } catch {
+    return;
+  }
+  await dialog.getByRole("button", { name: "Download and convert" }).click();
+  await expect(dialog).toBeHidden();
+}
+
+/** Confirms the `CropEditor` overlay (`hasCropField` tools only) with its
+ * default "Crop" submit button, if the drop opened it. */
+async function confirmCropIfShown(page: import("@playwright/test").Page) {
+  const cropButton = page.getByRole("button", { name: "Crop", exact: true });
+  try {
+    await cropButton.waitFor({ state: "visible", timeout: 10_000 });
+  } catch {
+    return;
+  }
+  await cropButton.click();
+}
+
+const NO_FIXTURE: string[] = [];
+const RENDER_ONLY: string[] = [];
+const CONVERTED: string[] = [];
+
+for (const tool of TOOLS) {
+  const engines = toolEngines(tool);
+  // ffmpeg/tesseract engines and every video transcode (mediabunny) get real
+  // wasm work to do — generous timeout. Everything else stays at the
+  // project default (30s), plenty for a canvas/pdf-lib/data-format op.
+  const heavy =
+    engines.includes("ffmpeg") ||
+    engines.includes("tesseract") ||
+    tool.category === "video";
+
+  const fixture = tool.kind === "app" ? undefined : primaryFixture(tool);
+  const needsSecondFixture = tool.arity === "many-to-one";
+  const secondFixture = fixture && SECOND_FIXTURE_BY_FORMAT[fixture.format];
+  const requiredKeys = tool.requiredOptionKeys ?? [];
+  const requiredValues = REQUIRED_FIELD_VALUES[tool.slug];
+  const requiredScripted =
+    requiredKeys.length === 0 ||
+    (requiredValues !== undefined &&
+      requiredKeys.every((k) => requiredValues[k] !== undefined));
+
+  const canConvert =
+    tool.kind !== "app" &&
+    fixture !== undefined &&
+    (!needsSecondFixture || !!secondFixture) &&
+    requiredScripted;
+
+  if (tool.kind !== "app") {
+    if (canConvert) CONVERTED.push(tool.slug);
+    else NO_FIXTURE.push(tool.slug);
+  } else {
+    RENDER_ONLY.push(tool.slug);
+  }
+
+  test(tool.slug, async ({ page }) => {
+    if (heavy) test.setTimeout(180_000);
+
+    const pageErrors: Error[] = [];
+    page.on("pageerror", (e) => pageErrors.push(e));
+
+    await page.goto(`/tools/${tool.slug}`);
+
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      tool.title,
+    );
+    await expect(page.getByText("This page couldn't load")).toHaveCount(0);
+
+    // Give client hydration a moment to throw before asserting no errors —
+    // a crash like mute-video's happens on mount, not on load.
+    await page.waitForTimeout(300);
+    expect(pageErrors, `uncaught render error on /tools/${tool.slug}`).toEqual(
+      [],
+    );
+
+    if (tool.kind === "app") return; // app tools: render-only, per doc comment above.
+
+    if (!canConvert) {
+      const reasons: string[] = [];
+      if (!fixture) reasons.push(`no fixture for [${tool.accepts.join(", ")}]`);
+      if (fixture && needsSecondFixture && !secondFixture) {
+        reasons.push(`no second ${fixture.format} fixture for many-to-one`);
+      }
+      if (!requiredScripted) {
+        reasons.push(
+          `required option(s) [${requiredKeys.join(", ")}] not scripted`,
+        );
+      }
+      test.skip(true, `NO_FIXTURE: ${reasons.join("; ")}`);
+      return;
+    }
+    // canConvert guarantees this, but keeps the type narrowed below.
+    if (!fixture) throw new Error("unreachable");
+
+    const fileInput = page.locator('input[type="file"]');
+
+    if (needsSecondFixture && secondFixture) {
+      await fileInput.setInputFiles([
+        fixturePath(fixture.file),
+        fixturePath(secondFixture),
+      ]);
+      await acceptConsentIfShown(page);
+      const submit = page.getByRole("button", {
+        name: tool.actionLabel ?? "Convert",
+      });
+      await expect(submit).toBeEnabled({ timeout: heavy ? 60_000 : 15_000 });
+      await submit.click();
+    } else {
+      await fileInput.setInputFiles(fixturePath(fixture.file));
+      await acceptConsentIfShown(page);
+
+      if ("crop" in tool.options.shape) {
+        await confirmCropIfShown(page);
+      }
+
+      if (requiredKeys.length > 0 && requiredValues) {
+        for (const key of requiredKeys) {
+          const label = REQUIRED_FIELD_LABELS[key] ?? key;
+          await page.getByLabel(label).fill(requiredValues[key] as string);
+        }
+        const submit = page.getByRole("button", {
+          name: tool.actionLabel ?? "Convert",
+        });
+        await expect(submit).toBeEnabled({ timeout: heavy ? 60_000 : 15_000 });
+        await submit.click();
+      }
+    }
+
+    const downloadLink = page.getByRole("link", { name: "Download" }).first();
+    await expect(downloadLink).toBeVisible({
+      timeout: heavy ? 150_000 : 20_000,
+    });
+
+    const downloadPromise = page.waitForEvent("download");
+    await downloadLink.click();
+    const download = await downloadPromise;
+    const downloadedPath = await download.path();
+    if (!downloadedPath) throw new Error("download produced no local path");
+    const bytes = new Uint8Array(readFileSync(downloadedPath));
+
+    const outFormat: FormatId =
+      tool.produces === "same" ? fixture.format : tool.produces;
+    expect(
+      hasMagic(bytes, outFormat),
+      `output of ${tool.slug} should sniff as ${outFormat}`,
+    ).toBe(true);
+  });
+}
+
+// Printed once at collection time — never a silent gap in coverage.
+// biome-ignore lint/suspicious/noConsole: this is the spec's own coverage summary.
+console.log(
+  `[all-tools.spec] ${CONVERTED.length} converted, ${RENDER_ONLY.length} render-only (app tools), ` +
+    `${NO_FIXTURE.length} NO_FIXTURE: ${NO_FIXTURE.join(", ")}`,
+);
