@@ -14,6 +14,7 @@ import {
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
 import { ENGINE_MANIFEST } from "../manifest";
+import { neverLarger } from "../shared/never-larger";
 import type {
   EngineAdapter,
   EngineInput,
@@ -692,23 +693,79 @@ async function runUnlock(task: EngineTask): Promise<EngineResult> {
   };
 }
 
-type CompressLevel = "smallest" | "balanced" | "best";
+type CompressMode = "lossless" | "balanced" | "strong";
 
 /**
- * Downscale ceiling (long side, px) and JPEG re-encode quality per level —
- * ADR-0008 rejected PDFium for this (see docs/adr/0008's 2026-09-26 update):
- * embedded raster images dominate PDF size, so re-encoding them through
- * OffscreenCanvas gets most of a dedicated PDF-compression engine's benefit
- * with no extra wasm download.
+ * Downscale ceiling (long side, px) and JPEG re-encode quality per non-
+ * lossless mode (ADR-0013) — ADR-0008 rejected PDFium for this (see docs/
+ * adr/0008's 2026-09-26 update): embedded raster images dominate PDF size,
+ * so re-encoding them through OffscreenCanvas gets most of a dedicated
+ * PDF-compression engine's benefit with no extra wasm download. `lossless`
+ * (the tool's default) never reaches this table — it does no image
+ * recompression at all, see `runCompress`.
  */
 const COMPRESS_PRESETS: Record<
-  CompressLevel,
+  Exclude<CompressMode, "lossless">,
   { maxDim: number; quality: number }
 > = {
-  smallest: { maxDim: 1000, quality: 0.5 },
+  strong: { maxDim: 1000, quality: 0.5 },
   balanced: { maxDim: 1600, quality: 0.7 },
-  best: { maxDim: 2400, quality: 0.85 },
 };
+
+/**
+ * Reachability sweep from the trailer's `/Root` and `/Info` entries
+ * (ADR-0013's `lossless` mode's "drop unreferenced objects"): `doc.save()`
+ * always serializes every object still in `doc.context`, reachable or not
+ * (`stripOrphanedEncryptDict` above works around the same gap for one
+ * specific orphan by name, since `PDFDocument.load` doesn't evict it either)
+ * — a document that's been edited (pages deleted, images swapped) can carry
+ * indirect objects nothing points to any more. This walks every object
+ * transitively reachable from the trailer and deletes everything else.
+ * Cycle-safe: a ref is marked reachable *before* its target is walked, so a
+ * page <-> Pages-tree parent/child cycle terminates instead of looping.
+ * Best-effort by design — `runCompress` treats a thrown error here as "don't
+ * prune," never as a reason to fail the whole compress.
+ */
+function pruneUnreferencedObjects(
+  mod: PdfLibModule,
+  doc: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>,
+): void {
+  type PDFRefLike = ReturnType<PdfLibModule["PDFRef"]["of"]>;
+
+  const reachable = new Set<string>();
+  const stack: PDFRefLike[] = [];
+
+  const walk = (value: unknown): void => {
+    if (value instanceof mod.PDFRef) {
+      stack.push(value);
+    } else if (value instanceof mod.PDFDict) {
+      for (const v of value.values()) walk(v);
+    } else if (value instanceof mod.PDFStream) {
+      for (const v of value.dict.values()) walk(v);
+    } else if (value instanceof mod.PDFArray) {
+      for (const v of value.asArray()) walk(v);
+    }
+    // Every other PDFObject kind (PDFNumber/PDFName/PDFString/PDFHexString/
+    // PDFBool/PDFNull) is a leaf — nothing further to walk.
+  };
+
+  const { Root, Info } = doc.context.trailerInfo;
+  walk(Root);
+  walk(Info);
+
+  while (stack.length > 0) {
+    const ref = stack.pop();
+    if (!ref) continue; // unreachable: guarded by `stack.length > 0`
+    const key = ref.toString();
+    if (reachable.has(key)) continue;
+    reachable.add(key);
+    walk(doc.context.lookup(ref));
+  }
+
+  for (const [ref] of doc.context.enumerateIndirectObjects()) {
+    if (!reachable.has(ref.toString())) doc.context.delete(ref);
+  }
+}
 
 type RawStream = ReturnType<PdfLibModule["PDFRawStream"]["of"]>;
 
@@ -869,14 +926,16 @@ async function compressImageStream(
 }
 
 /**
- * compress (pdf -> pdf): re-encodes every embedded raster image this adapter
- * knows how to decode (see `decodeImageStream`), then saves with
- * `useObjectStreams: true`. Never returns a file bigger than the input —
- * per-image (`compressImageStream`) and again here for the whole document,
- * since a text-only PDF (no images to shrink) can come back a few bytes
- * larger after a round trip through `PDFDocument.save`. An encrypted input
- * is `"unsupported"` via the shared `loadPdf` helper, same as merge/split/
- * rotate/extract — unlocking is its own tool.
+ * compress (pdf -> pdf, ADR-0013): `mode: "lossless"` (the tool's default)
+ * does no image recompression at all — only `pruneUnreferencedObjects` plus
+ * `useObjectStreams: true`, both purely structural. `"balanced"`/`"strong"`
+ * additionally re-encode every embedded raster image this adapter knows how
+ * to decode (see `decodeImageStream`). Every mode goes through the shared
+ * `neverLarger` (ADR-0013) against the exact original input bytes — a
+ * text-only PDF (no images to shrink, nothing to prune) can come back a few
+ * bytes larger after a round trip through `PDFDocument.save`, lossless mode
+ * included. An encrypted input is `"unsupported"` via the shared `loadPdf`
+ * helper, same as merge/split/rotate/extract — unlocking is its own tool.
  */
 async function runCompress(task: EngineTask): Promise<EngineResult> {
   const { input, options, signal, onProgress } = task;
@@ -888,33 +947,44 @@ async function runCompress(task: EngineTask): Promise<EngineResult> {
   const mod = await import("@cantoo/pdf-lib");
   const doc = await loadPdf(mod, bytes);
 
-  const level: CompressLevel =
-    options.level === "smallest" || options.level === "best"
-      ? options.level
-      : "balanced";
-  const preset = COMPRESS_PRESETS[level];
+  const mode: CompressMode =
+    options.mode === "balanced" || options.mode === "strong"
+      ? options.mode
+      : "lossless";
 
-  const images = findImageStreams(mod, doc);
-  if (images.length === 0) {
-    onProgress?.(1);
+  if (mode === "lossless") {
+    try {
+      pruneUnreferencedObjects(mod, doc);
+    } catch {
+      // Best-effort structural cleanup — an unusual object graph this walk
+      // can't handle just means less is pruned, not a failed compress.
+    }
+    onProgress?.(0.8);
   } else {
-    for (let i = 0; i < images.length; i++) {
-      signal.throwIfAborted();
-      const stream = images[i];
-      if (!stream) continue; // unreachable: guarded by `i < images.length`
-      await compressImageStream(mod, stream, preset);
-      onProgress?.((i + 1) / images.length);
+    const preset = COMPRESS_PRESETS[mode];
+    const images = findImageStreams(mod, doc);
+    if (images.length === 0) {
+      onProgress?.(0.8);
+    } else {
+      for (let i = 0; i < images.length; i++) {
+        signal.throwIfAborted();
+        const stream = images[i];
+        if (!stream) continue; // unreachable: guarded by `i < images.length`
+        await compressImageStream(mod, stream, preset);
+        onProgress?.(0.8 * ((i + 1) / images.length));
+      }
     }
   }
 
   const outBytes = await doc.save({ useObjectStreams: true });
-  if (outBytes.length >= bytes.byteLength) {
-    return { kind: "bytes", bytes, mime: FORMATS.pdf.mime };
-  }
+  onProgress?.(1);
+
+  const picked = neverLarger(bytes, outBytes.slice().buffer as ArrayBuffer);
   return {
     kind: "bytes",
-    bytes: outBytes.slice().buffer,
+    bytes: picked.bytes,
     mime: FORMATS.pdf.mime,
+    ...(picked.note ? { note: picked.note } : {}),
   };
 }
 

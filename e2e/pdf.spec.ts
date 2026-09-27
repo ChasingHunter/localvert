@@ -352,6 +352,14 @@ test.describe("compress-pdf", () => {
 
     const inputBytes = readFileSync(fixturePath("photos.pdf"));
 
+    // ADR-0013: the default mode is now "lossless" (no image recompression),
+    // which doesn't reliably shrink an image-heavy PDF by much — select
+    // "strong" explicitly so this test still exercises (and measures) real
+    // image recompression, same as before the mode selector existed.
+    await page
+      .getByLabel("Compression", { exact: true })
+      .selectOption({ label: "strong" });
+
     await page
       .locator('input[type="file"]')
       .setInputFiles(fixturePath("photos.pdf"));

@@ -1026,7 +1026,7 @@ describe("pdf-lib adapter", () => {
   });
 
   describe("run: compress", () => {
-    it("shrinks an image-heavy pdf by at least 40% at the medium level", async () => {
+    it("shrinks an image-heavy pdf by at least 40% in balanced mode", async () => {
       const instance = await adapter.load({
         baseUrl: "",
         capabilities: {} as never,
@@ -1037,7 +1037,7 @@ describe("pdf-lib adapter", () => {
         baseTask({
           op: "compress",
           input: bytesInput(doc),
-          options: { level: "balanced" },
+          options: { mode: "balanced" },
         }),
       );
       if (result.kind !== "bytes") throw new Error("expected bytes result");
@@ -1066,7 +1066,7 @@ describe("pdf-lib adapter", () => {
         baseTask({
           op: "compress",
           input: bytesInput(doc),
-          options: { level: "balanced" },
+          options: { mode: "balanced" },
         }),
       );
       if (result.kind !== "bytes") throw new Error("expected bytes result");
@@ -1074,6 +1074,84 @@ describe("pdf-lib adapter", () => {
 
       const reopened = await PDFDocument.load(result.bytes);
       expect(reopened.getPageCount()).toBe(1);
+    });
+
+    it("mode lossless (the default) never recompresses embedded images", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildImageHeavyPdf();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: bytesInput(doc),
+          options: { mode: "lossless" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+
+      // No downscaling to COMPRESS_PRESETS.balanced's 1600px ceiling — the
+      // fixture's own embedded images are bigger than that (see
+      // buildImageHeavyPdf), so a mode that recompressed them would shrink
+      // every width to <= 1600, exactly what "run: compress"'s balanced-mode
+      // test above asserts.
+      const widths = await imageWidths(result.bytes);
+      expect(widths.length).toBeGreaterThan(0);
+      expect(widths.some((w) => w > 1600)).toBe(true);
+
+      const reopened = await PDFDocument.load(result.bytes);
+      expect(reopened.getPageCount()).toBe(3);
+    });
+
+    it("mode lossless drops an unreferenced indirect object", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await PDFDocument.create();
+      doc.addPage([100, 100]);
+      // An indirect object nothing in the document points to.
+      doc.context.register(doc.context.obj({ Orphan: true }));
+      const bytes = (await doc.save()).slice().buffer as ArrayBuffer;
+
+      const before = await PDFDocument.load(bytes);
+      const objectCountBefore = [...before.context.enumerateIndirectObjects()]
+        .length;
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "bytes", bytes },
+          options: { mode: "lossless" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+
+      const reopened = await PDFDocument.load(result.bytes);
+      expect(reopened.getPageCount()).toBe(1);
+      const objectCountAfter = [...reopened.context.enumerateIndirectObjects()]
+        .length;
+      expect(objectCountAfter).toBeLessThan(objectCountBefore);
+    });
+
+    it("never makes a text-only pdf bigger in lossless mode either", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildTextOnlyPdf();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: bytesInput(doc),
+          options: { mode: "lossless" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(result.bytes.byteLength).toBeLessThanOrEqual(doc.byteLength);
     });
 
     it("throws EngineError('unsupported') for a password-protected PDF", async () => {
@@ -1088,7 +1166,7 @@ describe("pdf-lib adapter", () => {
           baseTask({
             op: "compress",
             input: bytesInput(encrypted),
-            options: { level: "balanced" },
+            options: { mode: "balanced" },
           }),
         ),
       ).rejects.toSatisfy(
@@ -1110,7 +1188,7 @@ describe("pdf-lib adapter", () => {
           baseTask({
             op: "compress",
             input: bytesInput(doc),
-            options: { level: "balanced" },
+            options: { mode: "balanced" },
             signal: controller.signal,
           }),
         ),

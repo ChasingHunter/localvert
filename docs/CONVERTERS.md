@@ -110,7 +110,7 @@ them, so that column reads their own **Arity** instead.
 | `add-page-numbers` | PDF | PDF | pdf-lib | one-to-one (batch) | Draws a page number label per selected page; six corner/edge positions, 4 formats, `startAt`; numbering counts every page even when only some are labeled |
 | `protect-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Adds a password, AES-256; printing/copying permissions |
 | `unlock-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Removes a password you already have |
-| `compress-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Re-encodes embedded images smaller (`level`: smallest/balanced/best); never bigger than the input |
+| `compress-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | `mode`: lossless (default, object streams + unreferenced-object pruning, no image recompression), balanced, or strong (re-encodes embedded images smaller); never bigger than the input |
 | `flatten-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Bakes form field values into the page, removes the fields; no-op on a PDF with no form |
 | `sanitize-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Strips metadata/JavaScript/attachments (default on), web links (default off) |
 | `pdf-to-jpg` | PDF | JPEG | pdfjs | one-to-many | One JPG per selected page (`pages`, `dpi`, `quality`); white background |
