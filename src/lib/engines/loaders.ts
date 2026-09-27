@@ -21,6 +21,7 @@ export const ENGINE_LOADERS = {
   "jsquash-resize": () => import("./jsquash-resize/adapter"),
   "jsquash-webp": () => import("./jsquash-webp/adapter"),
   libraw: () => import("./libraw/adapter"),
+  libreoffice: () => import("./libreoffice/adapter"),
   mediabunny: () => import("./mediabunny/adapter"),
   "pdf-lib": () => import("./pdf-lib/adapter"),
   pdfjs: () => import("./pdfjs/adapter"),

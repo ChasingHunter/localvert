@@ -12,6 +12,7 @@ export type EngineId =
   | "jsquash-resize"
   | "jsquash-webp"
   | "libraw"
+  | "libreoffice"
   | "mediabunny"
   | "pdf-lib"
   | "pdfjs"

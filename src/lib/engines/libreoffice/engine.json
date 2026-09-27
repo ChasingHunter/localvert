@@ -1,0 +1,31 @@
+{
+  "id": "libreoffice",
+  "license": "MPL-2.0",
+  "location": "r2",
+  "needsIsolation": true,
+  "heavy": true,
+  "consent": true,
+  "package": "@bentopdf/libreoffice-wasm",
+  "files": [
+    {
+      "from": "assets/soffice.wasm.gz",
+      "to": "soffice.wasm.gz"
+    },
+    {
+      "from": "assets/soffice.data.gz",
+      "to": "soffice.data.gz"
+    },
+    {
+      "from": "assets/soffice.js",
+      "to": "soffice.js"
+    },
+    {
+      "from": "assets/soffice.worker.js",
+      "to": "soffice.worker.js"
+    },
+    {
+      "from": "assets/browser.worker.global.js",
+      "to": "browser.worker.global.js"
+    }
+  ]
+}
