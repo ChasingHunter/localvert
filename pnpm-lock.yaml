@@ -104,6 +104,9 @@ importers:
       fflate:
         specifier: ~0.8.3
         version: 0.8.3
+      gifenc:
+        specifier: 1.0.3
+        version: 1.0.3
       heic-to:
         specifier: ^1.5.2
         version: 1.5.2
@@ -2409,6 +2412,9 @@ packages:
   get-nonce@1.0.1:
     resolution: {integrity: sha512-FJhYRoDaiatfEkUK8HKlicmu/3SGFD51q3itKDGoSTysQJBnfOcxU5GxnhE1E6soB76MbT0MBtnKJuXyAx+96Q==}
     engines: {node: '>=6'}
+
+  gifenc@1.0.3:
+    resolution: {integrity: sha512-xdr6AdrfGBcfzncONUOlXMBuc5wJDtOueE3c5rdG0oNgtINLD+f2iFZltrBRZYzACRbKr+mSVU/x98zv2u3jmw==}
 
   glob@13.0.6:
     resolution: {integrity: sha512-Wjlyrolmm8uDpm/ogGyXZXb1Z+Ca2B8NbJwqBVg0axK9GbBeoS7yGV6vjXnYdGm6X53iehEuxxbyiKp8QmN4Vw==}
@@ -5079,6 +5085,8 @@ snapshots:
     optional: true
 
   get-nonce@1.0.1: {}
+
+  gifenc@1.0.3: {}
 
   glob@13.0.6:
     dependencies:
