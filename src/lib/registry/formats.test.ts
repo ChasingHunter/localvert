@@ -31,11 +31,14 @@ function headerFor(patterns: readonly MagicPattern[]): Uint8Array<ArrayBuffer> {
  * that format's comment in formats.ts — telling them apart needs bytes
  * this offset+exact-match scheme can't locate) and is refined by extension
  * instead. Its bytes therefore sniff as `ogg`, the earlier-declared format,
- * not itself — this map is the generic test's escape hatch for that one
- * intentional exception, the same shape as `OUTPUT_ONLY` further down.
+ * not itself. `wma` is the same shape against `wmv` (both ASF containers,
+ * same 16-byte GUID) — this map is the generic test's escape hatch for
+ * these intentional exceptions, the same shape as `OUTPUT_ONLY` further
+ * down.
  */
 const RESOLVES_AS: Partial<Record<FormatId, FormatId>> = {
   opus: "ogg",
+  wma: "wmv",
 };
 
 /**
@@ -171,6 +174,20 @@ describe("refineFormat", () => {
   it("leaves an ogg sniff alone for a plain .ogg/.oga name", () => {
     expect(refineFormat("ogg", "clip.ogg")).toBe("ogg");
     expect(refineFormat("ogg", "clip.oga")).toBe("ogg");
+  });
+
+  it("upgrades a wmv sniff to wma for a .wma filename", () => {
+    // wma is byte-for-byte a wmv file per this scheme's magic (both share
+    // the ASF header GUID), so this is exactly what sniffFormat itself
+    // returns for one.
+    expect(sniffFormat(headerFor(FORMATS.wma.magic[0]))).toBe("wmv");
+    expect(refineFormat("wmv", "song.wma")).toBe("wma");
+  });
+
+  it("leaves a wmv sniff alone for a plain .wmv name or an unrelated one", () => {
+    expect(refineFormat("wmv", "clip.wmv")).toBe("wmv");
+    expect(refineFormat("wmv", "clip.mp4")).toBe("wmv");
+    expect(refineFormat("wmv", "noext")).toBe("wmv");
   });
 
   it("upgrades a zip sniff to xlsx for an .xlsx filename", () => {

@@ -110,14 +110,26 @@ const LEGACY_EXT: Record<string, string> = {
   avi: "avi",
   wmv: "wmv",
   flv: "flv",
+  wma: "wma",
 };
 
+/**
+ * Every legacy container here transcodes to mp4 (video), except `wma` —
+ * WMA is audio-only (no video track to remux into mp4), so it's the one
+ * pair in this adapter that goes to mp3 instead. Same reasoning as
+ * `wmv-to-mp4`'s own doc comment for why this needs ffmpeg at all: WMA's
+ * codec (wmav1/wmav2) isn't one WebCodecs decodes. Confirmed ffmpeg-core's
+ * build includes both a wmav1/wmav2 decoder and a libmp3lame encoder by
+ * grepping the installed `@ffmpeg/core` wasm for those strings.
+ */
 function supports(
   op: Operation,
   input: StepFormat,
   output: StepFormat,
 ): boolean {
-  return op === "transcode" && input in LEGACY_EXT && output === "mp4";
+  if (op !== "transcode" || !(input in LEGACY_EXT)) return false;
+  if (input === "wma") return output === "mp3";
+  return output === "mp4";
 }
 
 /** Reads `task.input` down to the bytes ffmpeg's MEMFS wants. */
@@ -185,9 +197,10 @@ async function run(
 
 /**
  * transcode: a legacy container (avi/wmv/flv) -> mp4, re-encoded to
- * AVC/AAC — these containers carry codecs (mpeg4/wmv/flv1, mp3/wma/pcm)
- * WebCodecs (mediabunny's path) doesn't decode, which is why this tool
- * reaches ffmpeg at all rather than the permissive path (ADR-0002).
+ * AVC/AAC, or `wma` -> mp3, audio-only — these containers carry codecs
+ * (mpeg4/wmv/flv1/wma, mp3/wma/pcm) WebCodecs (mediabunny's path) doesn't
+ * decode, which is why this tool reaches ffmpeg at all rather than the
+ * permissive path (ADR-0002).
  */
 async function runTranscode(
   task: EngineTask,
@@ -214,8 +227,11 @@ async function runTranscode(
       { engine: metadata.id },
     );
   }
+  // wma is the one legacy container this adapter transcodes to something
+  // other than mp4 — see `supports`'s own doc comment.
+  const audioOnly = inputFormat === "wma";
   const inPath = `/in.${ext}`;
-  const outPath = "/out.mp4";
+  const outPath = audioOnly ? "/out.mp3" : "/out.mp4";
 
   const logLines: string[] = [];
   module.setLogger(({ message }) => {
@@ -231,25 +247,36 @@ async function runTranscode(
   module.FS.writeFile(inPath, bytes);
   try {
     signal.throwIfAborted();
-    const code = module.exec(
-      "-i",
-      inPath,
-      "-c:v",
-      "libx264",
-      "-preset",
-      "veryfast",
-      "-crf",
-      "23",
-      "-pix_fmt",
-      "yuv420p",
-      "-c:a",
-      "aac",
-      "-b:a",
-      "128k",
-      "-movflags",
-      "+faststart",
-      outPath,
-    );
+    const code = audioOnly
+      ? module.exec(
+          "-i",
+          inPath,
+          "-vn",
+          "-c:a",
+          "libmp3lame",
+          "-b:a",
+          "192k",
+          outPath,
+        )
+      : module.exec(
+          "-i",
+          inPath,
+          "-c:v",
+          "libx264",
+          "-preset",
+          "veryfast",
+          "-crf",
+          "23",
+          "-pix_fmt",
+          "yuv420p",
+          "-c:a",
+          "aac",
+          "-b:a",
+          "128k",
+          "-movflags",
+          "+faststart",
+          outPath,
+        );
     if (code !== 0) {
       throw new EngineError(
         "encode-failed",
@@ -265,7 +292,11 @@ async function runTranscode(
     // `Uint8Array` is a view over MEMFS-owned memory that `unlink`/the next
     // `exec` can invalidate or overwrite.
     const outBytes = out.slice().buffer as ArrayBuffer;
-    return { kind: "bytes", bytes: outBytes, mime: "video/mp4" };
+    return {
+      kind: "bytes",
+      bytes: outBytes,
+      mime: audioOnly ? "audio/mpeg" : "video/mp4",
+    };
   } finally {
     // Best-effort cleanup — a failed exec may not have produced outPath.
     try {

@@ -319,9 +319,11 @@ export const FORMATS = {
     category: "video",
     // ASF header GUID (Microsoft's Advanced Systems Format container, which
     // WMV/WMA are both built on) — a fixed 16-byte GUID at offset 0, the
-    // same signature for every ASF file. wmv is the only ASF format any tool
-    // here accepts, so this format is treated as "wmv" outright rather than
-    // sniffed as a generic "asf" and refined by extension.
+    // same signature for every ASF file. wmv is declared first, so
+    // `sniffFormat` resolves any ASF file to "wmv"; a real .wma file is
+    // upgraded from there by extension — see `wma` below and its own
+    // `refineFormat` branch (same extension-assisted pattern as
+    // webm/mkv and ogg/opus elsewhere in this table).
     magic: [
       [
         {
@@ -439,6 +441,30 @@ export const FORMATS = {
     magic: [
       [{ offset: 0, bytes: [0xff, 0xf1] }],
       [{ offset: 0, bytes: [0xff, 0xf9] }],
+    ],
+  },
+  wma: {
+    label: "WMA",
+    ext: ["wma"],
+    mime: "audio/x-ms-wma",
+    category: "audio",
+    // Same ASF header GUID as `wmv` above — WMA and WMV are both built on
+    // Microsoft's Advanced Systems Format container and share this exact
+    // 16-byte signature. Declared after `wmv` so a real ASF file's raw sniff
+    // always resolves to `wmv` first; `refineFormat` is what actually
+    // promotes it to `wma` for a file named `*.wma` (and, symmetrically,
+    // leaves an ASF file named `*.wmv` — or with an unrecognized extension —
+    // as `wmv`, today's existing behavior).
+    magic: [
+      [
+        {
+          offset: 0,
+          bytes: [
+            0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf, 0x11, 0xa6, 0xd9, 0x00,
+            0xaa, 0x00, 0x62, 0xce, 0x6c,
+          ],
+        },
+      ],
     ],
   },
   zip: {
@@ -763,6 +789,13 @@ export function refineFormat(
   if (sniffed === "webm") {
     return (FORMATS.mkv.ext as readonly string[]).includes(ext)
       ? "mkv"
+      : sniffed;
+  }
+  // See the `wmv`/`wma` format comments above: both share the ASF header
+  // GUID, so a real .wma file always sniffs as `wmv` first.
+  if (sniffed === "wmv") {
+    return (FORMATS.wma.ext as readonly string[]).includes(ext)
+      ? "wma"
       : sniffed;
   }
   // See the `ogg`/`opus` format comments above: both share the "OggS"

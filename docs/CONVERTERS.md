@@ -142,6 +142,7 @@ apply to any of them, so that column reads their own **Arity** instead.
 | `opus-to-mp3` | Opus (Ogg container) | MP3 | mediabunny | Yes | Bitrate/sample rate/channels |
 | `m4a-to-wav` | M4A | WAV | mediabunny | Yes | Sample rate/channels only — PCM has no bitrate knob |
 | `flac-to-wav` | FLAC | WAV | mediabunny | Yes | Sample rate/channels only — PCM has no bitrate knob |
+| `wma-to-mp3` | WMA | MP3 | ffmpeg | Yes | Consent-gated GPL engine (ADR-0002), same route as `wmv-to-mp4`; decodes wmav1/wmav2, encodes with libmp3lame |
 
 ## Document
 

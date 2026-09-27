@@ -18,6 +18,7 @@ export const TOOL_LOADERS = {
   "wav-to-flac": () => import("./audio/wav-to-flac"),
   "wav-to-mp3": () => import("./audio/wav-to-mp3"),
   "webm-to-mp3": () => import("./audio/webm-to-mp3"),
+  "wma-to-mp3": () => import("./audio/wma-to-mp3"),
   "csv-to-json": () => import("./data/csv-to-json"),
   "csv-to-xlsx": () => import("./data/csv-to-xlsx"),
   "json-to-csv": () => import("./data/json-to-csv"),

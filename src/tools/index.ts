@@ -16,6 +16,7 @@ import opusToMp3 from "@/tools/audio/opus-to-mp3";
 import wavToFlac from "@/tools/audio/wav-to-flac";
 import wavToMp3 from "@/tools/audio/wav-to-mp3";
 import webmToMp3 from "@/tools/audio/webm-to-mp3";
+import wmaToMp3 from "@/tools/audio/wma-to-mp3";
 import csvToJson from "@/tools/data/csv-to-json";
 import csvToXlsx from "@/tools/data/csv-to-xlsx";
 import jsonToCsv from "@/tools/data/json-to-csv";
@@ -118,6 +119,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   wavToFlac,
   wavToMp3,
   webmToMp3,
+  wmaToMp3,
   csvToJson,
   csvToXlsx,
   jsonToCsv,
