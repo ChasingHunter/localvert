@@ -27,3 +27,18 @@ export function categoriesWithTools(
 ): Category[] {
   return categories.filter((category) => byCategory.has(category));
 }
+
+/**
+ * A tool's title, cut down to its lead clause — for the home page's
+ * category link lists (ADR-0016's design review): a handful of titles carry
+ * an SEO subtitle after an em dash or colon ("PDF Editor — annotate,
+ * highlight, draw and add text to PDFs, privately in your browser",
+ * "PSD to PNG — flatten Photoshop files without Photoshop"), which reads
+ * fine as a page `<title>` but wraps a link list. Titles without one pass
+ * through unchanged — this never renames a tool, only shortens its display
+ * in this one spot.
+ */
+export function shortToolLabel(title: string): string {
+  const cut = title.search(/ — |: /);
+  return cut === -1 ? title : title.slice(0, cut).trim();
+}

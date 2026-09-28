@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDownIcon } from "lucide-react";
-import { type CSSProperties, useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   type ComboboxAction,
   type ComboboxOption,
@@ -270,78 +270,87 @@ export function Combobox({
       {pill ? (
         <div
           className={classes(
-            "relative flex w-full items-center rounded-full transition-colors sm:inline-flex sm:w-auto",
+            // `has-[:focus-visible]` puts the focus ring on the pill's own
+            // outline (chevron included) instead of just the input inside
+            // it — DOM focus stays on the input (APG combobox contract),
+            // this only follows it visually.
+            "relative flex w-full items-center rounded-full transition-colors has-focus-visible:ring-2 has-focus-visible:ring-accent has-focus-visible:ring-offset-2 has-focus-visible:ring-offset-canvas sm:inline-flex sm:w-auto",
             pillWrapperClasses(value !== null, disabled, tintClassName),
           )}
         >
-          <input
-            ref={inputRef}
-            id={id}
-            role="combobox"
-            type="text"
-            autoComplete="off"
-            aria-autocomplete="list"
-            aria-expanded={state.open}
-            aria-controls={listId}
-            aria-activedescendant={activeDescendant}
-            aria-describedby={describedBy}
-            placeholder={placeholder}
-            value={state.query}
-            disabled={disabled}
-            onChange={(e) => dispatch({ type: "input", query: e.target.value })}
-            onBlur={() => {
-              if (suppressBlurRef.current) return;
-              dispatch({ type: "blur" });
-            }}
-            onKeyDown={(e) => {
-              switch (e.key) {
-                case "ArrowDown":
-                  e.preventDefault();
-                  dispatch({ type: "arrowDown" });
-                  break;
-                case "ArrowUp":
-                  e.preventDefault();
-                  dispatch({ type: "arrowUp" });
-                  break;
-                case "Home":
-                  if (state.open) {
-                    e.preventDefault();
-                    dispatch({ type: "home" });
-                  }
-                  break;
-                case "End":
-                  if (state.open) {
-                    e.preventDefault();
-                    dispatch({ type: "end" });
-                  }
-                  break;
-                case "Enter":
-                  if (state.open) e.preventDefault();
-                  dispatch({ type: "enter" });
-                  break;
-                case "Escape":
-                  if (state.open || state.query) e.preventDefault();
-                  dispatch({ type: "escape" });
-                  break;
-                case "Tab":
-                  // Never preventDefault: Tab must still move focus on.
-                  dispatch({ type: "tab" });
-                  break;
-                default:
-                  break;
+          {/* `.pill-sizer` (globals.css): a CSS-only auto-growing input —
+           * `data-value` drives an invisible `::after` mirror that sets the
+           * grid column's width, so the input hugs its content (min 4ch)
+           * instead of sitting at a fixed size. `flex-1` fills the pill at
+           * mobile's full-width stacked layout; `sm:flex-none` lets it
+           * shrink back to that hugged width once the sentence goes
+           * inline. */}
+          <div
+            className="pill-sizer min-w-0 flex-1 sm:flex-none"
+            data-value={state.query || placeholder || ""}
+          >
+            <input
+              ref={inputRef}
+              id={id}
+              role="combobox"
+              type="text"
+              autoComplete="off"
+              aria-autocomplete="list"
+              aria-expanded={state.open}
+              aria-controls={listId}
+              aria-activedescendant={activeDescendant}
+              aria-describedby={describedBy}
+              placeholder={placeholder}
+              value={state.query}
+              disabled={disabled}
+              onChange={(e) =>
+                dispatch({ type: "input", query: e.target.value })
               }
-            }}
-            // Width grows with the value (min ~5ch), via a CSS var only the
-            // `sm:w-[var(--pill-ch)]` utility below reads — at mobile the
-            // pill stays `flex-1` (full width, ADR-0016's stacked hero) and
-            // this value simply goes unused.
-            style={
-              {
-                "--pill-ch": `${Math.max((state.query || placeholder || "").length, 5) + 2}ch`,
-              } as CSSProperties
-            }
-            className="min-w-0 flex-1 rounded-full bg-transparent px-3 py-1 text-ink outline-none [font:inherit] placeholder:text-ink-muted/70 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed sm:flex-none sm:w-(--pill-ch)"
-          />
+              onBlur={() => {
+                if (suppressBlurRef.current) return;
+                dispatch({ type: "blur" });
+              }}
+              onKeyDown={(e) => {
+                switch (e.key) {
+                  case "ArrowDown":
+                    e.preventDefault();
+                    dispatch({ type: "arrowDown" });
+                    break;
+                  case "ArrowUp":
+                    e.preventDefault();
+                    dispatch({ type: "arrowUp" });
+                    break;
+                  case "Home":
+                    if (state.open) {
+                      e.preventDefault();
+                      dispatch({ type: "home" });
+                    }
+                    break;
+                  case "End":
+                    if (state.open) {
+                      e.preventDefault();
+                      dispatch({ type: "end" });
+                    }
+                    break;
+                  case "Enter":
+                    if (state.open) e.preventDefault();
+                    dispatch({ type: "enter" });
+                    break;
+                  case "Escape":
+                    if (state.open || state.query) e.preventDefault();
+                    dispatch({ type: "escape" });
+                    break;
+                  case "Tab":
+                    // Never preventDefault: Tab must still move focus on.
+                    dispatch({ type: "tab" });
+                    break;
+                  default:
+                    break;
+                }
+              }}
+              className="rounded-full bg-transparent px-3 py-1 text-ink outline-none [font:inherit] placeholder:text-ink-muted/70 disabled:cursor-not-allowed"
+            />
+          </div>
           <button
             type="button"
             tabIndex={-1}
@@ -457,7 +466,7 @@ export function Combobox({
           <div
             role="status"
             className={classes(
-              "absolute top-full z-10 mt-1 w-full rounded-lg border border-border bg-surface p-3 font-sans text-sm text-ink-muted shadow-md",
+              "absolute top-full z-10 mt-1 w-full rounded-lg border border-border bg-surface p-3 font-sans font-normal text-sm text-ink-muted shadow-md",
               pill && "min-w-64",
             )}
           >
@@ -469,7 +478,11 @@ export function Combobox({
             role="listbox"
             aria-label={label}
             className={classes(
-              "absolute top-full z-10 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-border bg-surface py-1 font-sans shadow-md",
+              // `font-normal` undoes the hero sentence's inherited
+              // `font-semibold` (font-weight, unlike font-family, inherits
+              // through `font-sans` too) — group labels/options set their
+              // own weight where they want one heavier than this.
+              "absolute top-full z-10 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-border bg-surface py-1 font-sans font-normal shadow-md",
               pill && "min-w-64",
             )}
           >

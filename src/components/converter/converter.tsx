@@ -332,7 +332,7 @@ export function Converter({ category, variant = "panel" }: ConverterProps) {
               type="button"
               onClick={handleGo}
               disabled={!canGo}
-              className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-accent px-6 py-2 font-sans text-base font-medium text-canvas outline-none transition-colors hover:bg-accent/90 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none sm:w-auto"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-accent px-6 py-2 font-sans text-base font-medium text-canvas shadow-sm outline-none transition-colors hover:bg-accent/90 hover:shadow focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-40 disabled:shadow-none motion-reduce:transition-none sm:w-auto"
             >
               Convert
             </button>

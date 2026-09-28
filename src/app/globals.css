@@ -175,6 +175,41 @@ body {
 }
 
 /*
+ * Auto-growing pill input (`combobox.tsx`'s hero `pill` variant, ADR-0016's
+ * design review: pills must hug their content, not sit at a fixed width).
+ * The classic CSS-only "auto-growing input" trick — no JS measurement, no
+ * ResizeObserver: `.pill-sizer`'s own `::after` mirrors the input's current
+ * value/placeholder via the `data-value` attribute the component keeps in
+ * sync, and CSS Grid stacks the (invisible) mirror and the real input in the
+ * same cell, so the grid track's auto width follows the mirror's intrinsic
+ * content size. The input's own `width: auto` then just takes whatever width
+ * that grid cell resolved to — the two must share the same font and padding
+ * for the input to land exactly on the mirror's size, hence the literal
+ * padding value here matching the input's `px-3 py-1` Tailwind classes.
+ */
+.pill-sizer {
+  display: inline-grid;
+  min-width: 4ch;
+}
+
+.pill-sizer::after,
+.pill-sizer > input {
+  grid-area: 1 / 1;
+  font: inherit;
+}
+
+.pill-sizer::after {
+  content: attr(data-value) " ";
+  visibility: hidden;
+  white-space: pre;
+  padding: 0.25rem 0.75rem;
+}
+
+.pill-sizer > input {
+  width: auto;
+}
+
+/*
  * E6b -- PDF editor print. `handlePrint` (pdf-editor-app.tsx) appends
  * #pdf-editor-print-sheets directly to <body> with one <img> per rendered
  * page, then calls window.print(). Hidden outside print so it never shows

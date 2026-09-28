@@ -2,7 +2,7 @@ import Link from "next/link";
 import { CATEGORY_TINT_BG } from "@/components/category-tint";
 import { Converter } from "@/components/converter/converter";
 import { PageShell } from "@/components/page-shell";
-import { groupToolsByCategory } from "@/components/tool-groups";
+import { groupToolsByCategory, shortToolLabel } from "@/components/tool-groups";
 import { CATEGORIES, CATEGORY_META } from "@/lib/registry";
 import { TOOLS } from "@/tools";
 
@@ -73,7 +73,7 @@ export default function HomePage() {
                       href={`/tools/${tool.slug}`}
                       className="rounded-sm text-sm text-ink-muted outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
                     >
-                      {tool.title}
+                      {shortToolLabel(tool.title)}
                     </Link>
                   </li>
                 ))}

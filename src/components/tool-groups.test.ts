@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ToolDefinition } from "@/lib/registry/types";
-import { categoriesWithTools, groupToolsByCategory } from "./tool-groups";
+import {
+  categoriesWithTools,
+  groupToolsByCategory,
+  shortToolLabel,
+} from "./tool-groups";
 
 /** Minimal fixtures — only the fields `groupToolsByCategory` reads. */
 function tool(
@@ -46,5 +50,23 @@ describe("categoriesWithTools", () => {
 
   it("returns an empty array when nothing has tools", () => {
     expect(categoriesWithTools(["image", "video"], new Map())).toEqual([]);
+  });
+});
+
+describe("shortToolLabel", () => {
+  it("cuts an em-dash subtitle", () => {
+    expect(
+      shortToolLabel("PSD to PNG — flatten Photoshop files without Photoshop"),
+    ).toBe("PSD to PNG");
+  });
+
+  it("cuts a colon subtitle", () => {
+    expect(shortToolLabel("Merge PDF: combine multiple files")).toBe(
+      "Merge PDF",
+    );
+  });
+
+  it("passes a plain title through unchanged", () => {
+    expect(shortToolLabel("JPG to PNG")).toBe("JPG to PNG");
   });
 });
