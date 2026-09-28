@@ -233,7 +233,11 @@ function FieldControl({
           onValueChange={onChange}
           disabled={disabled}
         >
-          <SelectTrigger id={id} aria-describedby={describedBy}>
+          <SelectTrigger
+            id={id}
+            className="rounded-lg"
+            aria-describedby={describedBy}
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -265,6 +269,7 @@ function FieldControl({
         <Input
           id={id}
           type="number"
+          className="rounded-lg"
           min={Number.isFinite(field.min) ? field.min : undefined}
           max={Number.isFinite(field.max) ? field.max : undefined}
           step={field.step}
@@ -281,6 +286,7 @@ function FieldControl({
         <Input
           id={id}
           type="text"
+          className="rounded-lg"
           value={typeof value === "string" ? value : ""}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
@@ -292,6 +298,7 @@ function FieldControl({
         <Input
           id={id}
           type="password"
+          className="rounded-lg"
           value={typeof value === "string" ? value : ""}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
