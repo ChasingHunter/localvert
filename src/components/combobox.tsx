@@ -61,6 +61,10 @@ export interface ComboboxProps {
   onChange: (id: string) => void;
   emptyText: string;
   describedBy?: string;
+  /** ADR-0015: the To picker is disabled until From is set. A disabled
+   * input can't gain focus or fire key/change events, so the popup and
+   * reducer dispatches never engage — no extra guarding needed here. */
+  disabled?: boolean;
   /** Fires whenever the number of visible options changes — the page's own
    * live region (ADR-0015) uses this to announce "N results", so this
    * component never announces a count itself. */
@@ -100,6 +104,7 @@ export function Combobox({
   onChange,
   emptyText,
   describedBy,
+  disabled = false,
   onResultsCountChange,
 }: ComboboxProps) {
   const listId = `${id}-listbox`;
@@ -218,6 +223,7 @@ export function Combobox({
           aria-describedby={describedBy}
           placeholder={placeholder}
           value={state.query}
+          disabled={disabled}
           onChange={(e) => dispatch({ type: "input", query: e.target.value })}
           onBlur={() => {
             if (suppressBlurRef.current) return;
@@ -261,11 +267,12 @@ export function Combobox({
                 break;
             }
           }}
-          className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-9 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+          className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-9 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:opacity-50"
         />
         <button
           type="button"
           tabIndex={-1}
+          disabled={disabled}
           aria-label="Show options"
           onMouseDown={(e) => {
             // Keep DOM focus on the input; toggling must not steal it.
@@ -275,7 +282,7 @@ export function Combobox({
             inputRef.current?.focus();
             dispatch(state.open ? { type: "blur" } : { type: "arrowDown" });
           }}
-          className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-ink-muted hover:text-ink"
+          className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-ink-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
         >
           <ChevronDownIcon
             aria-hidden="true"
