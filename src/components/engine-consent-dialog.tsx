@@ -50,6 +50,7 @@ export function EngineConsentDialog({
   onCancel,
 }: EngineConsentDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
+  const downloadRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
 
   useEffect(() => {
@@ -57,6 +58,12 @@ export function EngineConsentDialog({
     if (!dialog) return;
     if (open && !dialog.open) {
       dialog.showModal();
+      // `showModal()` alone focuses the dialog's first focusable element —
+      // here, the "Upstream source" link — not the primary action. A person
+      // who just hits Enter (the natural first move on a dialog that just
+      // grabbed focus) would follow an external link instead of proceeding,
+      // so the primary button gets focus explicitly once the dialog is open.
+      downloadRef.current?.focus();
     } else if (!open && dialog.open) {
       dialog.close();
     }
@@ -111,7 +118,12 @@ export function EngineConsentDialog({
         >
           Cancel
         </Button>
-        <Button type="button" className="rounded-full" onClick={onDownload}>
+        <Button
+          ref={downloadRef}
+          type="button"
+          className="rounded-full"
+          onClick={onDownload}
+        >
           Download and convert
         </Button>
       </div>

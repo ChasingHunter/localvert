@@ -58,7 +58,7 @@ export default async function CategoryPage({ params }: PageProps) {
 
   return (
     <PageShell>
-      <div className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-16 lg:px-12">
+      <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-16 lg:px-12">
         <div className="flex flex-col gap-2">
           <h1 className="flex items-center gap-3 font-display text-3xl font-medium text-ink sm:text-4xl">
             <span

@@ -125,6 +125,13 @@ test.describe("ffmpeg download consent (ADR-0002 rule 4)", () => {
       .setInputFiles(fixturePath("sample.avi"));
     await expect(dialog).toBeVisible();
 
+    // ADR-0016: initial focus lands on the primary action, not the first
+    // focusable element in DOM order (the "Upstream source" link) — hitting
+    // Enter right after the dialog opens must download, not follow a link.
+    await expect(
+      dialog.getByRole("button", { name: "Download and convert" }),
+    ).toBeFocused();
+
     // Download and convert: grants consent, fetches the engine from R2, and
     // runs the actual transcode.
     await dialog.getByRole("button", { name: "Download and convert" }).click();
