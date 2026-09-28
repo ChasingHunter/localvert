@@ -2,7 +2,6 @@
 
 import { ChevronDownIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
 import {
   type ComboboxAction,
   type ComboboxOption,
@@ -87,6 +86,16 @@ function findOptionSpec(
     if (found) return found;
   }
   return undefined;
+}
+
+/**
+ * Joins class names, skipping falsy ones. Deliberately not the shared
+ * `cn()` (clsx + tailwind-merge): this component sits on the home page's
+ * first load, where tailwind-merge alone cost ~8.5 KB gz, and none of its
+ * class lists need conflict merging — each conditional picks one side.
+ */
+function classes(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(" ");
 }
 
 function optionDomId(comboboxId: string, optionId: string): string {
@@ -286,7 +295,7 @@ export function Combobox({
         >
           <ChevronDownIcon
             aria-hidden="true"
-            className={cn(
+            className={classes(
               "size-4 transition-transform motion-reduce:transition-none",
               state.open && "rotate-180",
             )}
@@ -358,10 +367,12 @@ export function Combobox({
                             dispatch({ type: "optionClick", id: option.id });
                             inputRef.current?.focus();
                           }}
-                          className={cn(
-                            "flex min-h-11 cursor-pointer flex-col justify-center gap-0.5 px-3 py-1.5 text-sm text-ink",
+                          className={classes(
+                            "flex min-h-11 flex-col justify-center gap-0.5 px-3 py-1.5 text-sm text-ink",
                             isActive && "bg-canvas",
-                            option.disabled && "cursor-not-allowed opacity-50",
+                            option.disabled
+                              ? "cursor-not-allowed opacity-50"
+                              : "cursor-pointer",
                           )}
                         >
                           <span>{option.label}</span>
