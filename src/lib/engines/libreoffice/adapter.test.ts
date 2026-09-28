@@ -267,6 +267,70 @@ describe("libreoffice adapter message protocol (fake worker)", () => {
     expect(FakeWorker.instances.length).toBe(1);
   });
 
+  it("terminates a boot that never readies and retries once", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.stubGlobal("navigator", {});
+      vi.stubGlobal("Worker", FakeWorker as unknown as typeof Worker);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => gzipResponse("fake-wasm-or-data-bytes")),
+      );
+
+      const instance = await libreoffice.load(ctx);
+      const job = instance.run(makeTask());
+
+      await waitFor(() => (FakeWorker.instances[0]?.posted.length ?? 0) === 1);
+      const hung = FakeWorker.instances[0] as FakeWorker;
+      // The first boot never answers: past the boot timeout it must be
+      // terminated and a fresh nested worker spawned.
+      await vi.advanceTimersByTimeAsync(60_000);
+      await waitFor(() => FakeWorker.instances.length === 2);
+      expect(hung.terminated).toBe(true);
+
+      const retry = FakeWorker.instances[1] as FakeWorker;
+      await waitFor(() => retry.posted.length === 1);
+      retry.emitMessage({ type: "ready", id: "init" });
+      await waitFor(() => retry.posted.length === 2);
+      const convert = retry.posted[1] as { id: string };
+      retry.emitMessage({
+        type: "result",
+        id: convert.id,
+        data: new Uint8Array([0x25]),
+      });
+      expect((await job).kind).toBe("bytes");
+      expect(retry.terminated).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gives up with a clear error after the retry also hangs", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.stubGlobal("navigator", {});
+      vi.stubGlobal("Worker", FakeWorker as unknown as typeof Worker);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => gzipResponse("fake-wasm-or-data-bytes")),
+      );
+
+      const instance = await libreoffice.load(ctx);
+      const job = instance.run(makeTask());
+      const rejection = expect(job).rejects.toThrow(/did not start within 60s/);
+
+      await waitFor(() => (FakeWorker.instances[0]?.posted.length ?? 0) === 1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      await waitFor(() => (FakeWorker.instances[1]?.posted.length ?? 0) === 1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      await rejection;
+      expect(FakeWorker.instances.length).toBe(2);
+      expect(FakeWorker.instances.every((w) => w.terminated)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("rejects with an encode-failed EngineError on a worker error message", async () => {
     vi.stubGlobal("navigator", {});
     vi.stubGlobal("Worker", FakeWorker as unknown as typeof Worker);

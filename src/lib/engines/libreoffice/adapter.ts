@@ -92,10 +92,21 @@ function supports(
   return op === "transcode" && input in INPUT_EXT && output === "pdf";
 }
 
-/** How long `init` may take before this adapter gives up — LibreOffice's own
- * boot (decompressing ~74 MB, then Emscripten instantiation) is slow, not
- * hung, well past any other engine's load time here. */
-const INIT_TIMEOUT_MS = 180_000;
+/**
+ * How long one boot attempt of the nested worker may take — measured from
+ * posting `init`, after both assets are already downloaded and decompressed
+ * (so it never counts network time). A healthy boot takes ~5-8 s on a
+ * mid-range laptop.
+ *
+ * Boots occasionally hang for good, never reaching LibreOfficeKit init: seen
+ * 2026-09-28 only when two instances boot at the same moment (two tabs, or
+ * parallel e2e workers), roughly 1 in 4 concurrent pairs with the 8-thread
+ * pool, 1 in 12 with 12 threads — root cause not found. A hung boot is
+ * terminated and retried once (`BOOT_ATTEMPTS`), which turns the hang into a
+ * short delay instead of a spinner that never ends.
+ */
+const BOOT_TIMEOUT_MS = 60_000;
+const BOOT_ATTEMPTS = 2;
 
 /**
  * ADR-0012: this build has no desktop-memory floor built into it, so a low-
@@ -239,64 +250,16 @@ async function initNestedWorker(ctx: EngineLoadContext): Promise<NestedWorker> {
       fetchGzippedBlobUrl(ctx, "soffice.data.gz", "application/octet-stream"),
     ]);
 
-    const worker = new Worker(`${ctx.baseUrl}browser.worker.global.js`);
-
-    const ready = await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        cleanup();
-        reject(
-          new EngineError(
-            "load-failed",
-            "libreoffice engine did not become ready within 180s",
-            { engine: metadata.id },
-          ),
-        );
-      }, INIT_TIMEOUT_MS);
-
-      function onMessage(e: MessageEvent<WorkerMessage>): void {
-        const msg = e.data;
-        if (msg.id !== "init") return;
-        if (msg.type === "ready") {
-          cleanup();
-          resolve();
-        } else if (msg.type === "error") {
-          cleanup();
-          reject(
-            new EngineError("load-failed", msg.error, { engine: metadata.id }),
-          );
-        }
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const worker = await bootNestedWorker(ctx, wasmUrl, dataUrl);
+        return { worker, nextId: 0 };
+      } catch (e) {
+        const retryable =
+          e instanceof EngineError && e.message.startsWith(BOOT_TIMEOUT_PREFIX);
+        if (!retryable || attempt >= BOOT_ATTEMPTS) throw e;
       }
-      function onError(e: ErrorEvent): void {
-        cleanup();
-        reject(
-          new EngineError(
-            "load-failed",
-            `libreoffice worker failed to start: ${describeWorkerError(e)}`,
-            { engine: metadata.id },
-          ),
-        );
-      }
-      function cleanup(): void {
-        clearTimeout(timer);
-        worker.removeEventListener("message", onMessage);
-        worker.removeEventListener("error", onError);
-      }
-
-      worker.addEventListener("message", onMessage);
-      worker.addEventListener("error", onError);
-      worker.postMessage({
-        type: "init",
-        id: "init",
-        sofficeJs: `${ctx.baseUrl}soffice.js`,
-        sofficeWasm: wasmUrl,
-        sofficeData: dataUrl,
-        sofficeWorkerJs: `${ctx.baseUrl}soffice.worker.js`,
-        enableProgressTracking: true,
-      });
-    });
-    void ready;
-
-    return { worker, nextId: 0 };
+    }
   } catch (e) {
     if (isOutOfMemory(e)) {
       throw new EngineError(
@@ -313,6 +276,76 @@ async function initNestedWorker(ctx: EngineLoadContext): Promise<NestedWorker> {
     if (wasmUrl) URL.revokeObjectURL(wasmUrl);
     if (dataUrl) URL.revokeObjectURL(dataUrl);
   }
+}
+
+const BOOT_TIMEOUT_PREFIX = "libreoffice engine did not start";
+
+/** One boot attempt: spawns the nested worker and waits for its `ready`. A
+ * worker that neither readies nor errors within `BOOT_TIMEOUT_MS` is
+ * terminated here (never left running) — see `BOOT_TIMEOUT_MS`. */
+function bootNestedWorker(
+  ctx: EngineLoadContext,
+  wasmUrl: string,
+  dataUrl: string,
+): Promise<Worker> {
+  const worker = new Worker(`${ctx.baseUrl}browser.worker.global.js`);
+
+  return new Promise<Worker>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      worker.terminate();
+      reject(
+        new EngineError(
+          "load-failed",
+          `${BOOT_TIMEOUT_PREFIX} within ${BOOT_TIMEOUT_MS / 1000}s`,
+          { engine: metadata.id },
+        ),
+      );
+    }, BOOT_TIMEOUT_MS);
+
+    function onMessage(e: MessageEvent<WorkerMessage>): void {
+      const msg = e.data;
+      if (msg.id !== "init") return;
+      if (msg.type === "ready") {
+        cleanup();
+        resolve(worker);
+      } else if (msg.type === "error") {
+        cleanup();
+        worker.terminate();
+        reject(
+          new EngineError("load-failed", msg.error, { engine: metadata.id }),
+        );
+      }
+    }
+    function onError(e: ErrorEvent): void {
+      cleanup();
+      worker.terminate();
+      reject(
+        new EngineError(
+          "load-failed",
+          `libreoffice worker failed to start: ${describeWorkerError(e)}`,
+          { engine: metadata.id },
+        ),
+      );
+    }
+    function cleanup(): void {
+      clearTimeout(timer);
+      worker.removeEventListener("message", onMessage);
+      worker.removeEventListener("error", onError);
+    }
+
+    worker.addEventListener("message", onMessage);
+    worker.addEventListener("error", onError);
+    worker.postMessage({
+      type: "init",
+      id: "init",
+      sofficeJs: `${ctx.baseUrl}soffice.js`,
+      sofficeWasm: wasmUrl,
+      sofficeData: dataUrl,
+      sofficeWorkerJs: `${ctx.baseUrl}soffice.worker.js`,
+      enableProgressTracking: true,
+    });
+  });
 }
 
 async function load(ctx: EngineLoadContext): Promise<EngineInstance> {
