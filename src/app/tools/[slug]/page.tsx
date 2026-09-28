@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppTool } from "@/components/app-tool";
 import { Breadcrumb } from "@/components/breadcrumb";
 import { PageShell } from "@/components/page-shell";
 import { ToolCard } from "@/components/tool-card";
+import { ToolHeading } from "@/components/tool-heading";
 import { ToolRunner } from "@/components/tool-runner";
 import { CATEGORY_META } from "@/lib/registry";
 import { TOOLS, TOOLS_BY_SLUG } from "@/tools";
@@ -81,10 +83,19 @@ export default async function ToolPage({ params }: PageProps) {
         />
 
         <div className="flex flex-col gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight">
+          <ToolHeading
+            slug={tool.slug}
+            className="text-3xl font-semibold tracking-tight"
+          >
             {tool.title}
-          </h1>
+          </ToolHeading>
           <p className="text-ink-muted">{tool.description}</p>
+          <Link
+            href="/#converter"
+            className="self-start rounded-sm text-sm font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+          >
+            Convert something else
+          </Link>
         </div>
 
         {tool.kind === "app" && tool.app ? (

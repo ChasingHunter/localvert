@@ -4,10 +4,15 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import type { Rect } from "@/components/crop-geometry";
 import { Dropzone } from "@/components/dropzone";
-import type { AcceptedFile, RejectedFile } from "@/components/dropzone-logic";
+import {
+  type AcceptedFile,
+  classifyFiles,
+  type RejectedFile,
+} from "@/components/dropzone-logic";
 import { FileOrderList } from "@/components/file-order-list";
 import { JobList } from "@/components/job-list";
 import { Button } from "@/components/ui/button";
+import { takePendingFiles } from "@/lib/converter/handoff";
 import {
   downloadBytes,
   enginesNeedingConsent,
@@ -333,6 +338,27 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
       ensureConsent,
     ],
   );
+
+  // ADR-0015: the Converter island hands files over in-memory rather than
+  // navigating with them in the URL — see `handoff.ts`'s doc comment. Runs
+  // once `tool` is loaded (so `tool.accepts` is known) and consumes the
+  // one-shot store; a normal page load or hard reload finds nothing there
+  // and this is a no-op. Reuses `classifyFiles` (not a duplicate sniff)
+  // so a handed-off file is detected and accepted/rejected exactly as if
+  // it had been dropped here directly. `tool` is the only real dependency:
+  // `handleFiles` is recreated every render (it closes over `options`, which
+  // the handed-off files should be submitted with at the moment they're
+  // consumed), so listing it would risk re-consuming an already-emptied
+  // one-shot store on an unrelated re-render.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally scoped to `tool` — see comment above.
+  useEffect(() => {
+    if (!tool) return;
+    const files = takePendingFiles(tool.slug);
+    if (!files || files.length === 0) return;
+    classifyFiles(files, tool.accepts).then(({ accepted, rejected }) => {
+      handleFiles(accepted, rejected);
+    });
+  }, [tool]);
 
   const handleSubmitPending = useCallback(() => {
     if (!tool || pendingRequiredFiles.length === 0 || !canSubmit) return;

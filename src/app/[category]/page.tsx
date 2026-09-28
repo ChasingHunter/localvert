@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Converter } from "@/components/converter/converter";
 import { PageShell } from "@/components/page-shell";
 import { ToolCard } from "@/components/tool-card";
 import { groupToolsByCategory } from "@/components/tool-groups";
@@ -63,6 +64,8 @@ export default async function CategoryPage({ params }: PageProps) {
           </h1>
           <p className="text-ink-muted">{meta.description}</p>
         </div>
+
+        <Converter category={category} />
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {tools.map((tool) => (

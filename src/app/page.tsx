@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Converter } from "@/components/converter/converter";
 import { PageShell } from "@/components/page-shell";
 import { ToolCard } from "@/components/tool-card";
 import { groupToolsByCategory } from "@/components/tool-groups";
@@ -8,16 +9,11 @@ import { TOOLS } from "@/tools";
 /** Cards shown per category before the section's "All … tools →" link takes over. */
 const MAX_HOME_CARDS = 6;
 
-const HOW_IT_WORKS = [
-  { step: "1", title: "Pick a tool", body: "Choose the conversion you need." },
-  { step: "2", title: "Drop files", body: "Files are read, never uploaded." },
-  { step: "3", title: "Download", body: "The result comes straight back." },
-] as const;
-
 /**
- * SERVER COMPONENT, no client JS. Hero, then one section per category that
- * has a tool — derived from the registry, so a new tool file shows up here
- * automatically on its next `pnpm gen` (docs/ADDING_A_TOOL.md).
+ * SERVER COMPONENT, no client JS except the `Converter` island it renders
+ * (ADR-0015). Hero, then one section per category that has a tool —
+ * derived from the registry, so a new tool file shows up here automatically
+ * on its next `pnpm gen` (docs/ADDING_A_TOOL.md).
  */
 export default function HomePage() {
   const byCategory = groupToolsByCategory(TOOLS);
@@ -44,20 +40,7 @@ export default function HomePage() {
             the network tab and watch.
           </p>
 
-          <ol className="grid gap-3 sm:grid-cols-3">
-            {HOW_IT_WORKS.map(({ step, title, body }) => (
-              <li
-                key={step}
-                className="flex flex-col gap-1 rounded-lg border border-border bg-surface px-4 py-3"
-              >
-                <span className="text-xs font-medium text-accent">
-                  Step {step}
-                </span>
-                <span className="text-sm font-medium text-ink">{title}</span>
-                <span className="text-xs text-ink-muted">{body}</span>
-              </li>
-            ))}
-          </ol>
+          <Converter />
         </section>
 
         {populatedCategories.map((category) => {
