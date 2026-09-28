@@ -364,6 +364,7 @@ export function Converter({ category, variant = "panel" }: ConverterProps) {
           onFiles={handleDroppedFiles}
           promptText="Or drop a file here and we'll work out what it is."
           showChooseFilesBadge
+          hideFooterNote
         />
       )}
 

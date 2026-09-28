@@ -30,6 +30,15 @@ interface DropzoneProps {
    * second, nested interactive element.
    */
   showChooseFilesBadge?: boolean;
+  /**
+   * Hides the fixed "Files stay on your device." line below the drop area.
+   * The home hero (ADR-0016) already states this, in full, right below the
+   * drop area ("Your files stay on this device. Nothing is uploaded."), so
+   * repeating the shorter version immediately above it would just be the
+   * same fact twice in one screenful. Every other caller keeps it — it's
+   * the only privacy statement on a category or tool page.
+   */
+  hideFooterNote?: boolean;
 }
 
 /** Builds an `<input accept>` value from every accepted format's ext + mime. */
@@ -59,6 +68,7 @@ export function Dropzone({
   onFiles,
   promptText = "Drag files here, click to browse, or paste",
   showChooseFilesBadge = false,
+  hideFooterNote = false,
 }: DropzoneProps) {
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -143,7 +153,9 @@ export function Dropzone({
           e.target.value = "";
         }}
       />
-      <p className="text-xs text-ink-muted">Files stay on your device.</p>
+      {!hideFooterNote && (
+        <p className="text-xs text-ink-muted">Files stay on your device.</p>
+      )}
     </div>
   );
 }
