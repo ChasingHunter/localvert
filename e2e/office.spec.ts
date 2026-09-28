@@ -113,7 +113,7 @@ test.describe("word to pdf (libreoffice engine, ADR-0012)", () => {
       .setInputFiles(fixturePath("sample.docx"));
 
     const dialog = page.getByRole("dialog", {
-      name: "Download the libreoffice engine?",
+      name: "Download LibreOffice to convert this file?",
     });
     await expect(dialog).toBeVisible();
 

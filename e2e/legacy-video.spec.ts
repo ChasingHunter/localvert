@@ -106,7 +106,7 @@ test.describe("ffmpeg download consent (ADR-0002 rule 4)", () => {
       .setInputFiles(fixturePath("sample.avi"));
 
     const dialog = page.getByRole("dialog", {
-      name: "Download the ffmpeg engine?",
+      name: "Download FFmpeg to convert this file?",
     });
     await expect(dialog).toBeVisible();
 
@@ -115,7 +115,7 @@ test.describe("ffmpeg download consent (ADR-0002 rule 4)", () => {
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await expect(dialog).toBeHidden();
     await expect(
-      page.getByText("Not converted — the ffmpeg engine wasn't downloaded."),
+      page.getByText("Not converted. FFmpeg wasn't downloaded."),
     ).toBeVisible();
     await expect(page.getByRole("link", { name: "Download" })).toHaveCount(0);
 

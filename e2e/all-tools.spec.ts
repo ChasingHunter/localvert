@@ -293,7 +293,9 @@ const test = base.extend<Fixtures>({
  * tools never show it, so this waits briefly and moves on rather than
  * failing when it doesn't appear. */
 async function acceptConsentIfShown(page: import("@playwright/test").Page) {
-  const dialog = page.getByRole("dialog", { name: /Download the .+ engine\?/ });
+  const dialog = page.getByRole("dialog", {
+    name: /Download .+ to convert this file\?/,
+  });
   try {
     await dialog.waitFor({ state: "visible", timeout: 5_000 });
   } catch {

@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { engineDisplayName } from "@/lib/engines/display-names";
 
 /** GitHub's rendering of the license/attribution table for every third-party
  * engine — see ADR-0002 rule 5's "full attribution and source offer". No
@@ -12,7 +13,7 @@ const LICENSES_URL =
 
 interface EngineConsentDialogProps {
   open: boolean;
-  /** e.g. "ffmpeg" — the engine id, used verbatim in the dialog's name. */
+  /** e.g. "ffmpeg" — mapped to a proper display name via `engineDisplayName` below. */
   engineId: string;
   /** e.g. "GPL-2.0-or-later". */
   license: string;
@@ -24,8 +25,8 @@ interface EngineConsentDialogProps {
   onCancel: () => void;
 }
 
-/** Rounds to whole megabytes for the prompt text — "≈31 MB", not a false
- *-precision byte count nobody can act on. */
+/** Rounds to whole megabytes for the prompt text — "31 MB", not a
+ * false-precision byte count nobody can act on. */
 function toMb(bytes: number): number {
   return Math.round(bytes / (1024 * 1024));
 }
@@ -61,11 +62,13 @@ export function EngineConsentDialog({
     }
   }, [open]);
 
+  const displayName = engineDisplayName(engineId);
+
   return (
     <dialog
       ref={ref}
       aria-labelledby={titleId}
-      className="max-w-md rounded-2xl border border-border bg-surface p-6 text-ink shadow-lg backdrop:bg-ink/40"
+      className="fixed inset-0 m-auto max-w-md rounded-2xl border border-border bg-surface p-6 text-ink shadow-lg backdrop:bg-ink/40"
       onCancel={(e) => {
         e.preventDefault();
         onCancel();
@@ -73,14 +76,14 @@ export function EngineConsentDialog({
       onClose={onCancel}
     >
       <h2 id={titleId} className="text-base font-semibold">
-        Download the {engineId} engine?
+        Download {displayName} to convert this file?
       </h2>
       <p className="mt-3 text-sm text-ink-muted">
-        This format needs a one-time download of the {engineId} engine (≈
-        {toMb(bytes)} MB). It's licensed under {license} and runs only in your
-        browser — your files still never leave your device.
+        It's a one-time {toMb(bytes)} MB download. After that it works offline,
+        and your files still never leave this device.
       </p>
-      <p className="mt-2 text-sm text-ink-muted">
+      <p className="mt-2 text-xs text-ink-muted">
+        Licensed under {license}.{" "}
         <a
           href={sourceUrl}
           target="_blank"
