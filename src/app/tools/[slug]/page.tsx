@@ -113,20 +113,6 @@ export default async function ToolPage({ params }: PageProps) {
           <ToolRunner slug={tool.slug} />
         )}
 
-        <aside
-          aria-label="How it works and privacy"
-          className="flex flex-col gap-2 rounded-2xl border border-border bg-surface px-4 py-3 text-xs text-ink-muted"
-        >
-          <p>
-            Your file is read in the browser, converted in a Web Worker, and
-            handed back as a download — nothing is uploaded.
-          </p>
-          <p>
-            Files stay on your device the whole time. Open your browser's
-            network tab during a conversion to verify it yourself.
-          </p>
-        </aside>
-
         {relatedTools.length > 0 && (
           <section
             aria-labelledby="related-tools-heading"

@@ -11,6 +11,7 @@ import {
 } from "@/components/dropzone-logic";
 import { FileOrderList } from "@/components/file-order-list";
 import { JobList } from "@/components/job-list";
+import { PrivacyNote } from "@/components/privacy-note";
 import { Button } from "@/components/ui/button";
 import { takePendingFiles } from "@/lib/converter/handoff";
 import {
@@ -19,6 +20,7 @@ import {
   grantConsent,
   hasConsent,
 } from "@/lib/engines/consent";
+import { engineDisplayName } from "@/lib/engines/display-names";
 import { ENGINE_MANIFEST } from "@/lib/engines/manifest";
 import { jobStore, selectOrderedJobs } from "@/lib/jobs/store";
 import { FORMATS, formatFromFilename } from "@/lib/registry/formats";
@@ -286,7 +288,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   const handleConsentCancel = useCallback(() => {
     if (!consentGate) return;
     setConsentDeclined(
-      `Not converted — the ${consentGate.engineId} engine wasn't downloaded.`,
+      `Not converted. ${engineDisplayName(consentGate.engineId)} wasn't downloaded.`,
     );
     setConsentGate(null);
   }, [consentGate]);
@@ -454,7 +456,9 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
       // `workerFailure`) surfaces here as a rejection rather than a hang —
       // every done job's own download link still works, so this is
       // recoverable rather than fatal.
-      setZipError("Couldn't build the zip — download files individually.");
+      setZipError(
+        "Couldn't build the zip. Download files individually instead.",
+      );
     } finally {
       setZipping(false);
     }
@@ -481,7 +485,9 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         a.remove();
         URL.revokeObjectURL(url);
       } catch {
-        setJobZipError("Couldn't build the zip — download files individually.");
+        setJobZipError(
+          "Couldn't build the zip. Download files individually instead.",
+        );
       } finally {
         setZippingJobId(null);
       }
@@ -503,18 +509,33 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
     // quiet side column once there's room for one (ADR-0016's tool-page
     // layout) — `lg:grid-cols-[1fr_18rem]` only takes effect at 1024px, so
     // below that this is a single stacked column with options rendered
-    // after the main flow, in the same source order either way.
-    <div className="grid gap-6 lg:grid-cols-[1fr_18rem] lg:items-start">
+    // after the main flow, in the same source order either way. A tool with
+    // no options (most of them — `jpg-to-png` has none at all) gets no
+    // second column at all: the grid track was reserving 18rem of empty
+    // space next to a narrower main panel even with nothing to put there
+    // (design review), so this only switches to the two-column grid once
+    // there's an `<aside>` to fill it.
+    <div
+      className={
+        hasOptions
+          ? "grid gap-6 lg:grid-cols-[1fr_18rem] lg:items-start"
+          : "flex flex-col gap-6"
+      }
+    >
       <div className="flex flex-col gap-6">
         {/* Hidden mid-crop: a second drop would orphan the file already being
             cropped, and `cropTarget` is the only file this tool page can edit
             at once (crop tools are never batch). */}
         {!(hasCropField && cropTarget) && (
-          <Dropzone
-            accepts={tool.accepts}
-            multiple={tool.batch || isManyToOne}
-            onFiles={handleFiles}
-          />
+          <>
+            <PrivacyNote size="sm" />
+            <Dropzone
+              accepts={tool.accepts}
+              multiple={tool.batch || isManyToOne}
+              onFiles={handleFiles}
+              hideFooterNote
+            />
+          </>
         )}
 
         {isManyToOne && orderedFiles.length > 0 && (
