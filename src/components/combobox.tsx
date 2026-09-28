@@ -1,0 +1,377 @@
+"use client";
+
+import { ChevronDownIcon } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
+import {
+  type ComboboxAction,
+  type ComboboxOption,
+  type ComboboxState,
+  comboboxReducer,
+  initialComboboxState,
+} from "./combobox-logic";
+
+/**
+ * Accessible "editable combobox with listbox popup" (W3C APG), driven by the
+ * pure reducer in `combobox-logic.ts`. Filtering is the caller's job —
+ * `groups` is already the filtered, current option set for `query`.
+ *
+ * Minimal example (see ADR-0015 for the full From/To picker):
+ *
+ * ```tsx
+ * const [query, setQuery] = useState("");
+ * const [value, setValue] = useState<string | null>(null);
+ * <Combobox
+ *   id="from-format"
+ *   label="From"
+ *   placeholder="e.g. PDF, jpeg, word…"
+ *   query={query}
+ *   onQueryChange={setQuery}
+ *   value={value}
+ *   onChange={setValue}
+ *   emptyText="No formats match."
+ *   groups={[
+ *     { id: "documents", label: "Documents", options: [{ id: "pdf", label: "PDF" }] },
+ *   ]}
+ * />
+ * ```
+ */
+
+export interface ComboboxOptionSpec {
+  id: string;
+  label: string;
+  hint?: string;
+  disabled?: boolean;
+}
+
+export interface ComboboxGroup {
+  id: string;
+  label: string;
+  options: ComboboxOptionSpec[];
+}
+
+export interface ComboboxProps {
+  id: string;
+  label: string;
+  placeholder?: string;
+  groups: ComboboxGroup[];
+  query: string;
+  onQueryChange: (query: string) => void;
+  value: string | null;
+  onChange: (id: string) => void;
+  emptyText: string;
+  describedBy?: string;
+  /** Fires whenever the number of visible options changes — the page's own
+   * live region (ADR-0015) uses this to announce "N results", so this
+   * component never announces a count itself. */
+  onResultsCountChange?: (count: number) => void;
+}
+
+function flattenOptions(groups: ComboboxGroup[]): ComboboxOption[] {
+  return groups.flatMap((g) =>
+    g.options.map((o) => ({ id: o.id, groupId: g.id, disabled: o.disabled })),
+  );
+}
+
+function findOptionSpec(
+  groups: ComboboxGroup[],
+  id: string | null,
+): ComboboxOptionSpec | undefined {
+  if (id === null) return undefined;
+  for (const g of groups) {
+    const found = g.options.find((o) => o.id === id);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function optionDomId(comboboxId: string, optionId: string): string {
+  return `${comboboxId}-opt-${optionId}`;
+}
+
+export function Combobox({
+  id,
+  label,
+  placeholder,
+  groups,
+  query,
+  onQueryChange,
+  value,
+  onChange,
+  emptyText,
+  describedBy,
+  onResultsCountChange,
+}: ComboboxProps) {
+  const listId = `${id}-listbox`;
+  const reactId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // Set on an option's mousedown and cleared on mouseup: without it, the
+  // input's blur fires before the option's click, closing the popup and
+  // losing the click.
+  const suppressBlurRef = useRef(false);
+
+  const options = flattenOptions(groups);
+  const ctx = {
+    options,
+    labelOf: (optId: string) => findOptionSpec(groups, optId)?.label ?? "",
+  };
+
+  const [state, setState] = useState<ComboboxState>(() => ({
+    ...initialComboboxState(value),
+    query,
+  }));
+
+  function dispatch(action: ComboboxAction) {
+    setState((prev) => {
+      const next = comboboxReducer(prev, action, ctx);
+      if (next.query !== prev.query) onQueryChange(next.query);
+      if (next.selectedId !== prev.selectedId && next.selectedId !== null) {
+        onChange(next.selectedId);
+      }
+      return next;
+    });
+  }
+
+  // Mirror controlled `value`/`query` changes that originate outside this
+  // component (e.g. the parent resetting the picker) into local state,
+  // without fighting the reducer's own updates to the same fields.
+  const prevValueRef = useRef(value);
+  const prevQueryRef = useRef(query);
+  useEffect(() => {
+    if (prevValueRef.current !== value) {
+      prevValueRef.current = value;
+      setState((s) =>
+        s.selectedId === value ? s : { ...s, selectedId: value },
+      );
+    }
+  }, [value]);
+  useEffect(() => {
+    if (prevQueryRef.current !== query) {
+      prevQueryRef.current = query;
+      setState((s) => (s.query === query ? s : { ...s, query }));
+    }
+  }, [query]);
+
+  // Re-run `optionsChanged` whenever the caller's filtered list changes
+  // shape (new query, or the catalog itself changing) — this is what keeps
+  // "active" pointing at a still-visible, still-enabled option instead of a
+  // stale pre-filter one.
+  const optionIdsKey = options
+    .map((o) => `${o.id}:${o.disabled ? 1 : 0}`)
+    .join(",");
+  // `options`/`ctx` are rebuilt every render from `groups`; `optionIdsKey` is
+  // the real dependency here — it only changes when the visible set does, so
+  // that's what this effect keys off rather than the two derived objects.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on optionIdsKey by design — see comment above.
+  useEffect(() => {
+    setState((prev) =>
+      comboboxReducer(prev, { type: "optionsChanged", options }, ctx),
+    );
+    onResultsCountChange?.(options.length);
+  }, [optionIdsKey]);
+
+  // `dispatch` closes over `ctx`, which is rebuilt every render — listing it
+  // would re-attach the listener on every keystroke for no benefit, since
+  // the closure below already reads the latest `dispatch` via the effect
+  // re-running whenever `state.open` itself changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dispatch is stable enough per open/close cycle — see comment above.
+  useEffect(() => {
+    if (!state.open) return;
+    function onPointerDown(e: PointerEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        dispatch({ type: "blur" });
+      }
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [state.open]);
+
+  useEffect(() => {
+    if (!state.open || state.activeId === null) return;
+    document
+      .getElementById(optionDomId(id, state.activeId))
+      ?.scrollIntoView({ block: "nearest" });
+  }, [state.open, state.activeId, id]);
+
+  const activeDescendant =
+    state.open && state.activeId !== null
+      ? optionDomId(id, state.activeId)
+      : undefined;
+
+  return (
+    <div ref={rootRef} className="relative flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-sm font-medium text-ink">
+        {label}
+      </label>
+      <div className="relative">
+        <input
+          ref={inputRef}
+          id={id}
+          role="combobox"
+          type="text"
+          autoComplete="off"
+          aria-autocomplete="list"
+          aria-expanded={state.open}
+          aria-controls={listId}
+          aria-activedescendant={activeDescendant}
+          aria-describedby={describedBy}
+          placeholder={placeholder}
+          value={state.query}
+          onChange={(e) => dispatch({ type: "input", query: e.target.value })}
+          onBlur={() => {
+            if (suppressBlurRef.current) return;
+            dispatch({ type: "blur" });
+          }}
+          onKeyDown={(e) => {
+            switch (e.key) {
+              case "ArrowDown":
+                e.preventDefault();
+                dispatch({ type: "arrowDown" });
+                break;
+              case "ArrowUp":
+                e.preventDefault();
+                dispatch({ type: "arrowUp" });
+                break;
+              case "Home":
+                if (state.open) {
+                  e.preventDefault();
+                  dispatch({ type: "home" });
+                }
+                break;
+              case "End":
+                if (state.open) {
+                  e.preventDefault();
+                  dispatch({ type: "end" });
+                }
+                break;
+              case "Enter":
+                if (state.open) e.preventDefault();
+                dispatch({ type: "enter" });
+                break;
+              case "Escape":
+                if (state.open || state.query) e.preventDefault();
+                dispatch({ type: "escape" });
+                break;
+              case "Tab":
+                // Never preventDefault: Tab must still move focus on.
+                dispatch({ type: "tab" });
+                break;
+              default:
+                break;
+            }
+          }}
+          className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-9 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label="Show options"
+          onMouseDown={(e) => {
+            // Keep DOM focus on the input; toggling must not steal it.
+            e.preventDefault();
+          }}
+          onClick={() => {
+            inputRef.current?.focus();
+            dispatch(state.open ? { type: "blur" } : { type: "arrowDown" });
+          }}
+          className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-ink-muted hover:text-ink"
+        >
+          <ChevronDownIcon
+            aria-hidden="true"
+            className={cn(
+              "size-4 transition-transform motion-reduce:transition-none",
+              state.open && "rotate-180",
+            )}
+          />
+        </button>
+      </div>
+      {state.open &&
+        (options.length === 0 ? (
+          <div
+            role="status"
+            className="absolute top-full z-10 mt-1 w-full rounded-lg border border-border bg-surface p-3 text-sm text-ink-muted shadow-md"
+          >
+            {emptyText}
+          </div>
+        ) : (
+          <div
+            id={listId}
+            role="listbox"
+            aria-label={label}
+            className="absolute top-full z-10 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-border bg-surface py-1 shadow-md"
+          >
+            {groups.map((group) => {
+              if (group.options.length === 0) return null;
+              const headingId = `${reactId}-${group.id}-heading`;
+              return (
+                <div key={group.id}>
+                  <div
+                    role="presentation"
+                    id={headingId}
+                    className="px-3 py-1 text-xs font-medium text-ink-muted"
+                  >
+                    {group.label}
+                  </div>
+                  {/* biome-ignore lint/a11y/useSemanticElements: role="group" here is an APG listbox option-group, not a form <fieldset>. */}
+                  <div role="group" aria-labelledby={headingId}>
+                    {group.options.map((option) => {
+                      const isActive = state.activeId === option.id;
+                      const isSelected = state.selectedId === option.id;
+                      return (
+                        // Focus deliberately never lands here: the APG
+                        // "editable combobox" pattern keeps DOM focus on the
+                        // input at all times and tracks the active option via
+                        // `aria-activedescendant` instead of a roving
+                        // tabindex, so this option is a non-focusable
+                        // role="option" by design, not an oversight.
+                        // biome-ignore lint/a11y/useFocusableInteractive: activedescendant pattern — see comment above.
+                        // biome-ignore lint/a11y/useKeyWithClickEvents: the input's onKeyDown drives selection; this handles pointer commit only.
+                        <div
+                          key={option.id}
+                          id={optionDomId(id, option.id)}
+                          role="option"
+                          aria-selected={isSelected}
+                          aria-disabled={option.disabled || undefined}
+                          onMouseDown={(e) => {
+                            // Prevent the input from blurring before click
+                            // fires, which would close the popup first.
+                            e.preventDefault();
+                            suppressBlurRef.current = true;
+                          }}
+                          onMouseUp={() => {
+                            suppressBlurRef.current = false;
+                          }}
+                          onMouseEnter={() => {
+                            if (option.disabled) return;
+                            setState((s) => ({ ...s, activeId: option.id }));
+                          }}
+                          onClick={() => {
+                            if (option.disabled) return;
+                            dispatch({ type: "optionClick", id: option.id });
+                            inputRef.current?.focus();
+                          }}
+                          className={cn(
+                            "flex min-h-11 cursor-pointer flex-col justify-center gap-0.5 px-3 py-1.5 text-sm text-ink",
+                            isActive && "bg-canvas",
+                            option.disabled && "cursor-not-allowed opacity-50",
+                          )}
+                        >
+                          <span>{option.label}</span>
+                          {option.hint && (
+                            <span className="text-xs text-ink-muted">
+                              {option.hint}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+    </div>
+  );
+}
