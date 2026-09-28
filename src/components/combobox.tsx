@@ -294,6 +294,13 @@ export function Combobox({
               id={id}
               role="combobox"
               type="text"
+              // The browser's own default text-input width (~20 characters)
+              // otherwise wins the `.pill-sizer` grid column's auto-sizing
+              // over the small `::after` mirror, since track sizing takes
+              // the max of every item's intrinsic content size. `size={1}`
+              // is the standard fix — it only lowers that UA sizing hint,
+              // it doesn't cap how many characters can actually be typed.
+              size={1}
               autoComplete="off"
               aria-autocomplete="list"
               aria-expanded={state.open}
