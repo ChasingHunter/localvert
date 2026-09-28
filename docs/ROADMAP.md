@@ -238,6 +238,20 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
 - [x] Full visual redesign of the site (ADR-0016, 2026-09-28): warm paper + sea-green accent,
       Fraunces/Figtree self-hosted, sentence converter hero, light/dark + toggle, human copy pass
       over every tool description (tested), tool/category/editor pages restyled
+- [x] Category pages offer only their own formats (2026-09-29)
+
+**Before cutting v0.4.0** (owner, 2026-09-29; positioning research of 2026-09-28: keep one site,
+one repo, one engine; make PDF a front door, not a separate product):
+
+- [ ] Own domain (owner action) with the workers.dev address redirecting to it
+- [ ] PDF hub at /pdf: its own hero ("Every PDF tool you need. Your file never leaves your
+      device."), editor up front, tools grouped Organize / Optimize / Convert / Edit / Security
+- [ ] Home page leads with the promise ("Convert, compress and edit files without uploading
+      them. Everything runs in your browser, even video."), then the picker, then categories
+- [ ] "Make a file smaller": /compress hub + an option in the universal picker
+- [ ] Trust and comparison pages: "check for yourself that nothing uploads", /vs/ilovepdf,
+      /vs/smallpdf, /vs/vert
+- [ ] Further UX changes the owner will specify
 
 - [ ] i18n
 - [ ] `file_handlers` and `share_target` in the manifest (open files from the OS)
