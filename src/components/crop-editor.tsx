@@ -247,7 +247,7 @@ export function CropEditor({
     >
       <button
         type="button"
-        aria-label="Crop region — drag, or focus and use arrow keys to move it; shift+arrow moves 10 pixels"
+        aria-label="Crop region. Drag, or focus and use arrow keys to move it; shift+arrow moves 10 pixels"
         onPointerDown={beginDrag("move")}
         onPointerMove={onDragMove}
         onPointerUp={endDrag}

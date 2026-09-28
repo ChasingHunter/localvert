@@ -6,8 +6,8 @@ import { ServiceWorker } from "./service-worker";
 
 export const metadata: Metadata = {
   title: {
-    default: "Localvert — file conversion that never leaves your browser",
-    template: "%s — Localvert",
+    default: "Localvert · file conversion that never leaves your browser",
+    template: "%s · Localvert",
   },
   description:
     "Convert images, video, audio, PDFs and documents entirely on your own device. No upload, no account, no server. Your files never leave your browser.",
