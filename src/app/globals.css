@@ -1,40 +1,142 @@
 @import "tailwindcss";
 
 /*
+ * ADR-0016 "warm paper, clear ink": self-hosted Fraunces (display serif) and
+ * Figtree (UI sans). Latin-only, hand-picked from `@fontsource-variable`'s
+ * per-axis files and copied straight into `public/fonts/` (see
+ * docs/THIRD_PARTY_LICENSES.md for their OFL-1.1 attribution) — CSP is
+ * `font-src 'self'`, so these load from our own origin, not a package
+ * import the bundler would have to resolve.
+ *
+ * Fraunces ships one file per axis combination; `full` is the smallest one
+ * that carries all three axes this design needs (opsz, SOFT, WONK) alongside
+ * wght, so it's the only choice even though its weight range (100–900) is
+ * wider than we use. Figtree only has a single wght axis, so its normal
+ * `wght` file is already the minimal one.
+ */
+@font-face {
+  font-family: "Fraunces Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  font-stretch: 25% 150%;
+  src: url("/fonts/fraunces-latin-full-normal.woff2") format("woff2-variations");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
+    U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Figtree Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 300 900;
+  src: url("/fonts/figtree-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
+    U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/*
  * Tailwind 4 has no tailwind.config.js — the theme lives here, and these
  * custom properties are real CSS variables at runtime, not build-time
  * substitutions. Anything defined in @theme becomes a utility class too, so
  * `--color-surface` gives you `bg-surface`, `text-surface`, and so on.
+ *
+ * ADR-0016 tokens. Token *names* stay the same as before the redesign
+ * (canvas/surface/border/ink/ink-muted/accent/danger) so every component
+ * that already uses them keeps working unchanged; only the values move to
+ * the ADR's "warm paper, clear ink" palette. `accent-soft` and the six
+ * `cat-*` category tints (`--color-cat-image` etc.) are new. `archive` isn't
+ * in the ADR's tint table (it predates the ADR's six-category list) — its
+ * tint here follows the same formula, picked to stay visually distinct from
+ * `data`'s.
  */
 @theme {
-  --color-canvas: oklch(99% 0.002 250);
-  --color-surface: oklch(100% 0 0);
-  --color-border: oklch(90% 0.005 250);
-  --color-ink: oklch(22% 0.01 250);
-  --color-ink-muted: oklch(52% 0.012 250);
-  --color-accent: oklch(58% 0.16 250);
-  --color-danger: oklch(55% 0.19 25);
+  --color-canvas: #f7f6f2;
+  --color-surface: #ffffff;
+  --color-border: #e2ded5;
+  --color-ink: #23211e;
+  --color-ink-muted: #67625a;
+  --color-accent: #2d6a58;
+  --color-accent-soft: #ddebe5;
+  --color-danger: #b3362b;
 
+  --color-cat-image: #f7ddd6;
+  --color-cat-video: #e3def6;
+  --color-cat-audio: #f4e7be;
+  --color-cat-pdf: #d7e6f4;
+  --color-cat-document: #daede0;
+  --color-cat-archive: #dde3d1;
+  --color-cat-data: #ece3d2;
+
+  --font-display: "Fraunces Variable", ui-serif, Georgia, serif;
   --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    "Figtree Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
   --font-mono:
     ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", monospace;
 }
 
+/*
+ * Auto light/dark (`prefers-color-scheme`), overridden by the header toggle
+ * setting `data-theme="light"|"dark"` on `<html>` (ADR-0016). The toggle's
+ * no-flash inline script (`src/app/layout.tsx`) sets that attribute before
+ * first paint, so these three blocks — system dark, forced light, forced
+ * dark — are the only three states and each is a complete token set.
+ */
 @media (prefers-color-scheme: dark) {
-  @theme {
-    --color-canvas: oklch(17% 0.012 250);
-    --color-surface: oklch(21% 0.014 250);
-    --color-border: oklch(31% 0.016 250);
-    --color-ink: oklch(95% 0.004 250);
-    --color-ink-muted: oklch(70% 0.012 250);
-    --color-accent: oklch(72% 0.14 250);
-    --color-danger: oklch(68% 0.18 25);
+  :root:not([data-theme="light"]) {
+    --color-canvas: #1b1a18;
+    --color-surface: #24231f;
+    --color-border: #3a3832;
+    --color-ink: #eeebe4;
+    --color-ink-muted: #a8a298;
+    --color-accent: #7fc6b0;
+    --color-accent-soft: #23392f;
+    --color-danger: #f08a7e;
+
+    --color-cat-image: #4a302b;
+    --color-cat-video: #353050;
+    --color-cat-audio: #4a4128;
+    --color-cat-pdf: #26394b;
+    --color-cat-document: #27402f;
+    --color-cat-archive: #333828;
+    --color-cat-data: #403829;
   }
+}
+
+:root[data-theme="dark"] {
+  --color-canvas: #1b1a18;
+  --color-surface: #24231f;
+  --color-border: #3a3832;
+  --color-ink: #eeebe4;
+  --color-ink-muted: #a8a298;
+  --color-accent: #7fc6b0;
+  --color-accent-soft: #23392f;
+  --color-danger: #f08a7e;
+
+  --color-cat-image: #4a302b;
+  --color-cat-video: #353050;
+  --color-cat-audio: #4a4128;
+  --color-cat-pdf: #26394b;
+  --color-cat-document: #27402f;
+  --color-cat-archive: #333828;
+  --color-cat-data: #403829;
 }
 
 html {
   color-scheme: light dark;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 body {
@@ -42,6 +144,34 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * ADR-0016's one motion moment: the hero sentence's format word, when it
+ * changes. A short fade + 4px slide, off entirely under reduced motion —
+ * the `@media` block isn't `motion-reduce:` because this is a plain
+ * `animation`, which Tailwind's `motion-reduce:` variant can't reach (it
+ * only varies classes, not `@keyframes` timing).
+ */
+@keyframes format-swap {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.format-swap {
+  animation: format-swap 160ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .format-swap {
+    animation: none;
+  }
 }
 
 /*

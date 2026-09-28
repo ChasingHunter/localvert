@@ -62,6 +62,8 @@ requires its own ADR and we must publish the modified source.
 | `cmarker` (vendored Typst package, markdown -> Typst content) | 0.1.8 | MIT | Sabrina Jewson | https://github.com/SabrinaJewson/cmarker.typ (`vendor/typst-packages/preview/cmarker/0.1.8/`) |
 | Libertinus Serif (vendored font, body text) | v0.14.2 (typst-assets pin) | OFL-1.1 | The Libertinus Project Authors | https://github.com/alerque/libertinus (`vendor/typst-fonts/`) |
 | DejaVu Sans Mono (vendored font, raw/code text) | v0.14.2 (typst-assets pin) | Bitstream Vera License (+ Public Domain DejaVu changes) | Bitstream, Inc.; the DejaVu fonts team | https://dejavu-fonts.github.io (`vendor/typst-fonts/`) |
+| Fraunces Variable (vendored font, UI display serif, ADR-0016) | 5.3.0 (`@fontsource-variable/fraunces` pin) | OFL-1.1 | Underware (Fraunces); the Fontsource project (packaging) | https://github.com/undercasetype/Fraunces (`public/fonts/`) |
+| Figtree Variable (vendored font, UI body sans, ADR-0016) | 5.3.0 (`@fontsource-variable/figtree` pin) | OFL-1.1 | Erik Kennedy (Figtree); the Fontsource project (packaging) | https://github.com/erikdkennedy/figtree (`public/fonts/`) |
 
 `jsquash-webp`'s underlying codec is libwebp, Copyright 2010 Google Inc.,
 BSD-3-Clause (`node_modules/@jsquash/webp/codec/LICENSE.codec.md` after
