@@ -235,7 +235,9 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
       file → detected format → pick output. UX + accessibility are the top priority; learn from
       existing converter sites, then design our own (ADR-0015). Same-format actions (compress,
       resize, rotate, crop, merge…) need a first-class place too. Target: v0.4.0.
-- [ ] Full visual redesign of the site (after the universal converter lands; also in v0.4.0)
+- [x] Full visual redesign of the site (ADR-0016, 2026-09-28): warm paper + sea-green accent,
+      Fraunces/Figtree self-hosted, sentence converter hero, light/dark + toggle, human copy pass
+      over every tool description (tested), tool/category/editor pages restyled
 
 - [ ] i18n
 - [ ] `file_handlers` and `share_target` in the manifest (open files from the OS)
