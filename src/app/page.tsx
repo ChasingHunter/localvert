@@ -1,19 +1,30 @@
 import Link from "next/link";
+import { CATEGORY_TINT_BG } from "@/components/category-tint";
 import { Converter } from "@/components/converter/converter";
 import { PageShell } from "@/components/page-shell";
-import { ToolCard } from "@/components/tool-card";
 import { groupToolsByCategory } from "@/components/tool-groups";
 import { CATEGORIES, CATEGORY_META } from "@/lib/registry";
 import { TOOLS } from "@/tools";
 
-/** Cards shown per category before the section's "All … tools →" link takes over. */
-const MAX_HOME_CARDS = 6;
-
 /**
  * SERVER COMPONENT, no client JS except the `Converter` island it renders
- * (ADR-0015). Hero, then one section per category that has a tool —
+ * (ADR-0015, styled here as ADR-0016's hero sentence). Category sections are
  * derived from the registry, so a new tool file shows up here automatically
  * on its next `pnpm gen` (docs/ADDING_A_TOOL.md).
+ *
+ * Accessible-heading structure for the hero (ADR-0016 asked for this to be
+ * spelled out): the sentence "Convert my [From] into [To]" has two live
+ * form controls inside it, and form controls can't go inside an `<h1>`
+ * element. Rather than hide either the heading or the controls from
+ * assistive tech, this page uses two separate, both-visible pieces instead:
+ * an `<h1>` that states the page's purpose in plain language (for landmark
+ * navigation and anyone skimming headings), and the sentence itself —
+ * rendered by `Converter`, *not* as a heading — right below it, where its
+ * "Convert from"/"Convert to" labelled comboboxes are exactly as
+ * accessible as they are everywhere else the converter appears. Nothing on
+ * this page is `aria-hidden`; a screen reader hears the h1 once, then the
+ * sentence's own text and controls in visual order, same as a sighted
+ * reader sees them.
  */
 export default function HomePage() {
   const byCategory = groupToolsByCategory(TOOLS);
@@ -23,24 +34,24 @@ export default function HomePage() {
 
   return (
     <PageShell>
-      <div className="mx-auto flex max-w-5xl flex-col gap-16 px-6 py-16">
+      <div className="mx-auto flex max-w-6xl flex-col gap-16 px-6 py-16 lg:px-12">
         <section className="flex flex-col gap-6">
-          <h1 className="max-w-2xl text-4xl font-semibold tracking-tight">
-            Convert files without uploading them
+          <h1 className="sr-only">
+            Convert a file without uploading it. Choose a format to convert from
+            and a format to convert to, then convert.
           </h1>
 
-          <p className="max-w-2xl text-lg text-ink-muted">
-            Images, video, audio, PDFs and documents, converted on your own
-            device. Your files never leave this device.
-          </p>
+          <Converter variant="hero" />
 
-          <p className="max-w-2xl text-sm text-ink-muted">
-            Nothing is uploaded — not as a policy, but because the page is
-            served with a Content Security Policy that makes it impossible. Open
-            the network tab and watch.
+          <p className="max-w-2xl text-base text-ink-muted">
+            Your files stay on this device. Nothing is uploaded.{" "}
+            <a
+              href="#how-we-know"
+              className="rounded-sm font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+            >
+              How we know
+            </a>
           </p>
-
-          <Converter />
         </section>
 
         {populatedCategories.map((category) => {
@@ -50,10 +61,13 @@ export default function HomePage() {
           return (
             <section key={category} className="flex flex-col gap-4">
               <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                <div>
-                  <h2 className="text-lg font-semibold">{meta.label}</h2>
-                  <p className="text-sm text-ink-muted">{meta.description}</p>
-                </div>
+                <h2 className="flex items-center gap-2 font-display text-2xl font-medium text-ink">
+                  <span
+                    aria-hidden="true"
+                    className={`size-2.5 rounded-full ${CATEGORY_TINT_BG[category]}`}
+                  />
+                  {meta.label}
+                </h2>
                 <Link
                   href={`/${category}`}
                   className="shrink-0 rounded-sm text-sm font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
@@ -62,14 +76,38 @@ export default function HomePage() {
                 </Link>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {tools.slice(0, MAX_HOME_CARDS).map((tool) => (
-                  <ToolCard key={tool.slug} tool={tool} />
+              <ul className="columns-2 gap-x-8 sm:columns-3 lg:columns-4">
+                {tools.map((tool) => (
+                  <li key={tool.slug} className="break-inside-avoid py-1">
+                    <Link
+                      href={`/tools/${tool.slug}`}
+                      className="rounded-sm text-sm text-ink-muted outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+                    >
+                      {tool.title}
+                    </Link>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </section>
           );
         })}
+
+        <section
+          id="how-we-know"
+          className="flex flex-col gap-2 border-t border-border pt-8 text-sm text-ink-muted"
+        >
+          <h2 className="font-display text-lg font-medium text-ink">
+            How we know your files stay put
+          </h2>
+          <p className="max-w-2xl">
+            This page is served with a Content Security Policy that only allows
+            it to talk to itself (<code>connect-src 'self'</code>). There's no
+            server for it to upload a file to even if it tried. Open your
+            browser's network tab, convert something, and you'll see no request
+            carrying your file leaves the page. It even keeps working with your
+            network turned off, once you've loaded it once.
+          </p>
+        </section>
       </div>
     </PageShell>
   );

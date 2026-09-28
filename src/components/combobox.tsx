@@ -68,6 +68,16 @@ export interface ComboboxProps {
    * live region (ADR-0015) uses this to announce "N results", so this
    * component never announces a count itself. */
   onResultsCountChange?: (count: number) => void;
+  /** Visually hides the `<label>` (still in the DOM, still the input's
+   * accessible name) — the home hero (ADR-0016) sets the picker's context
+   * from the surrounding sentence instead ("Convert my [From] into [To]"),
+   * so repeating "Convert from"/"Convert to" as visible text would be
+   * redundant there. Every other caller leaves this off. */
+  hideLabel?: boolean;
+  /** Pill-shaped input (full radius, auto width) for the home hero's inline
+   * sentence layout (ADR-0016's radius hierarchy: pickers are pills).
+   * Every other caller keeps the default rectangular, full-width field. */
+  pill?: boolean;
 }
 
 function flattenOptions(groups: ComboboxGroup[]): ComboboxOption[] {
@@ -115,6 +125,8 @@ export function Combobox({
   describedBy,
   disabled = false,
   onResultsCountChange,
+  hideLabel = false,
+  pill = false,
 }: ComboboxProps) {
   const listId = `${id}-listbox`;
   const reactId = useId();
@@ -215,7 +227,13 @@ export function Combobox({
 
   return (
     <div ref={rootRef} className="relative flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-ink">
+      <label
+        htmlFor={id}
+        className={classes(
+          "text-sm font-medium text-ink",
+          hideLabel && "sr-only",
+        )}
+      >
         {label}
       </label>
       <div className="relative">
@@ -276,7 +294,10 @@ export function Combobox({
                 break;
             }
           }}
-          className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-9 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:opacity-50"
+          className={classes(
+            "border border-border bg-surface px-3 py-2 pr-9 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:opacity-50",
+            pill ? "w-44 rounded-full sm:w-52" : "w-full rounded-lg",
+          )}
         />
         <button
           type="button"

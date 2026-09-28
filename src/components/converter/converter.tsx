@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CATEGORY_TINT_BG } from "@/components/category-tint";
 import { Combobox, type ComboboxGroup } from "@/components/combobox";
 import type { AcceptedFile, RejectedFile } from "@/components/dropzone-logic";
 import {
@@ -70,9 +71,16 @@ interface ConverterProps {
    * are never restricted by it: a dropped file outside the category still
    * gets detected and converted normally. */
   category?: Category;
+  /**
+   * "hero" lays the pickers out as the home page's sentence ("Convert my
+   * [From] into [To]", ADR-0016) instead of the default side-by-side panel
+   * every other page uses. Everything else about the island — state,
+   * keyboard contract, live region — is identical in both variants.
+   */
+  variant?: "panel" | "hero";
 }
 
-export function Converter({ category }: ConverterProps) {
+export function Converter({ category, variant = "panel" }: ConverterProps) {
   const router = useRouter();
 
   const [fromQuery, setFromQuery] = useState("");
@@ -213,13 +221,125 @@ export function Converter({ category }: ConverterProps) {
     (p) => !category || FORMATS[p.from].category === category,
   );
 
+  const isHero = variant === "hero";
+
   return (
     <div id="converter" className="flex flex-col gap-6">
-      <Dropzone
-        accepts={ALL_FORMAT_IDS}
-        multiple
-        onFiles={handleDroppedFiles}
-      />
+      {!isHero && (
+        <Dropzone
+          accepts={ALL_FORMAT_IDS}
+          multiple
+          onFiles={handleDroppedFiles}
+        />
+      )}
+
+      {isHero ? (
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-2 font-display text-[clamp(2.25rem,5vw,3.5rem)] font-semibold leading-[1.1] text-ink">
+          <span>Convert my</span>
+          <span key={fromId ?? "from-empty"} className="format-swap">
+            <Combobox
+              id="converter-from"
+              label="Convert from"
+              hideLabel
+              pill
+              placeholder="a format…"
+              groups={fromGroups}
+              query={fromQuery}
+              onQueryChange={setFromQuery}
+              value={fromId}
+              onChange={handleFromChange}
+              emptyText="No formats match."
+            />
+          </span>
+          <span>into</span>
+          <div className="flex flex-col gap-1.5">
+            <span key={toId ?? "to-empty"} className="format-swap">
+              <Combobox
+                id="converter-to"
+                label="Convert to"
+                hideLabel
+                pill
+                placeholder="a format…"
+                groups={toGroups}
+                query={toQuery}
+                onQueryChange={setToQuery}
+                value={toId}
+                onChange={handleToChange}
+                emptyText="No options match."
+                disabled={!fromId}
+                describedBy={!fromId ? TO_HINT_ID : undefined}
+                onResultsCountChange={handleToResultsCount}
+              />
+            </span>
+            {!fromId && (
+              <p id={TO_HINT_ID} className="text-sm font-sans text-ink-muted">
+                Choose what you're converting from first
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleGo}
+            disabled={!canGo}
+            className="inline-flex min-h-11 items-center justify-center rounded-full bg-accent px-6 py-2 font-sans text-base font-medium text-canvas outline-none transition-colors hover:bg-accent/90 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none"
+          >
+            Convert
+          </button>
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <Combobox
+            id="converter-from"
+            label="Convert from"
+            placeholder="e.g. PDF, jpeg, word…"
+            groups={fromGroups}
+            query={fromQuery}
+            onQueryChange={setFromQuery}
+            value={fromId}
+            onChange={handleFromChange}
+            emptyText="No formats match."
+          />
+          <div className="flex flex-col gap-1.5">
+            <Combobox
+              id="converter-to"
+              label="Convert to"
+              placeholder="e.g. Word, compress…"
+              groups={toGroups}
+              query={toQuery}
+              onQueryChange={setToQuery}
+              value={toId}
+              onChange={handleToChange}
+              emptyText="No options match."
+              disabled={!fromId}
+              describedBy={!fromId ? TO_HINT_ID : undefined}
+              onResultsCountChange={handleToResultsCount}
+            />
+            {!fromId && (
+              <p id={TO_HINT_ID} className="text-xs text-ink-muted">
+                Choose what you're converting from first
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleGo}
+            disabled={!canGo}
+            className="inline-flex min-h-11 items-center justify-center rounded-md bg-accent px-4 py-2 text-sm font-medium text-canvas outline-none transition-colors hover:bg-accent/90 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none sm:min-w-24"
+          >
+            Convert
+          </button>
+        </div>
+      )}
+
+      {isHero && (
+        <Dropzone
+          accepts={ALL_FORMAT_IDS}
+          multiple
+          onFiles={handleDroppedFiles}
+          promptText="Or drop a file here and we'll work out what it is."
+          showChooseFilesBadge
+        />
+      )}
 
       {mixedGroups && (
         // biome-ignore lint/a11y/useSemanticElements: this is an APG-style option group of buttons, not a form <fieldset>.
@@ -255,49 +375,6 @@ export function Converter({ category }: ConverterProps) {
         </ul>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-        <Combobox
-          id="converter-from"
-          label="Convert from"
-          placeholder="e.g. PDF, jpeg, word…"
-          groups={fromGroups}
-          query={fromQuery}
-          onQueryChange={setFromQuery}
-          value={fromId}
-          onChange={handleFromChange}
-          emptyText="No formats match."
-        />
-        <div className="flex flex-col gap-1.5">
-          <Combobox
-            id="converter-to"
-            label="Convert to"
-            placeholder="e.g. Word, compress…"
-            groups={toGroups}
-            query={toQuery}
-            onQueryChange={setToQuery}
-            value={toId}
-            onChange={handleToChange}
-            emptyText="No options match."
-            disabled={!fromId}
-            describedBy={!fromId ? TO_HINT_ID : undefined}
-            onResultsCountChange={handleToResultsCount}
-          />
-          {!fromId && (
-            <p id={TO_HINT_ID} className="text-xs text-ink-muted">
-              Choose what you're converting from first
-            </p>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={handleGo}
-          disabled={!canGo}
-          className="inline-flex min-h-11 items-center justify-center rounded-md bg-accent px-4 py-2 text-sm font-medium text-canvas outline-none transition-colors hover:bg-accent/90 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none sm:min-w-24"
-        >
-          Go
-        </button>
-      </div>
-
       <div role="status" aria-live="polite" className="sr-only">
         {liveMessage}
       </div>
@@ -310,7 +387,7 @@ export function Converter({ category }: ConverterProps) {
               <Link
                 key={entry.slug}
                 href={`/tools/${entry.slug}`}
-                className="flex min-h-11 items-center rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-ink outline-none transition-colors hover:bg-canvas focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas motion-reduce:transition-none"
+                className={`flex min-h-11 items-center rounded-full px-4 py-2 text-sm font-medium text-ink outline-none transition-colors hover:brightness-95 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas motion-reduce:transition-none ${CATEGORY_TINT_BG[FORMATS[entry.from].category]}`}
               >
                 {popularChipLabel(entry)}
               </Link>

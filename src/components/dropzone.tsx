@@ -15,6 +15,21 @@ interface DropzoneProps {
   multiple?: boolean;
   disabled?: boolean;
   onFiles: (accepted: AcceptedFile[], rejected: RejectedFile[]) => void;
+  /**
+   * Overrides the visible instruction line. Defaults to the tool-page
+   * copy — the home hero (`Converter`, ADR-0016) passes its own calmer
+   * sentence ("Or drop a file here and we'll work out what it is.") without
+   * changing anything else about this component.
+   */
+  promptText?: string;
+  /**
+   * Shows a "Choose files" pill next to the prompt (ADR-0016's home
+   * wireframe). Purely decorative (`aria-hidden`) — the whole area is
+   * already the one accessible control that opens the file browser (Enter
+   * or Space per ADR-0015's keyboard contract), so this never introduces a
+   * second, nested interactive element.
+   */
+  showChooseFilesBadge?: boolean;
 }
 
 /** Builds an `<input accept>` value from every accepted format's ext + mime. */
@@ -42,6 +57,8 @@ export function Dropzone({
   multiple = false,
   disabled = false,
   onFiles,
+  promptText = "Drag files here, click to browse, or paste",
+  showChooseFilesBadge = false,
 }: DropzoneProps) {
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -98,8 +115,16 @@ export function Dropzone({
         )}
       >
         <UploadIcon className="size-6 text-ink-muted" aria-hidden="true" />
-        <span className="text-sm text-ink">
-          Drag files here, click to browse, or paste
+        <span className="flex flex-wrap items-center justify-center gap-2 text-sm text-ink">
+          {promptText}
+          {showChooseFilesBadge && (
+            <span
+              aria-hidden="true"
+              className="inline-flex min-h-8 items-center rounded-full bg-accent px-3 py-1 text-xs font-medium text-canvas"
+            >
+              Choose files
+            </span>
+          )}
         </span>
         <span id={describedById} className="text-xs text-ink-muted">
           Accepted: {acceptedFormatsLabel(accepts)}

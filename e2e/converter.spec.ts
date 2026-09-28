@@ -93,7 +93,7 @@ test.describe("Converter", () => {
     await to.press("Enter");
     await expect(to).toHaveValue("PNG");
 
-    await page.getByRole("button", { name: "Go" }).click();
+    await page.getByRole("button", { name: "Convert" }).click();
     await expect(page).toHaveURL(/\/tools\/jpg-to-png$/);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   });
@@ -167,7 +167,13 @@ test.describe("Converter", () => {
   test("a Popular chip navigates to its pair page", async ({ page }) => {
     await page.goto("/");
 
-    await page.getByRole("link", { name: /PDF to Word/ }).click();
+    // Exact match: the redesigned home page's category link list also has a
+    // "PDF to Word" link (the tool's own title) alongside this Popular
+    // chip's "PDF to Word Document" (fromLabel + " to " + targetLabel,
+    // popularChipLabel) — a loose /PDF to Word/ regex matches both.
+    await page
+      .getByRole("link", { name: "PDF to Word Document", exact: true })
+      .click();
     await expect(page).toHaveURL(/\/tools\/pdf-to-word$/);
   });
 
