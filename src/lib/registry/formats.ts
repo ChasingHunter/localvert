@@ -39,6 +39,15 @@ export interface FormatSpec {
    * never find it.
    */
   text?: boolean;
+  /**
+   * Other names people search by, beyond `label` and `ext` — "jpeg" already
+   * lives in `ext`, so it's never repeated here; an alias only earns its
+   * place when it isn't already covered by `ext`. Lowercase, no duplicates
+   * of `ext`. Read by `matchFormat` (`src/lib/converter/catalog.ts`) so the
+   * from/to pickers' filter finds a format by a name other than its own
+   * label — "word" finds DOCX, "iphone photo" finds HEIC. See ADR-0015.
+   */
+  aliases?: readonly string[];
 }
 
 /** Byte values of an ASCII string, for signatures like "RIFF" or "%PDF-". */
@@ -53,6 +62,7 @@ export const FORMATS = {
     mime: "image/jpeg",
     category: "image",
     magic: [[{ offset: 0, bytes: [0xff, 0xd8, 0xff] }]],
+    aliases: ["jfif"],
   },
   png: {
     label: "PNG",
@@ -77,6 +87,7 @@ export const FORMATS = {
       [{ offset: 0, bytes: ascii("GIF87a") }],
       [{ offset: 0, bytes: ascii("GIF89a") }],
     ],
+    aliases: ["animated"],
   },
   webp: {
     label: "WebP",
@@ -110,6 +121,7 @@ export const FORMATS = {
     category: "image",
     // ICONDIR header: reserved (2 bytes, always 0) + type (2 bytes, 1 = icon).
     magic: [[{ offset: 0, bytes: [0x00, 0x00, 0x01, 0x00] }]],
+    aliases: ["favicon", "icon"],
   },
   raw: {
     label: "Camera RAW",
@@ -157,6 +169,7 @@ export const FORMATS = {
         { offset: 8, bytes: ascii("crx ") },
       ], // CR3 (Canon) — an ISO-BMFF "ftyp" box, like AVIF/HEIC.
     ],
+    aliases: ["camera raw"],
   },
   tiff: {
     label: "TIFF",
@@ -220,6 +233,7 @@ export const FORMATS = {
         { offset: 8, bytes: ascii(brand) },
       ],
     ),
+    aliases: ["iphone photo", "apple photo"],
   },
   svg: {
     label: "SVG",
@@ -243,6 +257,7 @@ export const FORMATS = {
         { offset: 3, bytes: ascii("<?xml") },
       ],
     ],
+    aliases: ["vector"],
   },
   psd: {
     label: "PSD",
@@ -250,6 +265,7 @@ export const FORMATS = {
     mime: "image/vnd.adobe.photoshop",
     category: "image",
     magic: [[{ offset: 0, bytes: ascii("8BPS") }]],
+    aliases: ["photoshop"],
   },
   pdf: {
     label: "PDF",
@@ -285,6 +301,7 @@ export const FORMATS = {
         { offset: 8, bytes: ascii("qt  ") },
       ],
     ],
+    aliases: ["quicktime", "iphone video"],
   },
   webm: {
     label: "WebM",
@@ -311,6 +328,7 @@ export const FORMATS = {
     // on `webm`). A dropped .mkv sniffs as "webm" today; tools that need to
     // tell them apart do so by extension, not by magic.
     magic: [[{ offset: 0, bytes: [0x1a, 0x45, 0xdf, 0xa3] }]],
+    aliases: ["matroska"],
   },
   avi: {
     label: "AVI",
@@ -349,6 +367,7 @@ export const FORMATS = {
         },
       ],
     ],
+    aliases: ["windows media video"],
   },
   flv: {
     label: "FLV",
@@ -379,6 +398,7 @@ export const FORMATS = {
       [{ offset: 0, bytes: [0xff, 0xe3] }],
       [{ offset: 0, bytes: [0xff, 0xe2] }],
     ],
+    aliases: ["audio"],
   },
   wav: {
     label: "WAV",
@@ -443,6 +463,7 @@ export const FORMATS = {
         { offset: 8, bytes: ascii("M4A ") },
       ],
     ],
+    aliases: ["aac audio", "apple audio"],
   },
   aac: {
     label: "AAC",
@@ -481,6 +502,7 @@ export const FORMATS = {
         },
       ],
     ],
+    aliases: ["windows media audio"],
   },
   zip: {
     label: "ZIP",
@@ -506,6 +528,7 @@ export const FORMATS = {
     // here rather than just documenting a shape nothing reads.
     magic: [],
     text: true,
+    aliases: ["text", "plain text"],
   },
   json: {
     label: "JSON",
@@ -519,6 +542,7 @@ export const FORMATS = {
     // doc comment on `FormatSpec` and `classifyFiles`' extension fallback.
     magic: [],
     text: true,
+    aliases: ["javascript object notation"],
   },
   yaml: {
     label: "YAML",
@@ -540,6 +564,7 @@ export const FORMATS = {
     // like JSON's `{`/`[` opener. `text` format, identified by extension.
     magic: [],
     text: true,
+    aliases: ["comma separated"],
   },
   md: {
     label: "Markdown",
@@ -565,6 +590,7 @@ export const FORMATS = {
     // magic at all.
     magic: [],
     text: true,
+    aliases: ["web page"],
   },
   epub: {
     label: "EPUB",
@@ -579,6 +605,7 @@ export const FORMATS = {
       [{ offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] }],
       [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
     ],
+    aliases: ["ebook", "e-book"],
   },
   xlsx: {
     label: "Excel Workbook",
@@ -594,6 +621,7 @@ export const FORMATS = {
       [{ offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] }],
       [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
     ],
+    aliases: ["excel", "spreadsheet"],
   },
   docx: {
     label: "Word Document",
@@ -607,6 +635,7 @@ export const FORMATS = {
       [{ offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] }],
       [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
     ],
+    aliases: ["word"],
   },
   pptx: {
     label: "PowerPoint Presentation",
@@ -618,6 +647,7 @@ export const FORMATS = {
       [{ offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] }],
       [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
     ],
+    aliases: ["powerpoint", "slides"],
   },
   odt: {
     label: "OpenDocument Text",
@@ -630,6 +660,7 @@ export const FORMATS = {
       [{ offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] }],
       [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
     ],
+    aliases: ["libreoffice writer", "openoffice writer"],
   },
   ods: {
     label: "OpenDocument Spreadsheet",
@@ -640,6 +671,7 @@ export const FORMATS = {
       [{ offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] }],
       [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
     ],
+    aliases: ["libreoffice calc", "openoffice calc"],
   },
   odp: {
     label: "OpenDocument Presentation",
@@ -650,6 +682,7 @@ export const FORMATS = {
       [{ offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] }],
       [{ offset: 0, bytes: [0x50, 0x4b, 0x05, 0x06] }],
     ],
+    aliases: ["libreoffice impress", "openoffice impress"],
   },
   doc: {
     label: "Word 97-2003 Document",
@@ -670,6 +703,7 @@ export const FORMATS = {
         },
       ],
     ],
+    aliases: ["word 97", "word"],
   },
   xls: {
     label: "Excel 97-2003 Workbook",
@@ -685,6 +719,7 @@ export const FORMATS = {
         },
       ],
     ],
+    aliases: ["excel 97", "excel"],
   },
   ppt: {
     label: "PowerPoint 97-2003 Presentation",
@@ -700,6 +735,7 @@ export const FORMATS = {
         },
       ],
     ],
+    aliases: ["powerpoint 97", "powerpoint"],
   },
   rtf: {
     label: "Rich Text Format",
