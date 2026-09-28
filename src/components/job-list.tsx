@@ -55,8 +55,8 @@ export function JobList({
   if (jobs.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between gap-2 pb-2">
         <h2 className="text-sm font-medium text-ink-muted">
           {jobs.length} {jobs.length === 1 ? "file" : "files"}
         </h2>
@@ -66,6 +66,7 @@ export function JobList({
               type="button"
               variant="outline"
               size="sm"
+              className="rounded-full"
               onClick={onDownloadAll}
               disabled={zipping}
             >
@@ -78,7 +79,7 @@ export function JobList({
         </div>
       </div>
 
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-col divide-y divide-border border-t border-border">
         {jobs.map((job) => (
           <JobCard
             key={job.id}

@@ -55,7 +55,7 @@ export function JobCard({
   const cancellable = job.status === "queued" || job.status === "running";
 
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-4 py-3">
+    <li className="flex flex-col gap-2 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 flex-col">
           <span className="truncate text-sm font-medium text-ink">
@@ -68,12 +68,12 @@ export function JobCard({
               ` → ${job.outputs.length} files, ${formatBytes(job.outputs.reduce((sum, o) => sum + o.size, 0))}`}
           </span>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-2">
           {job.status === "done" && job.output && (
             <a
               download={job.output.name}
               href={job.output.url}
-              className="text-sm font-medium text-accent hover:underline"
+              className="inline-flex min-h-9 items-center rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-canvas outline-none transition-colors hover:bg-accent/90 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
             >
               Download
             </a>
@@ -83,6 +83,7 @@ export function JobCard({
               type="button"
               variant="outline"
               size="sm"
+              className="rounded-full"
               onClick={() => onDownloadOutputs(job.id)}
               disabled={zippingId === job.id}
             >
@@ -94,6 +95,7 @@ export function JobCard({
               type="button"
               variant="ghost"
               size="icon"
+              className="rounded-full"
               aria-label={`Cancel ${job.fileName}`}
               onClick={() => onCancel(job.id)}
             >
@@ -104,6 +106,7 @@ export function JobCard({
               type="button"
               variant="ghost"
               size="icon"
+              className="rounded-full"
               aria-label={`Remove ${job.fileName}`}
               onClick={() => onRemove(job.id)}
             >
