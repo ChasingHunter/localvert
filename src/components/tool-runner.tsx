@@ -108,6 +108,10 @@ interface ToolRunnerProps {
  * immediately (the field was already filled in before the drop) or must
  * hold the file back for the explicit action button instead.
  */
+/** After this long without the tool's code, tell the user and offer a
+ * reload, while still waiting in case it's only a slow connection. */
+const SLOW_LOAD_MS = 15_000;
+
 function requiredKeysSatisfied(
   keys: readonly string[],
   values: Readonly<Record<string, unknown>>,
@@ -161,6 +165,7 @@ function rejectionMessage(r: RejectedFile): string {
 export function ToolRunner({ slug }: ToolRunnerProps) {
   const [tool, setTool] = useState<ToolDefinition | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadSlow, setLoadSlow] = useState(false);
   const [options, setOptions] = useState<Record<string, unknown>>({});
   const [rejected, setRejected] = useState<RejectedFile[]>([]);
   const [zipping, setZipping] = useState(false);
@@ -212,13 +217,33 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
       setLoadError(`Unknown tool "${slug}".`);
       return;
     }
-    loader().then((mod) => {
-      if (cancelled) return;
-      setTool(mod.default);
-      setOptions(mod.default.defaults as Record<string, unknown>);
-    });
+    // A tool's code is a separate chunk. If its download stalls or fails
+    // (flaky network, a dropped connection), the page must say so instead of
+    // showing "Loading converter…" forever. Retrying the import() doesn't
+    // help: browsers cache a failed module fetch, so reloading the page is
+    // the real recovery, and that's what both messages offer.
+    const slow = setTimeout(() => {
+      if (!cancelled) setLoadSlow(true);
+    }, SLOW_LOAD_MS);
+    loader().then(
+      (mod) => {
+        if (cancelled) return;
+        clearTimeout(slow);
+        setLoadSlow(false);
+        setTool(mod.default);
+        setOptions(mod.default.defaults as Record<string, unknown>);
+      },
+      () => {
+        if (cancelled) return;
+        clearTimeout(slow);
+        setLoadError(
+          "Couldn't load this converter. Check your connection and reload the page.",
+        );
+      },
+    );
     return () => {
       cancelled = true;
+      clearTimeout(slow);
     };
   }, [slug]);
 
@@ -495,8 +520,22 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
     [tool],
   );
 
-  if (loadError) {
-    return <p className="text-sm text-danger">{loadError}</p>;
+  if (loadError || (!tool && loadSlow)) {
+    return (
+      <div role="status" className="flex flex-wrap items-center gap-3 text-sm">
+        <p className={loadError ? "text-danger" : "text-ink-muted"}>
+          {loadError ??
+            "This is taking longer than usual. Check your connection, or reload the page."}
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="min-h-11 rounded-full border border-border bg-surface px-4 font-medium text-ink outline-none hover:bg-canvas focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+        >
+          Reload
+        </button>
+      </div>
+    );
   }
   if (!tool) {
     return <p className="text-sm text-ink-muted">Loading converter…</p>;
