@@ -93,6 +93,33 @@ output in the diff.
 **magic bytes**. A file named `.png` that is really a JPEG is detected as a
 JPEG. Extensions are a naming hint; the first bytes are the truth.
 
+### Converter (ADR-0015)
+
+A "From -> To" picker plus a drop zone, as one client island
+(`src/components/converter/`), reused unchanged on the home page (the hero),
+every category page (pre-filtered to that category's formats), with a
+"Convert something else" link back to it from every tool page. It never
+imports `TOOLS` or an engine — only `src/lib/converter/catalog.ts`'s pure
+helpers over the generated, plain-data `src/tools/catalog.ts`, so an
+impossible pair can never be offered and the picker never pays for a tool's
+zod schema or pipeline.
+
+Both entry flows fill the same state (`{ from, target, files }`): picking
+From then To, or dropping/pasting/browsing files (detected via the same
+`classifyFiles` a tool page's own dropzone uses). **Go** always navigates
+client-side to the pair's existing `/tools/<slug>` page — there is no second
+runner UI. When files are already staged, `src/lib/converter/handoff.ts`'s
+one-shot, in-memory `File[]` store hands them to that page's `ToolRunner` on
+mount, exactly as if they'd been dropped there directly; nothing is
+serialised and nothing survives a hard reload. `ToolHeading` focuses the
+tool page's `h1` only when it detects that handoff, never on an ordinary
+page load.
+
+The picker itself is `combobox.tsx`'s accessible "editable combobox with
+listbox popup" (APG), a small shared component with no other caller today —
+see its own doc comment for the keyboard/ARIA contract `combobox-logic.ts`
+implements as a pure reducer.
+
 ---
 
 ## Engines
