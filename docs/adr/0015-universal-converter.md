@@ -1,19 +1,19 @@
-# ADR-0015: A universal "From → To" converter over the registry
+﻿# ADR-0015: A universal "From â†’ To" converter over the registry
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-09-28
 
 ## Context
 
 Localvert has 123 tools. Counted from `src/tools/**` on 2026-09-28: 102
 distinct format-change pairs across 46 input formats, plus 54 same-format
-actions (compress, resize, rotate, crop, trim, merge, watermark, OCR…). The
+actions (compress, resize, rotate, crop, trim, merge, watermark, OCRâ€¦). The
 home page lists tools as category card grids, capped at six per category. The
 owner's problem: people can't find the right converter in that many cards.
 
 Two ways in are wanted:
 
-1. **From → To pickers.** "I have a PDF and want Word": pick both, go.
+1. **From â†’ To pickers.** "I have a PDF and want Word": pick both, go.
 2. **Drop any file.** The format is detected, and the valid outputs appear.
 
 UX and accessibility are the priority. The full visual redesign comes later in
@@ -59,8 +59,8 @@ When several tools produce the same pair (6 today), the target resolves to
 one **default** tool by rank: the exact per-pair page first. The others appear
 as labelled variants.
 
-- JPG → PDF gives "PDF" (jpg-to-pdf) and "Searchable PDF (OCR)".
-- MP4 → MP3 prefers mp4-to-mp3 over extract-audio.
+- JPG â†’ PDF gives "PDF" (jpg-to-pdf) and "Searchable PDF (OCR)".
+- MP4 â†’ MP3 prefers mp4-to-mp3 over extract-audio.
 
 **Formats get human names and aliases.** `FormatSpec` gains `aliases`, and
 typing any of them filters to the right format:
@@ -90,8 +90,8 @@ from both pickers' perspective.
    - If the files are of mixed formats, they're grouped by format and the
      user picks the group to convert. v1 converts one group at a time.
    - Undetectable files get an explicit message, never a silent no-op.
-3. **Popular** chips under the pickers, such as PDF → Word, JPG → PNG,
-   MP4 → MP3 and Compress PDF, come from `rank` in the catalog. They're
+3. **Popular** chips under the pickers, such as PDF â†’ Word, JPG â†’ PNG,
+   MP4 â†’ MP3 and Compress PDF, come from `rank` in the catalog. They're
    plain links, so they work before hydration.
 
 **Accessibility contract (non-negotiable, tested):**
@@ -103,21 +103,21 @@ from both pickers' perspective.
     the highlighted option.
   - Grouping: groups use `role="group"` labelled by a non-option heading.
 - **Keyboard:**
-  - ↓/↑ open the list and move through it.
+  - â†“/â†‘ open the list and move through it.
   - Home/End jump to the first and last option.
   - Enter commits the highlighted option.
   - Esc closes the list and then clears it.
   - Tab commits and moves on. It never traps focus.
   - The whole flow works with the keyboard alone: drop zone (Enter or Space
-    opens the file browser) → From → To → Go.
+    opens the file browser) â†’ From â†’ To â†’ Go.
 - **One polite live region** announces:
-  - detection: "Detected report.pdf — PDF document, 1.2 MB. 14 options
+  - detection: "Detected report.pdf â€” PDF document, 1.2 MB. 14 options
     available."
   - count changes: "5 results".
   - errors, with the specific reason.
 - **Focus management:** after a drop, focus moves to To. After Go, the tool
   page's heading receives focus.
-- **Sizing and motion:** targets are at least 44×44 px on touch. Decorative
+- **Sizing and motion:** targets are at least 44Ã—44 px on touch. Decorative
   motion is disabled under `prefers-reduced-motion`. Contrast meets WCAG AA.
 - **Without JavaScript:** the server-rendered category lists and Popular
   links remain, so the page never depends on the island.
@@ -147,7 +147,7 @@ from both pickers' perspective.
   - The in-memory file handoff only survives client-side navigation. A hard
     reload of the tool page drops the files. That's acceptable: the user just
     drops them again.
-- Multi-hop conversions (for example HEIC → WebP, which no single tool does)
+- Multi-hop conversions (for example HEIC â†’ WebP, which no single tool does)
   are out of scope. The To list only offers what one tool can do. Chaining is
   a possible later ADR.
 
