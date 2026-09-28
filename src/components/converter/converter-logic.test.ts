@@ -1,0 +1,150 @@
+import { describe, expect, it } from "vitest";
+import type { AcceptedFile, RejectedFile } from "@/components/dropzone-logic";
+import type { PopularEntry } from "@/lib/converter/catalog";
+import {
+  describeDetection,
+  describeGroupCounts,
+  describeMixed,
+  describeUndetected,
+  formatBytes,
+  groupByFormat,
+  popularChipLabel,
+} from "./converter-logic";
+
+function accepted(
+  name: string,
+  format: AcceptedFile["format"],
+  size = 100,
+): AcceptedFile {
+  const file = new File([new Uint8Array(size)], name);
+  return { file, format, extensionMismatch: false };
+}
+
+function rejected(name: string): RejectedFile {
+  return {
+    file: new File(["x"], name),
+    reason: "unknown-format",
+    detected: null,
+  };
+}
+
+describe("formatBytes", () => {
+  it("formats sub-KB sizes in bytes", () => {
+    expect(formatBytes(512)).toBe("512 B");
+  });
+
+  it("formats KB and MB with one decimal", () => {
+    expect(formatBytes(1024)).toBe("1.0 KB");
+    expect(formatBytes(1_258_291)).toBe("1.2 MB");
+  });
+});
+
+describe("groupByFormat", () => {
+  it("returns one group for a single-format drop", () => {
+    const groups = groupByFormat([
+      accepted("a.jpg", "jpg"),
+      accepted("b.jpg", "jpg"),
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.format).toBe("jpg");
+    expect(groups[0]?.files).toHaveLength(2);
+  });
+
+  it("splits a mixed drop into groups in first-seen order", () => {
+    const groups = groupByFormat([
+      accepted("a.pdf", "pdf"),
+      accepted("b.jpg", "jpg"),
+      accepted("c.pdf", "pdf"),
+    ]);
+    expect(groups.map((g) => g.format)).toEqual(["pdf", "jpg"]);
+    expect(groups[0]?.files).toHaveLength(2);
+    expect(groups[1]?.files).toHaveLength(1);
+  });
+
+  it("returns an empty array for no files", () => {
+    expect(groupByFormat([])).toEqual([]);
+  });
+});
+
+describe("describeDetection", () => {
+  it("names the file for a single-file group", () => {
+    const group = {
+      format: "pdf" as const,
+      files: [accepted("report.pdf", "pdf", 1_258_291)],
+    };
+    expect(describeDetection(group, 14)).toBe(
+      "Detected report.pdf — PDF document, 1.2 MB. 14 options available.",
+    );
+  });
+
+  it("uses singular 'option' for a count of one", () => {
+    const group = {
+      format: "pdf" as const,
+      files: [accepted("report.pdf", "pdf")],
+    };
+    expect(describeDetection(group, 1)).toContain("1 option available.");
+  });
+
+  it("names the count and total size for a multi-file group", () => {
+    const group = {
+      format: "jpg" as const,
+      files: [accepted("a.jpg", "jpg", 500), accepted("b.jpg", "jpg", 524)],
+    };
+    expect(describeDetection(group, 5)).toBe(
+      "Detected 2 JPEG files, 1.0 KB. 5 options available.",
+    );
+  });
+});
+
+describe("describeGroupCounts / describeMixed", () => {
+  const groups = groupByFormat([
+    accepted("a.pdf", "pdf"),
+    accepted("b.pdf", "pdf"),
+    accepted("c.pdf", "pdf"),
+    accepted("d.jpg", "jpg"),
+    accepted("e.jpg", "jpg"),
+  ]);
+
+  it("summarizes counts per group", () => {
+    expect(describeGroupCounts(groups)).toBe("3 PDF, 2 JPEG");
+  });
+
+  it("wraps the summary in a call to action", () => {
+    expect(describeMixed(groups)).toBe(
+      "Mixed formats detected: 3 PDF, 2 JPEG. Choose one to continue.",
+    );
+  });
+});
+
+describe("describeUndetected", () => {
+  it("lists every rejected file's name", () => {
+    expect(describeUndetected([rejected("a.xyz"), rejected("b.bin")])).toBe(
+      "Couldn't detect the format of: a.xyz, b.bin.",
+    );
+  });
+});
+
+describe("popularChipLabel", () => {
+  it("reads 'X to Y' for a format target", () => {
+    const entry: PopularEntry = {
+      kind: "format",
+      label: "Word",
+      slug: "pdf-to-word",
+      format: "docx",
+      from: "pdf",
+      rank: 1,
+    };
+    expect(popularChipLabel(entry)).toBe("PDF to Word");
+  });
+
+  it("reads 'Verb Format' for an action target", () => {
+    const entry: PopularEntry = {
+      kind: "action",
+      label: "Compress",
+      slug: "compress-pdf",
+      from: "pdf",
+      rank: 4,
+    };
+    expect(popularChipLabel(entry)).toBe("Compress PDF");
+  });
+});
