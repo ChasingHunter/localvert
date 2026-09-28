@@ -229,7 +229,12 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
       search across all tools; categories as secondary navigation. Per-pair pages stay (SEO)
       but share the same component. Accessibility first (keyboard, screen readers, contrast).
       Research existing converter sites for patterns.
-- [ ] Full visual redesign of the site (after the universal converter lands)
+      Owner direction (2026-09-28): the core problem is *finding* the right tool among 120+ —
+      both entry flows are wanted: "From [format] → To [format]" pickers (pick, go) and drop any
+      file → detected format → pick output. UX + accessibility are the top priority; learn from
+      existing converter sites, then design our own (ADR-0015). Same-format actions (compress,
+      resize, rotate, crop, merge…) need a first-class place too. Target: v0.4.0.
+- [ ] Full visual redesign of the site (after the universal converter lands; also in v0.4.0)
 
 - [ ] i18n
 - [ ] `file_handlers` and `share_target` in the manifest (open files from the OS)
