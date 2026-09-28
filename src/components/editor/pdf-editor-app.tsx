@@ -178,6 +178,25 @@ const ANNOTATION_TOOLS: ReadonlyArray<{
   { id: "stamp", label: "Insert image", icon: ImagePlus },
 ];
 
+/** Toolbar icon buttons (ADR-0016): 8px radius, not the pill shape reserved
+ * for pickers/chips/CTAs — this is dense, small UI, and a pressed tool shows
+ * as an `accent-soft` fill with an `accent`-colored icon (`text-accent`,
+ * which every lucide icon here inherits as `currentColor`) instead of the
+ * Button component's own solid `accent` "default" variant, which is a
+ * heavier fill meant for primary actions, not a toggled tool. */
+function TOOL_BUTTON_CLASS(active: boolean): string {
+  return active
+    ? "rounded-lg border-transparent bg-accent-soft text-accent hover:bg-accent-soft"
+    : "rounded-lg";
+}
+
+/** The page/thumbnail area sits a shade darker than `canvas` so the pages
+ * themselves read as paper set against it, in both themes — `color-mix`
+ * against the `canvas` token (rather than a new named token) keeps it
+ * exactly in step with light/dark and any future palette tweak. */
+const EDITOR_CANVAS_BG =
+  "bg-[color-mix(in_oklab,var(--color-canvas),black_5%)]";
+
 /** Tool ids whose creation context takes a stroke/fill color. FreeText takes
  * `fontColor` instead — see `buildToolContext`. Stamp takes neither. */
 const COLOR_STYLE_TOOLS = new Set([
@@ -351,6 +370,17 @@ export function PdfEditorApp() {
               Discard
             </Button>
           </div>
+        </div>
+      )}
+      {!file && (
+        <div className="flex flex-col gap-2">
+          <h2 className="font-display text-2xl font-medium text-ink">
+            Edit a PDF
+          </h2>
+          <p className="text-ink-muted">
+            Highlight, draw, add text or sign. Everything happens on this
+            device.
+          </p>
         </div>
       )}
       {!loaded && <Dropzone accepts={["pdf"]} onFiles={handleFiles} />}
@@ -870,7 +900,7 @@ function Editor({
     async (usedFallbackFont: boolean) => {
       setTextEditNotice(
         usedFallbackFont
-          ? "Font substituted — the original font didn't include every new character."
+          ? "Font substituted. The original font didn't include every new character."
           : null,
       );
       const provides = documentManager.provides;
@@ -1181,7 +1211,7 @@ function Editor({
       const total = tempDoc.pages.length;
       if (total > MAX_PRINT_PAGES) {
         setPrintError(
-          `This document has ${total} pages — printing is limited to ${MAX_PRINT_PAGES} pages at a time.`,
+          `This document has ${total} pages. Printing is limited to ${MAX_PRINT_PAGES} pages at a time.`,
         );
         await engine.closeDocument(tempDoc).toPromise();
         return;
@@ -1424,11 +1454,12 @@ function Editor({
       >
         <Button
           type="button"
-          variant={activeTool === null ? "default" : "outline"}
+          variant="outline"
           size="icon"
           aria-label="Select"
           aria-pressed={activeTool === null}
           onClick={() => applyActiveTool(null)}
+          className={TOOL_BUTTON_CLASS(activeTool === null)}
         >
           <MousePointer2 aria-hidden="true" />
         </Button>
@@ -1436,11 +1467,12 @@ function Editor({
           <Button
             key={t.id}
             type="button"
-            variant={activeTool === t.id ? "default" : "outline"}
+            variant="outline"
             size="icon"
             aria-label={t.label}
             aria-pressed={activeTool === t.id}
             onClick={() => applyActiveTool(t.id)}
+            className={TOOL_BUTTON_CLASS(activeTool === t.id)}
           >
             <t.icon aria-hidden="true" />
           </Button>
@@ -1448,22 +1480,24 @@ function Editor({
 
         <Button
           type="button"
-          variant={redactMode ? "default" : "outline"}
+          variant="outline"
           size="icon"
           aria-label="Redact"
           aria-pressed={redactMode}
           onClick={enterRedactMode}
+          className={TOOL_BUTTON_CLASS(redactMode)}
         >
           <Eraser aria-hidden="true" />
         </Button>
 
         <Button
           type="button"
-          variant={textEditMode ? "default" : "outline"}
+          variant="outline"
           size="icon"
           aria-label="Edit text"
           aria-pressed={textEditMode}
           onClick={enterTextEditMode}
+          className={TOOL_BUTTON_CLASS(textEditMode)}
         >
           <TextCursorInput aria-hidden="true" />
         </Button>
@@ -1474,6 +1508,7 @@ function Editor({
           size="icon"
           aria-label="Sign"
           onClick={() => setSignOpen(true)}
+          className="rounded-lg"
         >
           <Signature aria-hidden="true" />
         </Button>
@@ -1484,17 +1519,19 @@ function Editor({
           size="icon"
           aria-label="Organize pages"
           onClick={() => setOrganizerOpen(true)}
+          className="rounded-lg"
         >
           <LayoutGrid aria-hidden="true" />
         </Button>
 
         <Button
           type="button"
-          variant={searchOpen ? "default" : "outline"}
+          variant="outline"
           size="icon"
           aria-label="Find in document"
           aria-pressed={searchOpen}
           onClick={() => setSearchOpen((open) => !open)}
+          className={TOOL_BUTTON_CLASS(searchOpen)}
         >
           <SearchIcon aria-hidden="true" />
         </Button>
@@ -1505,6 +1542,7 @@ function Editor({
           size="icon"
           aria-label="Keyboard shortcuts"
           onClick={() => setShortcutsOpen(true)}
+          className="rounded-lg"
         >
           <Keyboard aria-hidden="true" />
         </Button>
@@ -1516,6 +1554,7 @@ function Editor({
           aria-label="Print"
           onClick={handlePrint}
           disabled={printStatus !== null}
+          className="rounded-lg"
         >
           <Printer aria-hidden="true" />
         </Button>
@@ -1526,6 +1565,7 @@ function Editor({
           size="icon"
           aria-label="Close"
           onClick={handleClose}
+          className="rounded-lg"
         >
           <X aria-hidden="true" />
         </Button>
@@ -1601,6 +1641,7 @@ function Editor({
             size="icon"
             aria-label="Zoom out"
             onClick={() => zoom.provides?.zoomOut()}
+            className="rounded-lg"
           >
             <ZoomOut aria-hidden="true" />
           </Button>
@@ -1613,6 +1654,7 @@ function Editor({
             size="icon"
             aria-label="Zoom in"
             onClick={() => zoom.provides?.zoomIn()}
+            className="rounded-lg"
           >
             <ZoomIn aria-hidden="true" />
           </Button>
@@ -1633,6 +1675,7 @@ function Editor({
             aria-label="Undo"
             disabled={!history.provides?.canUndo()}
             onClick={handleUndo}
+            className="rounded-lg"
           >
             <Undo2 aria-hidden="true" />
           </Button>
@@ -1643,6 +1686,7 @@ function Editor({
             aria-label="Redo"
             disabled={!history.provides?.canRedo()}
             onClick={handleRedo}
+            className="rounded-lg"
           >
             <Redo2 aria-hidden="true" />
           </Button>
@@ -1779,7 +1823,7 @@ function Editor({
           <ThumbnailsPane
             documentId={documentId}
             style={{ height: 480 }}
-            className="rounded-md border border-border bg-canvas"
+            className={`rounded-md border border-border ${EDITOR_CANVAS_BG}`}
           >
             {(meta) => (
               <button
@@ -1818,7 +1862,7 @@ function Editor({
 
         <Viewport
           documentId={documentId}
-          className="flex-1 overflow-auto rounded-md border border-border bg-canvas"
+          className={`flex-1 overflow-auto rounded-md border border-border ${EDITOR_CANVAS_BG}`}
           // `<Viewport>` sets its own inline `style={{ height: "100%", ... }}`
           // internally (see @embedpdf/plugin-viewport/react), which as an
           // inline style always wins over a Tailwind height class on the
@@ -1880,7 +1924,7 @@ function KeyboardShortcutsPopover({
     <dialog
       ref={dialogRef}
       aria-label="Keyboard shortcuts"
-      className="rounded-md border border-border bg-surface p-4 text-ink backdrop:bg-black/50"
+      className="fixed inset-0 m-auto h-fit w-fit rounded-2xl border border-border bg-surface p-4 text-ink shadow-lg backdrop:bg-ink/40"
       onCancel={(e) => {
         e.preventDefault();
         onClose();
@@ -1945,7 +1989,7 @@ function ApplyRedactionsDialog({
   return (
     <dialog
       ref={dialogRef}
-      className="rounded-md border border-border bg-surface p-4 text-ink backdrop:bg-black/50"
+      className="fixed inset-0 m-auto h-fit w-fit rounded-2xl border border-border bg-surface p-4 text-ink shadow-lg backdrop:bg-ink/40"
       onCancel={(e) => {
         e.preventDefault();
         if (!applying) onCancel();

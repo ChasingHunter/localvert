@@ -281,7 +281,7 @@ export function SignatureDialog({
     <dialog
       ref={dialogRef}
       onClose={onClose}
-      className="w-full max-w-xl rounded-lg border border-border bg-surface p-0 text-ink backdrop:bg-black/50"
+      className="fixed inset-0 m-auto h-fit w-full max-w-xl rounded-2xl border border-border bg-surface p-0 text-ink shadow-lg backdrop:bg-ink/40"
     >
       <div className="flex flex-col gap-4 p-4">
         <div className="flex items-center justify-between">

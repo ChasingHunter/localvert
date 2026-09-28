@@ -397,7 +397,7 @@ export function PageOrganizer({
       ref={dialogRef}
       onClose={onClose}
       aria-labelledby="page-organizer-title"
-      className="h-[90vh] w-[95vw] max-w-4xl rounded-lg border border-border bg-surface p-0 text-ink backdrop:bg-black/50"
+      className="fixed inset-0 m-auto h-[90vh] w-[95vw] max-w-4xl rounded-2xl border border-border bg-surface p-0 text-ink shadow-lg backdrop:bg-ink/40"
     >
       <div className="flex h-full flex-col gap-3 p-4">
         <div className="flex items-center justify-between">
@@ -496,7 +496,7 @@ export function PageOrganizer({
           role="listbox"
           aria-label="Pages"
           aria-multiselectable="true"
-          className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-3 overflow-auto rounded-md border border-border bg-canvas p-3"
+          className="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-3 overflow-auto rounded-md border border-border bg-[color-mix(in_oklab,var(--color-canvas),black_5%)] p-3"
         >
           {tiles.map((tile, index) => (
             <div
