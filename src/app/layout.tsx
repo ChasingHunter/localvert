@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import Script from "next/script";
 import type { ReactNode } from "react";
 import "./globals.css";
 import { THEME_STORAGE_KEY } from "@/lib/theme-storage";
@@ -32,11 +31,17 @@ export const viewport: Viewport = {
  * constant isn't just exported from `theme-toggle.tsx` itself), built into
  * the inlined script text at build time rather than hand-duplicated.
  *
- * `next/script` with `beforeInteractive` is the one supported way to inject
- * a script that runs ahead of hydration in a static export; it renders
- * straight into `<head>`. The exact inlined bytes get hash-allowlisted into
- * each page's script-src by `scripts/csp-inline-hashes.ts` as part of
- * `pnpm build` — this script is never given an `'unsafe-inline'` pass.
+ * This is a plain `<script>` tag, deliberately not `next/script`: with
+ * `strategy="beforeInteractive"`, Next doesn't render the script as literal
+ * HTML in a static export — it ships the body through the RSC payload and
+ * inserts the element at runtime via `document.createElement`/`appendChild`
+ * instead. `scripts/csp-inline-hashes.ts` only ever sees the built HTML
+ * files, so a runtime-inserted script's hash is never in the allowlist and
+ * the browser blocks it (caught by e2e/converter.spec.ts's CSP-violation
+ * guard). A plain `<script>` in a server component's JSX renders as literal
+ * HTML like any other host element, so it's both hashable at build time and
+ * — being the first thing in `<body>`, before any themed content — runs
+ * synchronously ahead of paint, which is the actual no-flash requirement.
  */
 const noFlashThemeScript = `(function(){try{var t=localStorage.getItem(${JSON.stringify(
   THEME_STORAGE_KEY,
@@ -46,10 +51,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body className="min-h-dvh font-sans">
-        <Script
-          id="no-flash-theme"
-          strategy="beforeInteractive"
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: fixed, build-time-generated script content, not user data — next/script requires this prop to inline a script body.
+        <script
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: fixed, build-time-generated script content, not user data.
           dangerouslySetInnerHTML={{ __html: noFlashThemeScript }}
         />
         <ServiceWorker />

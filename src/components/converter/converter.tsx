@@ -65,6 +65,30 @@ function extHint(format: FormatId): string {
   return FORMATS[format].ext.map((e) => `.${e}`).join(", ");
 }
 
+/**
+ * Replays the `.format-swap` CSS animation (globals.css) when `value`
+ * changes, by removing and re-adding the class across a forced reflow —
+ * never by remounting the element. An earlier version keyed the wrapping
+ * span by the picker's value instead, which unmounted and recreated the
+ * `Combobox` itself (input included) on every commit; that silently broke
+ * keyboard focus after Enter (the freshly created input was never the one
+ * that had focus), caught by e2e/converter.spec.ts's keyboard-only test.
+ */
+function useSwapAnimation<T>(value: T) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const prevRef = useRef(value);
+  useEffect(() => {
+    if (prevRef.current === value) return;
+    prevRef.current = value;
+    const el = ref.current;
+    if (!el) return;
+    el.classList.remove("format-swap");
+    void el.offsetWidth; // force a reflow so re-adding the class restarts the animation
+    el.classList.add("format-swap");
+  }, [value]);
+  return ref;
+}
+
 interface ConverterProps {
   /** Pre-filters the From picker to one category's formats — used on a
    * category page (ADR-0015 "Where it lives"). Detection and the To list
@@ -222,6 +246,8 @@ export function Converter({ category, variant = "panel" }: ConverterProps) {
   );
 
   const isHero = variant === "hero";
+  const fromSwapRef = useSwapAnimation(fromId);
+  const toSwapRef = useSwapAnimation(toId);
 
   return (
     <div id="converter" className="flex flex-col gap-6">
@@ -236,7 +262,7 @@ export function Converter({ category, variant = "panel" }: ConverterProps) {
       {isHero ? (
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-2 font-display text-[clamp(2.25rem,5vw,3.5rem)] font-semibold leading-[1.1] text-ink">
           <span>Convert my</span>
-          <span key={fromId ?? "from-empty"} className="format-swap">
+          <span ref={fromSwapRef} className="format-swap">
             <Combobox
               id="converter-from"
               label="Convert from"
@@ -253,7 +279,7 @@ export function Converter({ category, variant = "panel" }: ConverterProps) {
           </span>
           <span>into</span>
           <div className="flex flex-col gap-1.5">
-            <span key={toId ?? "to-empty"} className="format-swap">
+            <span ref={toSwapRef} className="format-swap">
               <Combobox
                 id="converter-to"
                 label="Convert to"
