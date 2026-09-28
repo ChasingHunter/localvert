@@ -178,6 +178,43 @@ test.describe("Converter", () => {
     await expect(page).toHaveURL(/\/tools\/pdf-to-word$/);
   });
 
+  test("category pages offer only their own formats", async ({ page }) => {
+    await page.goto("/audio");
+
+    const from = page.getByRole("combobox", { name: "Convert from" });
+    await from.focus();
+    await from.press("ArrowDown");
+    await expect(page.getByRole("option", { name: /MP3/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /^PDF/ })).not.toBeVisible();
+
+    // The drop area's summary line names audio formats plainly, not the
+    // home page's generic "images, video, audio, PDFs, documents and data."
+    await expect(page.getByText(/^Works with .*MP3/)).toBeVisible();
+    await expect(
+      page.getByText(
+        "Works with images, video, audio, PDFs, documents and data.",
+      ),
+    ).not.toBeVisible();
+  });
+
+  test("dropping a file from another category shows the category-mismatch message with a working link", async ({
+    page,
+  }) => {
+    await page.goto("/audio");
+
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles(fixturePath("a.pdf"));
+
+    await expect(page.getByRole("status")).toContainText(
+      "This is a PDF file. Try the PDF tools.",
+    );
+    const link = page.getByRole("link", { name: "Try the PDF tools." });
+    await expect(link).toBeVisible();
+    await link.click();
+    await expect(page).toHaveURL(/\/pdf$/);
+  });
+
   test("From combobox exposes combobox/option ARIA and toggles aria-expanded", async ({
     page,
   }) => {

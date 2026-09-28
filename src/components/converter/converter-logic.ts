@@ -7,6 +7,7 @@
 
 import type { AcceptedFile, RejectedFile } from "@/components/dropzone-logic";
 import type { PopularEntry } from "@/lib/converter/catalog";
+import { CATEGORY_META, type Category } from "@/lib/registry/categories";
 import { FORMATS, type FormatId } from "@/lib/registry/formats";
 
 /** One detected format among a drop's files, in first-seen order. */
@@ -94,6 +95,46 @@ export function describeMixed(groups: readonly DetectedGroup[]): string {
 export function describeUndetected(rejected: readonly RejectedFile[]): string {
   const names = rejected.map((r) => r.file.name).join(", ");
   return `Couldn't detect the format of: ${names}.`;
+}
+
+/** What a category page tells the user when a drop is recognized but
+ * belongs to a different category than the page's own — e.g. dropping a
+ * PDF on `/audio`. `message` and `linkText` are two separate sentences so
+ * the caller can render the second as a `Link`; concatenated, they're also
+ * the full text `describeCategoryMismatch` hands the live region. */
+export interface CategoryMismatch {
+  message: string;
+  linkHref: string;
+  linkText: string;
+}
+
+/**
+ * `null` unless `rejected` contains a file whose format was detected but
+ * belongs to a different category than `category` — the case a category
+ * page's drop area must never treat as a silent failure (ADR-0015's own
+ * "always name the files" rule, extended here to name the *right* place to
+ * go instead). A file whose format truly couldn't be detected at all
+ * (`detected: null`) isn't a mismatch — that's `describeUndetected`'s job —
+ * and is left for the caller to fall back to. When several rejected files
+ * name different foreign categories, only the first is reported; one clear
+ * pointer beats an enumerated list nobody asked to drop that mix.
+ */
+export function describeCategoryMismatch(
+  rejected: readonly RejectedFile[],
+  category: Category,
+): CategoryMismatch | null {
+  const foreign = rejected.find(
+    (r) => r.detected !== null && FORMATS[r.detected].category !== category,
+  );
+  if (!foreign) return null;
+  const detected = foreign.detected as FormatId;
+  const detectedCategory = FORMATS[detected].category;
+  const meta = CATEGORY_META[detectedCategory];
+  return {
+    message: `This is a ${FORMATS[detected].label} file.`,
+    linkHref: `/${detectedCategory}`,
+    linkText: `Try the ${meta.label} tools.`,
+  };
 }
 
 /** A Popular chip's link text — the tool's own catalog title ("PDF to

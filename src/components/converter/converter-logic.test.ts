@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AcceptedFile, RejectedFile } from "@/components/dropzone-logic";
 import type { PopularEntry } from "@/lib/converter/catalog";
 import {
+  describeCategoryMismatch,
   describeDetection,
   describeGroupCounts,
   describeMixed,
@@ -26,6 +27,13 @@ function rejected(name: string): RejectedFile {
     reason: "unknown-format",
     detected: null,
   };
+}
+
+function rejectedAs(
+  name: string,
+  detected: RejectedFile["detected"],
+): RejectedFile {
+  return { file: new File(["x"], name), reason: "not-accepted", detected };
 }
 
 describe("formatBytes", () => {
@@ -121,6 +129,43 @@ describe("describeUndetected", () => {
     expect(describeUndetected([rejected("a.xyz"), rejected("b.bin")])).toBe(
       "Couldn't detect the format of: a.xyz, b.bin.",
     );
+  });
+});
+
+describe("describeCategoryMismatch", () => {
+  it("points to the PDF category page when a PDF is dropped on /audio", () => {
+    const mismatch = describeCategoryMismatch(
+      [rejectedAs("report.pdf", "pdf")],
+      "audio",
+    );
+    expect(mismatch).toEqual({
+      message: "This is a PDF file.",
+      linkHref: "/pdf",
+      linkText: "Try the PDF tools.",
+    });
+  });
+
+  it("returns null when the rejection's format is undetected", () => {
+    expect(
+      describeCategoryMismatch([rejected("mystery.bin")], "audio"),
+    ).toBeNull();
+  });
+
+  it("returns null when every rejected file already belongs to this category", () => {
+    // mp4 is accepted on the audio page (extract-audio) even though its own
+    // format category is "video" — but here it's simulating a rejection for
+    // a different reason, so this only checks the "same category" branch.
+    expect(
+      describeCategoryMismatch([rejectedAs("song.mp3", "mp3")], "audio"),
+    ).toBeNull();
+  });
+
+  it("reports only the first foreign-category rejection", () => {
+    const mismatch = describeCategoryMismatch(
+      [rejectedAs("doc.docx", "docx"), rejectedAs("report.pdf", "pdf")],
+      "audio",
+    );
+    expect(mismatch?.linkHref).toBe("/document");
   });
 });
 

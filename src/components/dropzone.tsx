@@ -47,6 +47,15 @@ interface DropzoneProps {
    * as-is, so it keeps the plain line.
    */
   compactFormatsSummary?: boolean;
+  /**
+   * Overrides the compact summary's fixed "Works with images, video, audio,
+   * PDFs, documents and data." line — a category page passes its own
+   * plain, category-specific line instead (`formatsSummaryText` in
+   * `src/lib/converter/catalog.ts`), so it never claims to take every
+   * format on the site. Ignored unless `compactFormatsSummary` is set; the
+   * home hero (the only other caller) leaves it unset and keeps the default.
+   */
+  summaryText?: string;
 }
 
 /** Builds an `<input accept>` value from every accepted format's ext + mime. */
@@ -78,6 +87,7 @@ export function Dropzone({
   showChooseFilesBadge = false,
   hideFooterNote = false,
   compactFormatsSummary = false,
+  summaryText,
 }: DropzoneProps) {
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -160,7 +170,10 @@ export function Dropzone({
           id={describedById}
           className="flex flex-col items-center gap-1 text-center text-xs text-ink-muted"
         >
-          <p>Works with images, video, audio, PDFs, documents and data.</p>
+          <p>
+            {summaryText ??
+              "Works with images, video, audio, PDFs, documents and data."}
+          </p>
           <details>
             <summary className="cursor-pointer select-none rounded-sm outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas">
               See all formats

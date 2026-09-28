@@ -9,9 +9,12 @@ import { Combobox, type ComboboxGroup } from "@/components/combobox";
 import type { AcceptedFile, RejectedFile } from "@/components/dropzone-logic";
 import { PrivacyNote } from "@/components/privacy-note";
 import {
+  formatsSummaryText,
   inputFormats,
+  inputFormatsForCategory,
   matchFormat,
   matchTarget,
+  nativeInputFormats,
   popular,
   targetsFor,
 } from "@/lib/converter/catalog";
@@ -19,7 +22,9 @@ import { setPendingFiles } from "@/lib/converter/handoff";
 import { CATEGORY_META, type Category } from "@/lib/registry/categories";
 import { FORMATS, type FormatId } from "@/lib/registry/formats";
 import {
+  type CategoryMismatch,
   type DetectedGroup,
+  describeCategoryMismatch,
   describeDetection,
   describeMixed,
   describeUndetected,
@@ -131,6 +136,8 @@ export function Converter({
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const [mixedGroups, setMixedGroups] = useState<DetectedGroup[] | null>(null);
   const [undetected, setUndetected] = useState<RejectedFile[]>([]);
+  const [categoryMismatch, setCategoryMismatch] =
+    useState<CategoryMismatch | null>(null);
   const [liveMessage, setLiveMessage] = useState("");
   const toResultsRef = useRef<number | null>(null);
 
@@ -144,21 +151,34 @@ export function Converter({
     document.getElementById("converter-to")?.focus();
   }, [focusToRequest]);
 
-  const allInputGroups = inputFormats();
+  // On a category page, every picker/drop-area/detection concern below is
+  // scoped to that one category's own tools (the bug this component exists
+  // to fix) — `inputFormatsForCategory` already includes the format's own
+  // cross-category label (e.g. "Video (extract the audio)" on `/audio`), so
+  // `scopedInputGroups` needs no separate category filter the way the old
+  // `inputFormats().filter(...)` line did (that filter is what dropped every
+  // cross-category format, since a format's *own* category never matches the
+  // page's).
   const scopedInputGroups = category
-    ? allInputGroups.filter((g) => g.category === category)
-    : allInputGroups;
+    ? inputFormatsForCategory(category)
+    : inputFormats().map((g) => ({
+        ...g,
+        label: CATEGORY_META[g.category].label,
+      }));
+  const scopedAcceptedFormats: FormatId[] = category
+    ? scopedInputGroups.flatMap((g) => g.formats)
+    : ALL_FORMAT_IDS;
 
   const fromGroups: ComboboxGroup[] = scopedInputGroups.map((g) => ({
     id: g.category,
-    label: CATEGORY_META[g.category].label,
+    label: g.label,
     options: g.formats
       .filter((f) => matchFormat(fromQuery, f))
       .map((f) => ({ id: f, label: FORMATS[f].label, hint: extHint(f) })),
   }));
 
   const targets = fromId
-    ? targetsFor(fromId)
+    ? targetsFor(fromId, { category })
     : { conversions: [], actions: [] };
   const toGroups: ComboboxGroup[] = fromId
     ? [
@@ -187,28 +207,45 @@ export function Converter({
     setMixedGroups(null);
   }, []);
 
-  const selectGroup = useCallback((group: DetectedGroup) => {
-    setMixedGroups(null);
-    setUndetected([]);
-    setFromId(group.format);
-    setFromQuery(FORMATS[group.format].label);
-    setToId(null);
-    setToQuery("");
-    setStagedFiles(group.files.map((f) => f.file));
-    const { conversions, actions } = targetsFor(group.format);
-    setLiveMessage(
-      describeDetection(group, conversions.length + actions.length),
-    );
-    setFocusToRequest((n) => n + 1);
-  }, []);
+  const selectGroup = useCallback(
+    (group: DetectedGroup) => {
+      setMixedGroups(null);
+      setUndetected([]);
+      setCategoryMismatch(null);
+      setFromId(group.format);
+      setFromQuery(FORMATS[group.format].label);
+      setToId(null);
+      setToQuery("");
+      setStagedFiles(group.files.map((f) => f.file));
+      const { conversions, actions } = targetsFor(group.format, { category });
+      setLiveMessage(
+        describeDetection(group, conversions.length + actions.length),
+      );
+      setFocusToRequest((n) => n + 1);
+    },
+    [category],
+  );
 
   const handleDroppedFiles = useCallback(
     (accepted: AcceptedFile[], rejected: RejectedFile[]) => {
       setUndetected([]);
+      setCategoryMismatch(null);
       if (accepted.length === 0) {
         if (rejected.length > 0) {
-          setUndetected(rejected);
-          setLiveMessage(describeUndetected(rejected));
+          // On a category page, a recognized-but-wrong-category file (e.g. a
+          // PDF dropped on /audio) gets its own message pointing at where it
+          // actually belongs, instead of the generic "unrecognized format"
+          // treatment — see `describeCategoryMismatch`'s doc comment.
+          const mismatch = category
+            ? describeCategoryMismatch(rejected, category)
+            : null;
+          if (mismatch) {
+            setCategoryMismatch(mismatch);
+            setLiveMessage(`${mismatch.message} ${mismatch.linkText}`);
+          } else {
+            setUndetected(rejected);
+            setLiveMessage(describeUndetected(rejected));
+          }
         }
         return;
       }
@@ -220,7 +257,7 @@ export function Converter({
         setLiveMessage(describeMixed(groups));
       }
     },
-    [selectGroup],
+    [selectGroup, category],
   );
 
   const handleToChange = useCallback(
@@ -282,7 +319,7 @@ export function Converter({
     <div id="converter" className="flex flex-col gap-6">
       {!isHero && (
         <Dropzone
-          accepts={ALL_FORMAT_IDS}
+          accepts={scopedAcceptedFormats}
           multiple
           onFiles={handleDroppedFiles}
         />
@@ -406,13 +443,18 @@ export function Converter({
 
       {isHero && (
         <Dropzone
-          accepts={ALL_FORMAT_IDS}
+          accepts={scopedAcceptedFormats}
           multiple
           onFiles={handleDroppedFiles}
           promptText="Or drop a file here and we'll work out what it is."
           showChooseFilesBadge
           hideFooterNote
           compactFormatsSummary
+          summaryText={
+            category
+              ? formatsSummaryText(nativeInputFormats(category))
+              : undefined
+          }
         />
       )}
 
@@ -434,6 +476,18 @@ export function Converter({
             </button>
           ))}
         </div>
+      )}
+
+      {categoryMismatch && (
+        <p className="text-xs text-ink-muted">
+          {categoryMismatch.message}{" "}
+          <Link
+            href={categoryMismatch.linkHref}
+            className="font-medium text-ink underline outline-none hover:text-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+          >
+            {categoryMismatch.linkText}
+          </Link>
+        </p>
       )}
 
       {undetected.length > 0 && (

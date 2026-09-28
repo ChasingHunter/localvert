@@ -3,9 +3,12 @@ import { CATEGORIES } from "@/lib/registry/categories";
 import { FORMATS, type FormatId } from "@/lib/registry/formats";
 import { TOOLS_BY_SLUG } from "@/tools";
 import {
+  formatsSummaryText,
   inputFormats,
+  inputFormatsForCategory,
   matchFormat,
   matchTarget,
+  nativeInputFormats,
   popular,
   type Target,
   targetsFor,
@@ -41,6 +44,108 @@ describe("inputFormats", () => {
     expect(all).toContain("jpg");
     expect(all).toContain("pdf");
     expect(all).toContain("docx");
+  });
+});
+
+describe("inputFormatsForCategory", () => {
+  it("audio: includes mp3 and every native audio format, excludes pdf and jpg", () => {
+    const all = inputFormatsForCategory("audio").flatMap((g) => g.formats);
+    expect(all).toContain("mp3");
+    expect(all).toContain("wav");
+    expect(all).toContain("flac");
+    expect(all).toContain("ogg");
+    expect(all).toContain("opus");
+    expect(all).toContain("m4a");
+    expect(all).toContain("aac");
+    expect(all).toContain("wma");
+    expect(all).not.toContain("pdf");
+    expect(all).not.toContain("jpg");
+  });
+
+  it("audio: includes mp4 (extract-audio accepts it) under a labelled video group", () => {
+    const groups = inputFormatsForCategory("audio");
+    const videoGroup = groups.find((g) => g.category === "video");
+    expect(videoGroup).toBeDefined();
+    expect(videoGroup?.formats).toContain("mp4");
+    expect(videoGroup?.formats).toContain("mov");
+    expect(videoGroup?.formats).toContain("webm");
+    expect(videoGroup?.formats).toContain("mkv");
+    expect(videoGroup?.label).toBe("Video (extract the audio)");
+    // avi and flv are video-to-video-only tools (no audio tool accepts
+    // them), so they never show up on the audio page.
+    expect(videoGroup?.formats).not.toContain("avi");
+    expect(videoGroup?.formats).not.toContain("flv");
+  });
+
+  it("audio: the audio group is first, before the cross-category video group", () => {
+    const groups = inputFormatsForCategory("audio");
+    expect(groups[0]?.category).toBe("audio");
+    expect(groups[0]?.label).toBe("Audio");
+  });
+
+  it("image: only image formats, no cross-category group", () => {
+    const groups = inputFormatsForCategory("image");
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.category).toBe("image");
+    const all = groups.flatMap((g) => g.formats);
+    expect(all).toContain("jpg");
+    expect(all).toContain("png");
+    expect(all).not.toContain("pdf");
+    expect(all).not.toContain("mp3");
+  });
+
+  it("pdf: includes pdf plus image formats under a labelled group (images-to-pdf tools)", () => {
+    const groups = inputFormatsForCategory("pdf");
+    const nativeGroup = groups.find((g) => g.category === "pdf");
+    expect(nativeGroup?.formats).toContain("pdf");
+    const imageGroup = groups.find((g) => g.category === "image");
+    expect(imageGroup?.formats).toContain("jpg");
+    expect(imageGroup?.formats).toContain("png");
+    expect(imageGroup?.label).toBe("Image (create a PDF)");
+    expect(groups.flatMap((g) => g.formats)).not.toContain("mp3");
+  });
+
+  it("data: only data formats", () => {
+    const all = inputFormatsForCategory("data").flatMap((g) => g.formats);
+    expect(all).toContain("csv");
+    expect(all).toContain("json");
+    expect(all).toContain("xlsx");
+    expect(all).not.toContain("pdf");
+    expect(all).not.toContain("jpg");
+  });
+});
+
+describe("nativeInputFormats", () => {
+  it("audio: excludes the cross-category video formats", () => {
+    const formats = nativeInputFormats("audio");
+    expect(formats).toContain("mp3");
+    expect(formats).not.toContain("mp4");
+    expect(formats).not.toContain("mov");
+  });
+});
+
+describe("formatsSummaryText", () => {
+  it("names every format outright when 8 or fewer", () => {
+    const formats = nativeInputFormats("audio"); // exactly 8 today
+    expect(formats.length).toBe(8);
+    const text = formatsSummaryText(formats);
+    expect(text.startsWith("Works with ")).toBe(true);
+    expect(text.endsWith(".")).toBe(true);
+    expect(text).not.toContain("and more");
+    for (const f of formats) {
+      expect(text).toContain(FORMATS[f].label);
+    }
+  });
+
+  it("truncates to the first 8 plus 'and more' for a longer list", () => {
+    const formats = nativeInputFormats("image"); // well over 8
+    expect(formats.length).toBeGreaterThan(8);
+    const text = formatsSummaryText(formats);
+    expect(text.endsWith("and more.")).toBe(true);
+  });
+
+  it("returns an empty string for an empty list", () => {
+    expect(formatsSummaryText([])).toBe("");
   });
 });
 
@@ -91,6 +196,26 @@ describe("targetsFor", () => {
         "Split",
         "Edit PDF",
       ]);
+    });
+  });
+
+  describe("category scoping", () => {
+    it("mp4 on the audio category only offers extract-audio's mp3 target, not video tools", () => {
+      const { conversions, actions } = targetsFor("mp4", {
+        category: "audio",
+      });
+      const slugs = [...conversions, ...actions].map((t) => t.slug);
+      expect(slugs).toContain("mp4-to-mp3");
+      expect(slugs).not.toContain("mp4-to-mov");
+      expect(slugs).not.toContain("mp4-to-webm");
+      expect(slugs).not.toContain("compress-video");
+    });
+
+    it("with no category, mp4 offers both audio and video tools", () => {
+      const { conversions, actions } = targetsFor("mp4");
+      const slugs = [...conversions, ...actions].map((t) => t.slug);
+      expect(slugs).toContain("mp4-to-mp3");
+      expect(slugs).toContain("mp4-to-mov");
     });
   });
 

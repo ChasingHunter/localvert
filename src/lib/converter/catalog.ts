@@ -8,7 +8,11 @@
  * tables are imported here.
  */
 
-import { CATEGORIES, type Category } from "@/lib/registry/categories";
+import {
+  CATEGORIES,
+  CATEGORY_META,
+  type Category,
+} from "@/lib/registry/categories";
 import {
   FORMATS,
   type FormatId,
@@ -164,6 +168,105 @@ export function inputFormats(): { category: Category; formats: FormatId[] }[] {
 }
 
 /**
+ * Why a category page's From picker also offers a format outside its own
+ * category — e.g. the audio tools that pull a soundtrack out of a video
+ * file. Keyed by the target category page; only entries a category's own
+ * tools genuinely `accepts` show up here (`inputFormatsForCategory` derives
+ * the set, this only supplies the group's label). A category with no cross
+ * acceptance today (image, video, document, archive, data) has no entry and
+ * never needs one — nothing computed elsewhere depends on this map being
+ * exhaustive.
+ */
+const CROSS_CATEGORY_LABEL: Partial<Record<Category, string>> = {
+  audio: "Video (extract the audio)",
+  pdf: "Image (create a PDF)",
+};
+
+/**
+ * Every format at least one *category-`category`* tool accepts, grouped by
+ * the format's own category — its own category's formats first, then any
+ * cross-category ones (`CROSS_CATEGORY_LABEL`), each in `CATEGORIES` order.
+ * This is what scopes a category page's From picker and drop area to that
+ * category's own tools (the bug this exists to fix: a category page must
+ * never just show `inputFormats()`'s full, every-category list). An app
+ * tool doesn't count on its own — same rule as `inputFormats()`.
+ */
+export function inputFormatsForCategory(
+  category: Category,
+): { category: Category; label: string; formats: FormatId[] }[] {
+  const accepted = new Set<FormatId>();
+  for (const tool of CATALOG) {
+    if (tool.kind === "app" || tool.category !== category) continue;
+    for (const format of tool.accepts) accepted.add(format);
+  }
+
+  const allFormats = Object.keys(FORMATS) as FormatId[];
+  const orderedCategories = [
+    category,
+    ...CATEGORIES.filter((c) => c !== category),
+  ];
+  const groups: { category: Category; label: string; formats: FormatId[] }[] =
+    [];
+  for (const groupCategory of orderedCategories) {
+    const formats = allFormats.filter(
+      (f) => FORMATS[f].category === groupCategory && accepted.has(f),
+    );
+    if (formats.length === 0) continue;
+    const label =
+      groupCategory === category
+        ? CATEGORY_META[groupCategory].label
+        : (CROSS_CATEGORY_LABEL[category] ??
+          CATEGORY_META[groupCategory].label);
+    groups.push({ category: groupCategory, label, formats });
+  }
+  return groups;
+}
+
+/**
+ * Just `category`'s own formats out of `inputFormatsForCategory` — the
+ * cross-category ones (e.g. video, on the audio page) are left out. Backs
+ * the drop area's plain "Works with …" summary line (`formatsSummaryText`),
+ * which is meant to read as a short, literal claim about this category, not
+ * a full accept list — the disclosure under it uses the full
+ * `inputFormatsForCategory` set instead.
+ */
+export function nativeInputFormats(category: Category): FormatId[] {
+  return (
+    inputFormatsForCategory(category).find((g) => g.category === category)
+      ?.formats ?? []
+  );
+}
+
+/** Comma-joins every item but the last, which gets "and" instead of a
+ * comma — "MP3, WAV and FLAC", not "MP3, WAV, FLAC". */
+function joinWithAnd(items: readonly string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/** How many formats a category page's drop-area summary line names outright
+ * before it falls back to "… and more." */
+const SUMMARY_FORMAT_COUNT = 8;
+
+/**
+ * The drop area's "Works with …" summary line for a category page: every
+ * format outright when there are few enough to read in one line, otherwise
+ * the first `SUMMARY_FORMAT_COUNT` plus "and more." — the full list still
+ * lives one click away, in the disclosure next to it (`acceptedFormatsLabel`
+ * over `inputFormatsForCategory`'s full set, built by the caller). Returns
+ * `""` for an empty list — a category page never has one, but this stays
+ * total rather than asserting it.
+ */
+export function formatsSummaryText(formats: readonly FormatId[]): string {
+  if (formats.length === 0) return "";
+  const labels = formats.map((f) => FORMATS[f].label);
+  if (labels.length <= SUMMARY_FORMAT_COUNT) {
+    return `Works with ${joinWithAnd(labels)}.`;
+  }
+  return `Works with ${labels.slice(0, SUMMARY_FORMAT_COUNT).join(", ")} and more.`;
+}
+
+/**
  * Picks the one tool a `(from, to)` format pair resolves to by default, when
  * more than one tool produces `to` from `from`: lowest `rank` first (unset
  * sorts last), then the tool whose slug is the exact pair name
@@ -218,13 +321,24 @@ function pickDefault(
  *
  * `image-to-searchable-pdf` is the one case that *does* differ meaningfully
  * (OCR, not a plain re-encode), so it's the only `VARIANT_LABELS` entry.
+ *
+ * `opts.category`, when given, additionally restricts `tools` to that one
+ * category's own tools — what a category page's To list uses so a format
+ * picked there (including a cross-category one, e.g. mp4 on `/audio`) only
+ * ever offers that category's own conversions and actions, never every tool
+ * across the site that happens to also accept `from`.
  */
-export function targetsFor(from: FormatId): {
+export function targetsFor(
+  from: FormatId,
+  opts?: { category?: Category },
+): {
   conversions: Target[];
   actions: Target[];
 } {
-  const tools = CATALOG.filter((t) =>
-    (t.accepts as readonly FormatId[]).includes(from),
+  const tools = CATALOG.filter(
+    (t) =>
+      (t.accepts as readonly FormatId[]).includes(from) &&
+      (opts?.category === undefined || t.category === opts.category),
   );
 
   const actionRows: { target: Target; rank: number; priority: number }[] = [];
