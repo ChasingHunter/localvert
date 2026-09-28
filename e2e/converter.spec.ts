@@ -167,12 +167,13 @@ test.describe("Converter", () => {
   test("a Popular chip navigates to its pair page", async ({ page }) => {
     await page.goto("/");
 
-    // Exact match: the redesigned home page's category link list also has a
-    // "PDF to Word" link (the tool's own title) alongside this Popular
-    // chip's "PDF to Word Document" (fromLabel + " to " + targetLabel,
-    // popularChipLabel) — a loose /PDF to Word/ regex matches both.
+    // Popular chips now use each tool's own catalog title
+    // (`popularChipLabel`), same as the category link list's "PDF to Word"
+    // entry for the same tool — scope to the "Popular conversions" nav
+    // landmark so this only ever clicks the chip.
     await page
-      .getByRole("link", { name: "PDF to Word Document", exact: true })
+      .getByRole("navigation", { name: "Popular conversions" })
+      .getByRole("link", { name: "PDF to Word", exact: true })
       .click();
     await expect(page).toHaveURL(/\/tools\/pdf-to-word$/);
   });

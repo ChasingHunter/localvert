@@ -444,7 +444,12 @@ export function Converter({ category, variant = "panel" }: ConverterProps) {
       </div>
 
       {popularChips.length > 0 && (
-        <div className="flex flex-col gap-2">
+        // A named landmark, not a plain div: since the popular chip and its
+        // matching category link-list entry now share the same tool title
+        // (`popularChipLabel`, above), this is also what tells the two
+        // "PDF to Word" links apart for anything scoping by role/name
+        // (e2e/converter.spec.ts's Popular chip test).
+        <nav aria-label="Popular conversions" className="flex flex-col gap-2">
           <span className="text-xs font-medium text-ink-muted">Popular</span>
           <div className="flex flex-wrap gap-2">
             {popularChips.map((entry) => (
@@ -457,7 +462,7 @@ export function Converter({ category, variant = "panel" }: ConverterProps) {
               </Link>
             ))}
           </div>
-        </div>
+        </nav>
       )}
     </div>
   );
