@@ -1,21 +1,25 @@
 /**
  * `pnpm gen` — regenerates the tool barrel (`src/tools/index.ts`), the
- * per-tool code-splitting map (`src/tools/loaders.ts`), and the engine
+ * per-tool code-splitting map (`src/tools/loaders.ts`), the generated tool
+ * catalog (`src/tools/catalog.ts`), and the engine
  * ids/manifest/loaders (`src/lib/engines/{ids,manifest,loaders}.ts`) by
  * statically scanning `src/tools/<category>/*.ts` and
  * `src/lib/engines/<id>/{engine.json,adapter.ts}`.
  *
- * Static source scanning only — this script never imports or executes a
+ * Static source scanning only — this script never *imports or executes* a
  * tool or adapter file (see docs/ARCHITECTURE.md, "The registry: tools are
- * data, not code"). It only reads file *paths* under `src/tools/` and the
- * JSON *text* of each engine's `engine.json`; nothing under `src/` is
- * `import`ed, so a broken tool/adapter file can never break generation.
- * For the same reason this script is fully self-contained — no imports of
- * our own modules, not even by relative path — mirroring
- * `scripts/check-sizes.ts` and `scripts/csp-inline-hashes.ts`: those run
- * outside any tsconfig program (Node's own module resolution has no idea
- * about the "@/" path alias), so anything they need is duplicated locally
- * rather than imported.
+ * data, not code"). Path scanning (`scanTools`) never reads file contents at
+ * all; the catalog (`scanToolCatalog`/`parseToolCatalogEntry`) and the engine
+ * scan (`scanEngines`) do read a file's *text* — the same way this script
+ * reads each engine's `engine.json` as JSON text — but only to pattern-match
+ * a handful of plain literal fields, never to `import()` or otherwise run
+ * the module. Nothing under `src/` is ever `import`ed, so a broken
+ * tool/adapter file can never break generation. For the same reason this
+ * script is fully self-contained — no imports of our own modules, not even
+ * by relative path — mirroring `scripts/check-sizes.ts` and
+ * `scripts/csp-inline-hashes.ts`: those run outside any tsconfig program
+ * (Node's own module resolution has no idea about the "@/" path alias), so
+ * anything they need is duplicated locally rather than imported.
  *
  * Generated files are checked in; CI fails if `pnpm gen` produces a diff.
  *
@@ -132,6 +136,206 @@ export function genToolsIndex(tools: readonly ToolFileInfo[]): string {
     "export const TOOLS_BY_SLUG: ReadonlyMap<string, ToolDefinition> = new Map(",
     "  TOOLS.map((t) => [t.slug, t]),",
     ");",
+  ].join("\n")}\n`;
+}
+
+/**
+ * One catalog row's shape — mirrors the fields of `ToolDefinition`
+ * (`src/lib/registry/types.ts`) that are plain, serialisable data: no zod
+ * schema, no pipeline, no functions. This is what `genCatalog` writes to
+ * `src/tools/catalog.ts` (ADR-0015): the universal from/to converter reads
+ * this instead of the `TOOLS` barrel, so its home-page island never pays for
+ * every tool's zod schema and pipeline.
+ */
+export interface ToolCatalogEntry {
+  slug: string;
+  title: string;
+  category: string;
+  accepts: readonly string[];
+  produces: string;
+  kind: "job" | "app";
+  arity: "one-to-one" | "many-to-one" | "one-to-many";
+  rank?: number;
+}
+
+/**
+ * Strips `/* ... *\/` and `// ...` comments before `parseToolCatalogEntry`'s
+ * field regexes run over a tool file's source — a handful of tool files
+ * mention a field's own name and value inside a doc comment (e.g.
+ * `` `produces: "same"` `` in `strip-exif.ts`), and without this, a regex
+ * matching the *first* occurrence of a key could latch onto the comment
+ * instead of the real field. In every such case today the comment and the
+ * real field happen to agree, but stripping comments first removes the
+ * fragility rather than relying on that coincidence.
+ */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+}
+
+function extractRequiredString(
+  body: string,
+  key: string,
+  slug: string,
+): string {
+  const match = new RegExp(`\\b${key}:\\s*"((?:[^"\\\\]|\\\\.)*)"`).exec(body);
+  if (!match) {
+    throw new Error(
+      `[gen-registry] tool "${slug}": could not find a "${key}: "..."" field`,
+    );
+  }
+  return match[1] ?? "";
+}
+
+function extractOptionalString(body: string, key: string): string | null {
+  const match = new RegExp(`\\b${key}:\\s*"((?:[^"\\\\]|\\\\.)*)"`).exec(body);
+  return match ? (match[1] ?? "") : null;
+}
+
+function extractOptionalInt(body: string, key: string): number | undefined {
+  const match = new RegExp(`\\b${key}:\\s*(\\d+)\\b`).exec(body);
+  return match?.[1] !== undefined ? Number(match[1]) : undefined;
+}
+
+function extractStringArray(body: string, key: string, slug: string): string[] {
+  const match = new RegExp(`\\b${key}:\\s*\\[([^\\]]*)\\]`).exec(body);
+  if (!match) {
+    throw new Error(
+      `[gen-registry] tool "${slug}": could not find a "${key}: [...]" field`,
+    );
+  }
+  const arrayBody = match[1] ?? "";
+  const items: string[] = [];
+  const itemRe = /"([^"]+)"/g;
+  let itemMatch: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: standard RegExp.exec loop.
+  while ((itemMatch = itemRe.exec(arrayBody)) !== null) {
+    items.push(itemMatch[1] ?? "");
+  }
+  return items;
+}
+
+/**
+ * Reads one tool file's literal `defineTool({...})` fields by text pattern,
+ * never by importing or executing the file — see this module's doc comment,
+ * "Static source scanning only". Every field this needs (`title`,
+ * `category`, `accepts`, `produces`, `kind`, `arity`, `rank`) is always a
+ * plain string, string array, or number literal in a tool file (never a
+ * template literal or a `+`-concatenated string — `registry.test.ts` and
+ * `defineTool` itself both assume the same), so a handful of targeted
+ * regexes over the comment-stripped source is enough, the same "read text,
+ * never import" spirit as this script's `engine.json` parsing above.
+ */
+export function parseToolCatalogEntry(
+  info: ToolFileInfo,
+  source: string,
+): ToolCatalogEntry {
+  const body = stripComments(source);
+
+  const declaredSlug = extractOptionalString(body, "slug");
+  if (declaredSlug !== info.slug) {
+    throw new Error(
+      `[gen-registry] tool "${info.slug}": declared slug ${JSON.stringify(declaredSlug)} does not match its filename`,
+    );
+  }
+  const declaredCategory = extractOptionalString(body, "category");
+  if (declaredCategory !== info.category) {
+    throw new Error(
+      `[gen-registry] tool "${info.slug}": declared category ${JSON.stringify(declaredCategory)} does not match its directory ("${info.category}")`,
+    );
+  }
+
+  const title = extractRequiredString(body, "title", info.slug);
+  const accepts = extractStringArray(body, "accepts", info.slug);
+  const produces = extractRequiredString(body, "produces", info.slug);
+  const kind = extractOptionalString(body, "kind");
+  const arity = extractOptionalString(body, "arity");
+  const rank = extractOptionalInt(body, "rank");
+
+  if (kind !== null && kind !== "job" && kind !== "app") {
+    throw new Error(
+      `[gen-registry] tool "${info.slug}": "kind" (${JSON.stringify(kind)}) must be "job" or "app"`,
+    );
+  }
+  if (
+    arity !== null &&
+    arity !== "one-to-one" &&
+    arity !== "many-to-one" &&
+    arity !== "one-to-many"
+  ) {
+    throw new Error(
+      `[gen-registry] tool "${info.slug}": "arity" (${JSON.stringify(arity)}) is not a known arity`,
+    );
+  }
+
+  return {
+    slug: info.slug,
+    title,
+    category: info.category,
+    accepts,
+    produces,
+    kind: kind ?? "job",
+    arity: (arity ?? "one-to-one") as ToolCatalogEntry["arity"],
+    ...(rank !== undefined ? { rank } : {}),
+  };
+}
+
+/** Reads and parses every scanned tool file's catalog fields — see
+ * `parseToolCatalogEntry`'s doc comment on why this is text scanning, not
+ * an import. */
+export function scanToolCatalog(
+  rootDir: string,
+  tools: readonly ToolFileInfo[],
+): ToolCatalogEntry[] {
+  return tools.map((info) => {
+    const filePath = join(
+      rootDir,
+      "src",
+      "tools",
+      info.category,
+      `${info.slug}.ts`,
+    );
+    const source = readFileSync(filePath, "utf8");
+    return parseToolCatalogEntry(info, source);
+  });
+}
+
+export function genCatalog(entries: readonly ToolCatalogEntry[]): string {
+  const rows = entries.map((e) => {
+    const accepts = e.accepts.map((a) => `"${a}"`).join(", ");
+    const rankPart = e.rank !== undefined ? ` rank: ${e.rank},` : "";
+    return (
+      `  { slug: "${e.slug}", title: ${JSON.stringify(e.title)}, ` +
+      `category: "${e.category}", accepts: [${accepts}], ` +
+      `produces: "${e.produces}", kind: "${e.kind}", arity: "${e.arity}",${rankPart} },`
+    );
+  });
+  const body = rows.length === 0 ? "[]" : `[\n${rows.join("\n")}\n]`;
+
+  return `${[
+    GENERATED_HEADER,
+    `import type { Category } from "@/lib/registry/categories";`,
+    `import type { FormatId } from "@/lib/registry/formats";`,
+    "",
+    "/**",
+    " * ADR-0015: one row per tool, with only plain, serialisable data — no",
+    " * zod schema, no pipeline, no functions. `src/lib/converter/catalog.ts`",
+    " * builds the from/to picker's helpers over this instead of the `TOOLS`",
+    " * barrel (`src/tools/index.ts`), which carries every tool's zod schema",
+    " * and pipeline the home page must not pay for.",
+    " */",
+    "export interface CatalogEntry {",
+    "  slug: string;",
+    "  title: string;",
+    "  category: Category;",
+    "  accepts: readonly FormatId[];",
+    '  produces: FormatId | "same";',
+    '  kind: "job" | "app";',
+    '  arity: "one-to-one" | "many-to-one" | "one-to-many";',
+    "  /** 1 = most popular; unset = not featured — see `ToolDefinition.rank`. */",
+    "  rank?: number;",
+    "}",
+    "",
+    `export const CATALOG: readonly CatalogEntry[] = ${body};`,
   ].join("\n")}\n`;
 }
 
@@ -793,11 +997,13 @@ export function genEngineLoaders(metas: readonly EngineMetaLike[]): string {
  */
 export function generate(rootDir: string): Map<string, string> {
   const tools = scanTools(rootDir);
+  const catalog = scanToolCatalog(rootDir, tools);
   const engines = scanEngines(rootDir);
 
   return new Map([
     ["src/tools/index.ts", genToolsIndex(tools)],
     ["src/tools/loaders.ts", genToolsLoaders(tools)],
+    ["src/tools/catalog.ts", genCatalog(catalog)],
     ["src/lib/engines/ids.ts", genEngineIds(engines)],
     ["src/lib/engines/manifest.ts", genEngineManifest(engines)],
     ["src/lib/engines/loaders.ts", genEngineLoaders(engines)],

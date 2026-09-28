@@ -366,4 +366,13 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
    * expected, not a bug to guard against.
    */
   neverLarger?: boolean;
+  /**
+   * ADR-0015: 1 = most popular, ascending; unset = not featured. Drives the
+   * universal converter's Popular chips (`popular()` in
+   * `src/lib/converter/catalog.ts`) and, when several tools produce the same
+   * `(from, to)` pair, which one wins as the default target — see
+   * `targetsFor`'s doc comment in that same module. Set by hand per tool;
+   * nothing derives it.
+   */
+  rank?: number;
 }

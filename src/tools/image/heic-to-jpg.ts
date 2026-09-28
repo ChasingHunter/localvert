@@ -24,6 +24,7 @@ export default defineTool({
 
   accepts: ["heic"],
   produces: "jpg",
+  rank: 6,
 
   options: jpgOptions,
   defaults: jpgDefaults,

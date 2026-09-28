@@ -18,6 +18,7 @@ export default defineTool({
 
   accepts: ["jpg"],
   produces: "pdf",
+  rank: 8,
 
   options: imagesToPdfOptions,
   defaults: imagesToPdfDefaults,

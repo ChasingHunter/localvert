@@ -17,6 +17,7 @@ export default defineTool({
 
   accepts: ["pdf"],
   produces: "pdf",
+  rank: 7,
 
   options: z.object({}),
   defaults: {},

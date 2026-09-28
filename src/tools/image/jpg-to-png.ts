@@ -27,6 +27,7 @@ export default defineTool({
 
   accepts: ["jpg"],
   produces: "png",
+  rank: 2,
 
   options: z.object({}),
   defaults: {},

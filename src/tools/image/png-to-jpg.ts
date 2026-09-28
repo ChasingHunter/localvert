@@ -30,6 +30,7 @@ export default defineTool({
 
   accepts: ["png"],
   produces: "jpg",
+  rank: 5,
 
   options: jpgOptions,
   defaults: jpgDefaults,

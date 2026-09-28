@@ -61,6 +61,26 @@ describe("defineTool", () => {
     expect(() => defineTool(def)).not.toThrow();
   });
 
+  it("accepts a tool with no rank", () => {
+    const def = validDef();
+    expect(() => defineTool(def)).not.toThrow();
+  });
+
+  it("accepts a positive integer rank", () => {
+    const def = validDef({ rank: 1 });
+    expect(() => defineTool(def)).not.toThrow();
+  });
+
+  it("rejects a rank of zero", () => {
+    const def = validDef({ rank: 0 });
+    expect(() => defineTool(def)).toThrow(/^\[tool jpg-to-png\]/);
+  });
+
+  it("rejects a non-integer rank", () => {
+    const def = validDef({ rank: 1.5 });
+    expect(() => defineTool(def)).toThrow(/^\[tool jpg-to-png\]/);
+  });
+
   it("rejects defaults that do not satisfy the options schema", () => {
     const def = validDef({
       options: z.object({ quality: z.number().min(1).max(100) }),

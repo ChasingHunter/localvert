@@ -96,6 +96,10 @@ export function defineTool<S extends z.ZodObject>(
     fail('"app" is only allowed when kind is "app"');
   }
 
+  if (def.rank !== undefined && (!Number.isInteger(def.rank) || def.rank < 1)) {
+    fail(`rank (${def.rank}) must be a positive integer`);
+  }
+
   const arity = def.arity ?? "one-to-one";
   if (arity === "many-to-one") {
     // "batch" (repeat this tool per dropped file) and "many-to-one" (combine

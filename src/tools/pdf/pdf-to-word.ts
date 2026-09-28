@@ -34,6 +34,7 @@ export default defineTool({
 
   accepts: ["pdf"],
   produces: "docx",
+  rank: 1,
 
   options,
   defaults: { pageBreaks: true },

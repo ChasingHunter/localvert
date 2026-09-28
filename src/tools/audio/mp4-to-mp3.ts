@@ -15,6 +15,7 @@ export default defineTool({
 
   accepts: ["mp4"],
   produces: "mp3",
+  rank: 3,
 
   options: lossyAudioOptions,
   defaults: lossyAudioDefaults,

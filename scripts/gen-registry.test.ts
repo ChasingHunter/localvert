@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   assertNoDuplicateIds,
   type EngineMetaLike,
+  genCatalog,
   genEngineIds,
   genEngineLoaders,
   genEngineManifest,
@@ -12,7 +13,9 @@ import {
   genToolsIndex,
   genToolsLoaders,
   parseEngineMeta,
+  parseToolCatalogEntry,
   scanEngines,
+  scanToolCatalog,
   scanTools,
 } from "./gen-registry";
 
@@ -40,6 +43,44 @@ function writeFile(rootDir: string, relPath: string, content: string): void {
   const fullPath = join(rootDir, ...relPath.split("/"));
   mkdirSync(join(fullPath, ".."), { recursive: true });
   writeFileSync(fullPath, content);
+}
+
+/**
+ * A minimal, but real, `defineTool({...})` source for `"<category>/<slug>"`
+ * — the shape `parseToolCatalogEntry` reads its fields from by text pattern
+ * (see that function's doc comment), not by import. Defaults to a one-step
+ * jpg -> png conversion; override any catalog field to test its parsing.
+ */
+function toolFile(
+  categorySlug: string,
+  overrides: {
+    title?: string;
+    accepts?: readonly string[];
+    produces?: string;
+    kind?: "job" | "app";
+    arity?: "one-to-one" | "many-to-one" | "one-to-many";
+    rank?: number;
+  } = {},
+): string {
+  const [category, slug] = categorySlug.split("/");
+  const accepts = (overrides.accepts ?? ["jpg"])
+    .map((f) => `"${f}"`)
+    .join(", ");
+  const lines = [
+    "export default {",
+    `  slug: "${slug}",`,
+    `  category: "${category}",`,
+    `  title: "${overrides.title ?? slug}",`,
+    `  accepts: [${accepts}],`,
+    `  produces: "${overrides.produces ?? "png"}",`,
+  ];
+  if (overrides.kind !== undefined) lines.push(`  kind: "${overrides.kind}",`);
+  if (overrides.arity !== undefined) {
+    lines.push(`  arity: "${overrides.arity}",`);
+  }
+  if (overrides.rank !== undefined) lines.push(`  rank: ${overrides.rank},`);
+  lines.push("};");
+  return `${lines.join("\n")}\n`;
 }
 
 /** Writes a minimal npm package under `<rootDir>/node_modules/<pkg>/` with the given files' contents. */
@@ -89,10 +130,14 @@ function engineJson(overrides: Partial<Record<string, unknown>> = {}): string {
 function makeFullFixture(): string {
   const dir = makeTempDir();
 
-  writeFile(dir, "src/tools/image/a-to-b.ts", "export default {};\n");
+  writeFile(dir, "src/tools/image/a-to-b.ts", toolFile("image/a-to-b"));
   writeFile(dir, "src/tools/image/a-to-b.test.ts", "// skipped\n");
   writeFile(dir, "src/tools/image/index.ts", "// skipped\n");
-  writeFile(dir, "src/tools/pdf/merge-pdf.ts", "export default {};\n");
+  writeFile(
+    dir,
+    "src/tools/pdf/merge-pdf.ts",
+    toolFile("pdf/merge-pdf", { arity: "many-to-one" }),
+  );
 
   writeFile(
     dir,
@@ -208,6 +253,159 @@ describe("genToolsLoaders", () => {
     const out = genToolsLoaders(scanTools(dir));
     expect(out).toContain('"a-to-b": () => import("./image/a-to-b"),');
     expect(out).toContain('"merge-pdf": () => import("./pdf/merge-pdf"),');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// scanToolCatalog / parseToolCatalogEntry / genCatalog
+// ---------------------------------------------------------------------------
+
+describe("parseToolCatalogEntry", () => {
+  it("reads the plain fields off a tool file's source", () => {
+    const info = { category: "image", slug: "jpg-to-png" } as const;
+    const entry = parseToolCatalogEntry(
+      { ...info, importPath: "", varName: "" },
+      toolFile("image/jpg-to-png", { title: "JPG to PNG", rank: 2 }),
+    );
+    expect(entry).toEqual({
+      slug: "jpg-to-png",
+      title: "JPG to PNG",
+      category: "image",
+      accepts: ["jpg"],
+      produces: "png",
+      kind: "job",
+      arity: "one-to-one",
+      rank: 2,
+    });
+  });
+
+  it("defaults kind to job and arity to one-to-one when absent", () => {
+    const info = {
+      category: "image",
+      slug: "a-to-b",
+      importPath: "",
+      varName: "",
+    };
+    const entry = parseToolCatalogEntry(info, toolFile("image/a-to-b"));
+    expect(entry.kind).toBe("job");
+    expect(entry.arity).toBe("one-to-one");
+    expect(entry.rank).toBeUndefined();
+  });
+
+  it("reads an explicit kind and arity", () => {
+    const info = {
+      category: "pdf",
+      slug: "pdf-editor",
+      importPath: "",
+      varName: "",
+    };
+    const entry = parseToolCatalogEntry(
+      info,
+      toolFile("pdf/pdf-editor", {
+        kind: "app",
+        produces: "pdf",
+        accepts: ["pdf"],
+      }),
+    );
+    expect(entry.kind).toBe("app");
+  });
+
+  it("is not fooled by the field's own name and value inside a comment", () => {
+    const info = {
+      category: "image",
+      slug: "strip-exif",
+      importPath: "",
+      varName: "",
+    };
+    const source =
+      '/** `produces: "same"` is a lie in this comment — the real field below wins. */\n' +
+      toolFile("image/strip-exif", { produces: "jpg" });
+    const entry = parseToolCatalogEntry(info, source);
+    expect(entry.produces).toBe("jpg");
+  });
+
+  it("throws when the declared slug doesn't match the filename", () => {
+    const info = {
+      category: "image",
+      slug: "a-to-b",
+      importPath: "",
+      varName: "",
+    };
+    const source = toolFile("image/a-to-b").replace(
+      'slug: "a-to-b"',
+      'slug: "wrong-slug"',
+    );
+    expect(() => parseToolCatalogEntry(info, source)).toThrow(/declared slug/);
+  });
+
+  it("throws when the declared category doesn't match its directory", () => {
+    const info = {
+      category: "image",
+      slug: "a-to-b",
+      importPath: "",
+      varName: "",
+    };
+    const source = toolFile("image/a-to-b").replace(
+      'category: "image"',
+      'category: "pdf"',
+    );
+    expect(() => parseToolCatalogEntry(info, source)).toThrow(
+      /declared category/,
+    );
+  });
+
+  it("throws when a required field is missing", () => {
+    const info = {
+      category: "image",
+      slug: "a-to-b",
+      importPath: "",
+      varName: "",
+    };
+    const source = toolFile("image/a-to-b").replace(/ *produces:.*\n/, "");
+    expect(() => parseToolCatalogEntry(info, source)).toThrow(/could not find/);
+  });
+});
+
+describe("scanToolCatalog", () => {
+  it("reads every scanned tool's catalog entry off disk", () => {
+    const dir = makeFullFixture();
+    const entries = scanToolCatalog(dir, scanTools(dir));
+    expect(entries.map((e) => e.slug)).toEqual(["a-to-b", "merge-pdf"]);
+    expect(entries[1]).toMatchObject({
+      slug: "merge-pdf",
+      category: "pdf",
+      arity: "many-to-one",
+    });
+  });
+});
+
+describe("genCatalog", () => {
+  it("emits an empty, still-valid CATALOG array for zero tools", () => {
+    const out = genCatalog([]);
+    expect(out).toContain(
+      "export const CATALOG: readonly CatalogEntry[] = [];",
+    );
+    expect(out).toContain(
+      "// GENERATED by scripts/gen-registry.ts — do not edit. Run `pnpm gen`.",
+    );
+  });
+
+  it("emits one plain-data row per tool, with rank only when set", () => {
+    const dir = makeFullFixture();
+    const out = genCatalog(scanToolCatalog(dir, scanTools(dir)));
+    expect(out).toContain('slug: "a-to-b"');
+    expect(out).toContain('slug: "merge-pdf"');
+    expect(out).toContain('arity: "many-to-one"');
+    expect(out).not.toContain("rank:");
+    expect(out).not.toMatch(/import(?!\s+type)/);
+  });
+
+  it("includes rank when a tool sets one", () => {
+    const entry = parseToolCatalogEntry(
+      { category: "image", slug: "a-to-b", importPath: "", varName: "" },
+      toolFile("image/a-to-b", { rank: 1 }),
+    );
+    expect(genCatalog([entry])).toContain("rank: 1,");
   });
 });
 
@@ -879,17 +1077,21 @@ describe("genEngineLoaders", () => {
 // ---------------------------------------------------------------------------
 
 describe("generate", () => {
-  it("produces the five expected files for an empty repo", () => {
+  it("produces the six expected files for an empty repo", () => {
     const files = generate(makeTempDir());
     expect([...files.keys()].sort()).toEqual([
       "src/lib/engines/ids.ts",
       "src/lib/engines/loaders.ts",
       "src/lib/engines/manifest.ts",
+      "src/tools/catalog.ts",
       "src/tools/index.ts",
       "src/tools/loaders.ts",
     ]);
     expect(get(files, "src/tools/index.ts")).toContain(
       "export const TOOLS: readonly ToolDefinition[] = [];",
+    );
+    expect(get(files, "src/tools/catalog.ts")).toContain(
+      "export const CATALOG: readonly CatalogEntry[] = [];",
     );
     expect(get(files, "src/lib/engines/ids.ts")).toContain(
       "export type EngineId = never;",
