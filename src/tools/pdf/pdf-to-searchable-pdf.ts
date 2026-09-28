@@ -15,9 +15,7 @@ export default defineTool({
   category: "pdf",
   title: "Scanned PDF to Searchable PDF",
   description:
-    "Turn a scanned, multi-page PDF into a searchable PDF with OCR, " +
-    "privately in your browser. Free and private: no upload, text stays " +
-    "selectable on every page.",
+    "Turn a scanned, multi-page PDF into a searchable PDF with OCR. Text stays selectable on every page.",
 
   accepts: ["pdf"],
   produces: "pdf",

@@ -20,10 +20,7 @@ export default defineTool({
   category: "image",
   title: "SVG to JPG",
   description:
-    "Convert SVG to JPG — free, private, in your browser. Renders your " +
-    "vector artwork onto the background color you choose, since JPG has no " +
-    "transparency. Files never leave your device, and text needs its font " +
-    "embedded in the SVG to render.",
+    "Convert SVG to JPG, rendered onto the background color you choose since JPG has no transparency. Text needs its font embedded in the SVG to render.",
 
   accepts: ["svg"],
   produces: "jpg",

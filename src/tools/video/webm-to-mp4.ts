@@ -14,8 +14,7 @@ export default defineTool({
   category: "video",
   title: "WebM to MP4",
   description:
-    "Convert WebM video to MP4 — the format every device and editor " +
-    "supports. Free and private: runs in your browser, no upload.",
+    "Convert WebM video to MP4, a format every device and editor supports.",
 
   accepts: ["webm"],
   produces: "mp4",

@@ -20,10 +20,7 @@ export default defineTool({
   category: "image",
   title: "Compress JPG",
   description:
-    "Shrink a JPG file — losslessly (metadata only), visually lossless " +
-    "(the default), strong, a custom quality, or a target size (e.g. under " +
-    "200 KB) — free, private, in your browser. Files never leave your " +
-    "device. Never makes the file bigger.",
+    "Shrink a JPG. Keep high quality (the default), go smaller, set the quality yourself, or aim for a size like under 200 KB. Never makes the file bigger.",
 
   accepts: ["jpg"],
   produces: "jpg",

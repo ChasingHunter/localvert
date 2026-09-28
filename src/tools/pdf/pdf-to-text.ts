@@ -16,9 +16,7 @@ export default defineTool({
   category: "pdf",
   title: "PDF to Text",
   description:
-    "Extract the text from a PDF into a plain .txt file, privately in your " +
-    "browser. Free and private: no upload. Scanned PDFs with no text layer " +
-    "need OCR first — see PDF to Searchable PDF.",
+    "Extract the text from a PDF into a plain .txt file. A scanned PDF with no text layer needs OCR first: see PDF to Searchable PDF.",
 
   accepts: ["pdf"],
   produces: "txt",
@@ -27,7 +25,7 @@ export default defineTool({
     pages: z.string().meta({
       label: "Pages",
       control: "text",
-      help: "e.g. 1-3, 5 — empty for all",
+      help: "e.g. 1-3, 5. Leave empty for every page.",
     }),
     pageMarkers: z.boolean().meta({
       label: "Add page headings",

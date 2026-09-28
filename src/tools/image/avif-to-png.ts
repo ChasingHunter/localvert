@@ -11,8 +11,7 @@ export default defineTool({
   category: "image",
   title: "AVIF to PNG",
   description:
-    "Convert AVIF to PNG — open AVIF images anywhere. Free, private, runs " +
-    "in your browser. Re-encoding strips embedded metadata, including GPS.",
+    "Convert AVIF to PNG so it opens anywhere. Re-encoding strips embedded metadata, including GPS.",
 
   accepts: ["avif"],
   produces: "png",

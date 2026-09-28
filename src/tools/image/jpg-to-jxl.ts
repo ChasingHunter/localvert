@@ -14,9 +14,7 @@ export default defineTool({
   category: "image",
   title: "JPG to JPEG XL",
   description:
-    "Convert JPG to JPEG XL (JXL) — smaller files with no visible quality " +
-    "loss. Free and private: runs in your browser, no upload. " +
-    "Re-encoding strips embedded metadata, including GPS location.",
+    "Convert JPG to JPEG XL (JXL) for a smaller file with no visible quality loss. Re-encoding strips embedded metadata, including GPS.",
 
   accepts: ["jpg"],
   produces: "jxl",

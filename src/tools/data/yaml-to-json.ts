@@ -10,8 +10,7 @@ export default defineTool({
   slug: "yaml-to-json",
   category: "data",
   title: "YAML to JSON",
-  description:
-    "Convert YAML to JSON in your browser. Files never leave your device.",
+  description: "Convert YAML to JSON.",
 
   accepts: ["yaml"],
   produces: "json",

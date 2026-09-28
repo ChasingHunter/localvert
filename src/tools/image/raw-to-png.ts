@@ -14,12 +14,9 @@ import { defineTool, imagePipeline } from "@/lib/registry";
 export default defineTool({
   slug: "raw-to-png",
   category: "image",
-  title: "Convert RAW to PNG — CR2, NEF, ARW, DNG and more, in your browser",
+  title: "Convert RAW to PNG",
   description:
-    "Convert camera RAW photos — CR2, NEF, ARW, DNG and more — to PNG. " +
-    "Free, private, in your browser. Files never leave your device. " +
-    "Decoding through libraw and re-encoding strips embedded metadata, " +
-    "including GPS location.",
+    "Convert camera RAW photos (CR2, NEF, ARW, DNG and more) to PNG. Decoding and re-encoding strips embedded metadata, including GPS location.",
 
   accepts: ["raw"],
   produces: "png",
@@ -30,7 +27,7 @@ export default defineTool({
       .meta({
         label: "Fast half-size decode",
         control: "switch",
-        help: "Decodes at half resolution — faster, good for a quick preview.",
+        help: "Decodes at half resolution, faster and good for a quick preview.",
       })
       .default(false),
   }),

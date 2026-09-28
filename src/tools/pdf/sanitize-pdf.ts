@@ -13,8 +13,7 @@ export default defineTool({
   category: "pdf",
   title: "Sanitize PDF",
   description:
-    "Strip hidden metadata, embedded JavaScript and file attachments from " +
-    "a PDF. Free and private: runs in your browser, no upload.",
+    "Strip hidden metadata, embedded JavaScript and file attachments from a PDF.",
 
   accepts: ["pdf"],
   produces: "pdf",

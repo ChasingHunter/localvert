@@ -12,9 +12,7 @@ export default defineTool({
   slug: "csv-to-xlsx",
   category: "data",
   title: "CSV to Excel (XLSX)",
-  description:
-    "Convert a CSV file to an Excel spreadsheet in your browser. Files " +
-    "never leave your device.",
+  description: "Convert a CSV file to an Excel spreadsheet (.xlsx).",
 
   accepts: ["csv"],
   produces: "xlsx",

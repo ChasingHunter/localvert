@@ -18,9 +18,7 @@ export default defineTool({
   slug: "watermark-pdf",
   category: "pdf",
   title: "Watermark PDF",
-  description:
-    "Stamp a text watermark across every page of a PDF. Free and private: " +
-    "runs in your browser, no upload.",
+  description: "Stamp a text watermark across every page of a PDF.",
 
   accepts: ["pdf"],
   produces: "pdf",
@@ -54,7 +52,7 @@ export default defineTool({
     pages: z.string().meta({
       label: "Pages",
       control: "text",
-      help: 'Which pages to watermark — e.g. "1-3, 5" — or leave blank for every page.',
+      help: 'Which pages to watermark, e.g. "1-3, 5". Leave blank for every page.',
     }),
   }),
   defaults: {

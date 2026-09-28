@@ -13,8 +13,7 @@ export default defineTool({
   category: "video",
   title: "MKV to MP4",
   description:
-    "Convert Matroska MKV video to MP4 — the format every device and " +
-    "editor supports. Free and private: runs in your browser, no upload.",
+    "Convert Matroska MKV video to MP4, a format every device and editor supports.",
 
   accepts: ["mkv"],
   produces: "mp4",

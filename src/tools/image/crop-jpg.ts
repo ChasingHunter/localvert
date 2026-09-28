@@ -22,9 +22,7 @@ export default defineTool({
   category: "image",
   title: "Crop JPG",
   description:
-    "Crop a JPG to an exact rectangle, free-form or a fixed aspect ratio " +
-    "(1:1, 4:3, 16:9, 3:2) — free, private, in your browser. Files never " +
-    "leave your device. Re-encoding strips embedded metadata, including GPS.",
+    "Crop a JPG to an exact rectangle, free-form or a fixed aspect ratio (1:1, 4:3, 16:9, 3:2). Re-encoding strips embedded metadata, including GPS.",
 
   accepts: ["jpg"],
   produces: "jpg",

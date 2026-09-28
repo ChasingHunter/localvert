@@ -11,9 +11,7 @@ export default defineTool({
   slug: "merge-pdf",
   category: "pdf",
   title: "Merge PDF",
-  description:
-    "Combine multiple PDFs into one file, in the order you choose. Free " +
-    "and private: runs in your browser, no upload.",
+  description: "Combine multiple PDFs into one file, in the order you choose.",
 
   accepts: ["pdf"],
   produces: "pdf",

@@ -13,8 +13,7 @@ export default defineTool({
   category: "video",
   title: "MP4 to MOV",
   description:
-    "Convert MP4 to QuickTime MOV — for Final Cut Pro and other Apple " +
-    "editing tools. Free and private: runs in your browser, no upload.",
+    "Convert MP4 to QuickTime MOV, for Final Cut Pro and other Apple editing tools.",
 
   accepts: ["mp4"],
   produces: "mov",

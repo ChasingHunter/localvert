@@ -14,9 +14,7 @@ export default defineTool({
   category: "image",
   title: "PNG to SVG",
   description:
-    "Convert PNG to SVG — trace images into scalable vectors, privately " +
-    "in your browser. Free and private: runs entirely on your device, no " +
-    "upload. Large images are traced at up to 1600 px on the long side.",
+    "Trace a PNG into a scalable SVG vector. Large images are traced at up to 1600 px on the long side.",
 
   accepts: ["png"],
   produces: "svg",

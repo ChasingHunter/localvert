@@ -17,9 +17,7 @@ export default defineTool({
   category: "image",
   title: "Compress PNG",
   description:
-    "Shrink a PNG file losslessly, or reduce it to a smaller colour " +
-    "palette for an even smaller file — free, private, in your browser. " +
-    "Files never leave your device. Never makes the file bigger.",
+    "Shrink a PNG file losslessly, or reduce it to a smaller colour palette for an even smaller file. Never makes the file bigger.",
 
   accepts: ["png"],
   produces: "png",

@@ -14,8 +14,7 @@ export default defineTool({
   category: "audio",
   title: "WAV to FLAC",
   description:
-    "Convert WAV to FLAC — lossless compression, smaller than WAV with no " +
-    "quality loss. Free and private: runs in your browser, no upload.",
+    "Convert WAV to FLAC for lossless compression with no quality loss.",
 
   accepts: ["wav"],
   produces: "flac",

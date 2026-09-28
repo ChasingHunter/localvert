@@ -16,9 +16,7 @@ export default defineTool({
   slug: "reorder-pdf-pages",
   category: "pdf",
   title: "Reorder PDF Pages",
-  description:
-    "Rearrange, duplicate or drop pages in a PDF. Free and private: runs " +
-    "in your browser, no upload.",
+  description: "Rearrange, duplicate or drop pages in a PDF.",
 
   accepts: ["pdf"],
   produces: "pdf",

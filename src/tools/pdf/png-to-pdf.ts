@@ -13,8 +13,7 @@ export default defineTool({
   category: "pdf",
   title: "PNG to PDF",
   description:
-    "Combine PNG images into one PDF, one image per page, in the order you " +
-    "choose. Free and private: runs in your browser, no upload.",
+    "Combine PNG images into one PDF, one image per page, in the order you choose.",
 
   accepts: ["png"],
   produces: "pdf",

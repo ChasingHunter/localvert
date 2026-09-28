@@ -15,9 +15,7 @@ export default defineTool({
   slug: "trim-video",
   category: "video",
   title: "Trim Video",
-  description:
-    "Cut a video down to a start and end time — free and private, runs " +
-    "in your browser. Files never leave your device.",
+  description: "Cut a video down to a start and end time.",
 
   accepts: ["mp4", "mov", "webm", "mkv"],
   produces: "same",

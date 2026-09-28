@@ -14,8 +14,7 @@ export default defineTool({
   category: "pdf",
   title: "PDF to PNG",
   description:
-    "Convert PDF to PNG — every page as an image, privately in your " +
-    "browser. Free and private: choose a page range and resolution, no upload.",
+    "Convert every page of a PDF to a PNG image. Choose a page range and resolution.",
 
   accepts: ["pdf"],
   produces: "png",
@@ -26,7 +25,7 @@ export default defineTool({
       .meta({
         label: "Pages",
         control: "text",
-        help: "e.g. 1-3, 5 — empty for all",
+        help: "e.g. 1-3, 5. Leave empty for every page.",
       })
       .default(""),
     dpi: z

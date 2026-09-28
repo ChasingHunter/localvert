@@ -8,9 +8,7 @@ export default defineTool({
   category: "image",
   title: "GIF to JPG",
   description:
-    "Convert GIF to JPG in your browser — free and private, no upload. " +
-    "An animated GIF converts to a still image of its first frame; " +
-    "transparent areas are filled with a background color.",
+    "Convert GIF to JPG. An animated GIF becomes a still image of its first frame; transparent areas are filled with a background color.",
 
   accepts: ["gif"],
   produces: "jpg",

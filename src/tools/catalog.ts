@@ -640,7 +640,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     slug: "psd-to-png",
-    title: "PSD to PNG — flatten Photoshop files without Photoshop",
+    title: "PSD to PNG",
     category: "image",
     accepts: ["psd"],
     produces: "png",
@@ -649,7 +649,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     slug: "raw-to-jpg",
-    title: "Convert RAW to JPG — CR2, NEF, ARW, DNG and more, in your browser",
+    title: "Convert RAW to JPG",
     category: "image",
     accepts: ["raw"],
     produces: "jpg",
@@ -658,7 +658,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     slug: "raw-to-png",
-    title: "Convert RAW to PNG — CR2, NEF, ARW, DNG and more, in your browser",
+    title: "Convert RAW to PNG",
     category: "image",
     accepts: ["raw"],
     produces: "png",
@@ -877,8 +877,7 @@ export const CATALOG: readonly CatalogEntry[] = [
   },
   {
     slug: "pdf-editor",
-    title:
-      "PDF Editor — annotate, highlight, draw and add text to PDFs, privately in your browser",
+    title: "PDF Editor",
     category: "pdf",
     accepts: ["pdf"],
     produces: "pdf",

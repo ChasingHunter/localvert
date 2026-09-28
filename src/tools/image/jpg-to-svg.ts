@@ -10,9 +10,7 @@ export default defineTool({
   category: "image",
   title: "JPG to SVG",
   description:
-    "Convert JPG to SVG — trace images into scalable vectors, privately " +
-    "in your browser. Free and private: runs entirely on your device, no " +
-    "upload. Large images are traced at up to 1600 px on the long side.",
+    "Trace a JPG into a scalable SVG vector. Large images are traced at up to 1600 px on the long side.",
 
   accepts: ["jpg"],
   produces: "svg",

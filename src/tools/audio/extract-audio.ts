@@ -32,8 +32,7 @@ export default defineTool({
   category: "audio",
   title: "Extract Audio",
   description:
-    "Extract the audio track from a video file — MP3, M4A, WAV, Ogg or " +
-    "Opus. Free and private: runs in your browser, no upload.",
+    "Pull the audio track out of a video file as MP3, M4A, WAV, Ogg or Opus.",
 
   accepts: ["mp4", "mov", "webm", "mkv"],
   produces: "mp3",

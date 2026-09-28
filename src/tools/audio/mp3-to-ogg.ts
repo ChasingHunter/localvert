@@ -8,9 +8,7 @@ export default defineTool({
   slug: "mp3-to-ogg",
   category: "audio",
   title: "MP3 to Ogg",
-  description:
-    "Convert MP3 to Ogg (Opus) — smaller, royalty-free, open format. " +
-    "Free and private: runs in your browser, no upload.",
+  description: "Convert MP3 to Ogg (Opus), a smaller, royalty-free format.",
 
   accepts: ["mp3"],
   produces: "ogg",

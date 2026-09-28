@@ -18,11 +18,7 @@ export default defineTool({
   category: "document",
   title: "EPUB to PDF",
   description:
-    "Convert an EPUB ebook to PDF in your browser, fully offline. Chapters " +
-    "are rendered in reading order via LibreOffice; layout is approximate " +
-    "(EPUB's own reflowable styling isn't preserved) and only images " +
-    "embedded in the book itself are shown. Needs a desktop browser and a " +
-    "one-time ~74 MB download. Files never leave your device.",
+    "Convert an EPUB ebook to PDF. Layout is approximate, since EPUB's reflowable styling isn't kept, and only images embedded in the book show up. Needs a one-time 74 MB download on desktop.",
 
   accepts: ["epub"],
   produces: "pdf",

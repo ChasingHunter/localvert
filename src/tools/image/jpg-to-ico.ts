@@ -8,8 +8,7 @@ export default defineTool({
   category: "image",
   title: "JPG to ICO",
   description:
-    "Convert JPG to a Windows icon (.ico) — free and private, runs in " +
-    "your browser. Writes every size the chosen preset needs in one file.",
+    "Convert JPG to a Windows icon (.ico), writing every size the chosen preset needs into one file.",
 
   accepts: ["jpg"],
   produces: "ico",

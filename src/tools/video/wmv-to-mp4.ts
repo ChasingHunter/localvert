@@ -12,8 +12,7 @@ export default defineTool({
   category: "video",
   title: "WMV to MP4",
   description:
-    "Convert legacy WMV video to MP4 — the format every device and editor " +
-    "supports. Free and private: runs in your browser, no upload.",
+    "Convert legacy WMV video to MP4, a format every device and editor supports.",
 
   accepts: ["wmv"],
   produces: "mp4",

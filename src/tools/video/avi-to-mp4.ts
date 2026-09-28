@@ -13,8 +13,7 @@ export default defineTool({
   category: "video",
   title: "AVI to MP4",
   description:
-    "Convert legacy AVI video to MP4 — the format every device and editor " +
-    "supports. Free and private: runs in your browser, no upload.",
+    "Convert legacy AVI video to MP4, a format every device and editor supports.",
 
   accepts: ["avi"],
   produces: "mp4",

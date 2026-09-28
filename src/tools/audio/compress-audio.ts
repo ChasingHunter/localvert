@@ -23,9 +23,7 @@ export default defineTool({
   category: "audio",
   title: "Compress Audio",
   description:
-    "Shrink an MP3, M4A, Ogg or Opus file by lowering its bitrate — free, " +
-    "private, in your browser. Files never leave your device. Lossy: " +
-    "quality drops with the bitrate. Never makes the file bigger.",
+    "Shrink an MP3, M4A, Ogg or Opus file by lowering its bitrate. Quality drops as the bitrate drops, and the file is never made bigger.",
 
   accepts: ["mp3", "m4a", "ogg", "opus"],
   produces: "same",

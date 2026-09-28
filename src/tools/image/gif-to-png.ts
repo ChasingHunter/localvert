@@ -12,8 +12,7 @@ export default defineTool({
   category: "image",
   title: "GIF to PNG",
   description:
-    "Convert GIF to PNG in your browser — free and private, no upload. " +
-    "An animated GIF converts to a still image of its first frame.",
+    "Convert GIF to PNG. An animated GIF becomes a still image of its first frame.",
 
   accepts: ["gif"],
   produces: "png",

@@ -14,8 +14,7 @@ export default defineTool({
   category: "video",
   title: "MOV to WebM",
   description:
-    "Convert QuickTime MOV to WebM — smaller, royalty-free, plays " +
-    "everywhere modern. Free and private: runs in your browser, no upload.",
+    "Convert QuickTime MOV to WebM: smaller, royalty-free, and plays on modern devices.",
 
   accepts: ["mov"],
   produces: "webm",

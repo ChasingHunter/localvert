@@ -18,8 +18,7 @@ export default defineTool({
   category: "audio",
   title: "AAC to MP3",
   description:
-    "Convert AAC to MP3 — the most widely compatible audio format. Free " +
-    "and private: runs in your browser, no upload.",
+    "Convert AAC to MP3, the format that plays on nearly every device and app.",
 
   accepts: ["aac"],
   produces: "mp3",

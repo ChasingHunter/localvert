@@ -19,11 +19,9 @@ import { defineTool } from "@/lib/registry";
 export default defineTool({
   slug: "pdf-editor",
   category: "pdf",
-  title:
-    "PDF Editor — annotate, highlight, draw and add text to PDFs, privately in your browser",
+  title: "PDF Editor",
   description:
-    "Open a PDF, highlight, underline, draw, add text and stamps, then " +
-    "export — all in your browser, nothing uploaded.",
+    "Highlight, underline, draw, add text and stamps to a PDF, then export it.",
 
   accepts: ["pdf"],
   produces: "pdf",

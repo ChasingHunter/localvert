@@ -7,9 +7,7 @@ export default defineTool({
   category: "image",
   title: "Rotate PNG",
   description:
-    "Rotate a PNG 90, 180, or 270 degrees clockwise — free, private, in " +
-    "your browser. Files never leave your device. Re-encoding strips " +
-    "embedded metadata, including GPS.",
+    "Rotate a PNG 90, 180 or 270 degrees clockwise. Re-encoding strips embedded metadata, including GPS.",
 
   accepts: ["png"],
   produces: "png",

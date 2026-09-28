@@ -11,9 +11,7 @@ export default defineTool({
   slug: "csv-to-json",
   category: "data",
   title: "CSV to JSON",
-  description:
-    "Convert a CSV file to a JSON array of objects in your browser. " +
-    "Files never leave your device.",
+  description: "Convert a CSV file to a JSON array of objects.",
 
   accepts: ["csv"],
   produces: "json",

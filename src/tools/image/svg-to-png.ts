@@ -17,10 +17,7 @@ export default defineTool({
   category: "image",
   title: "SVG to PNG",
   description:
-    "Convert SVG to PNG at any size — free, private, in your browser. " +
-    "Renders your vector artwork to a crisp raster PNG; files never leave " +
-    "your device. Text needs its font embedded in the SVG, since the " +
-    "browser sandbox has no system fonts to fall back on.",
+    "Convert SVG to PNG at any size, rendered as a crisp raster image. Text needs its font embedded in the SVG, since the browser sandbox has no system fonts to fall back on.",
 
   accepts: ["svg"],
   produces: "png",

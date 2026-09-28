@@ -12,8 +12,7 @@ export default defineTool({
   category: "image",
   title: "ICO to PNG",
   description:
-    "Convert a Windows icon (.ico) to PNG — free and private, runs in " +
-    "your browser. Extracts the largest size embedded in the icon.",
+    "Convert a Windows icon (.ico) to PNG, extracting the largest size embedded in the icon.",
 
   accepts: ["ico"],
   produces: "png",

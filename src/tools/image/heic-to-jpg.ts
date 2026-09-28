@@ -17,10 +17,7 @@ export default defineTool({
   category: "image",
   title: "HEIC to JPG",
   description:
-    "Convert HEIC to JPG — open iPhone photos anywhere, free and private, " +
-    "in your browser. Files never leave your device. Only the primary image " +
-    "in a HEIC file is converted, and re-encoding strips embedded metadata, " +
-    "including GPS location.",
+    "Convert HEIC to JPG so iPhone photos open anywhere. Only the primary image in a HEIC file converts, and re-encoding strips embedded metadata, including GPS.",
 
   accepts: ["heic"],
   produces: "jpg",

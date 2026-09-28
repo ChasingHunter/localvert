@@ -21,8 +21,7 @@ export default defineTool({
   category: "pdf",
   title: "Image to Searchable PDF",
   description:
-    "Turn a photo or scan into a searchable PDF with OCR, privately in " +
-    "your browser. Free and private: no upload, text stays selectable.",
+    "Turn a photo or scan into a searchable PDF with OCR. Text stays selectable.",
 
   accepts: ["jpg", "png", "webp", "bmp"],
   produces: "pdf",

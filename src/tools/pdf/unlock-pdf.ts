@@ -11,9 +11,7 @@ export default defineTool({
   slug: "unlock-pdf",
   category: "pdf",
   title: "Unlock PDF",
-  description:
-    "Remove a password from a PDF you have the password to. Free and " +
-    "private: runs in your browser, no upload.",
+  description: "Remove a password from a PDF you have the password to.",
 
   accepts: ["pdf"],
   produces: "pdf",

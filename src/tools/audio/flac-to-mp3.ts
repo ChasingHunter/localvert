@@ -8,8 +8,7 @@ export default defineTool({
   category: "audio",
   title: "FLAC to MP3",
   description:
-    "Convert FLAC to MP3 — much smaller files, still widely compatible. " +
-    "Free and private: runs in your browser, no upload.",
+    "Convert FLAC to MP3 for a much smaller file that still plays everywhere.",
 
   accepts: ["flac"],
   produces: "mp3",

@@ -14,9 +14,7 @@ export default defineTool({
   slug: "delete-pdf-pages",
   category: "pdf",
   title: "Delete PDF Pages",
-  description:
-    "Remove specific pages from a PDF, keeping the rest in order. Free and " +
-    "private: runs in your browser, no upload.",
+  description: "Remove specific pages from a PDF, keeping the rest in order.",
 
   accepts: ["pdf"],
   produces: "pdf",
@@ -31,7 +29,7 @@ export default defineTool({
       // (see its own error). `required: true` is the UI-level backstop for
       // that rule: it gates the Convert button until something is typed.
       required: true,
-      help: 'e.g. "2, 4-6" — every other page is kept, in order.',
+      help: 'e.g. "2, 4-6". Every other page is kept, in order.',
     }),
     mode: z.enum(["remove"]).meta({ label: "Mode", control: "hidden" }),
   }),

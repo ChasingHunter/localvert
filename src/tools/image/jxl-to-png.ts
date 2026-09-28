@@ -11,9 +11,7 @@ export default defineTool({
   category: "image",
   title: "JPEG XL to PNG",
   description:
-    "Convert JPEG XL (JXL) to PNG — open JXL images anywhere. Free, " +
-    "private, runs in your browser. Re-encoding strips embedded metadata, " +
-    "including GPS.",
+    "Convert JPEG XL (JXL) to PNG so it opens anywhere. Re-encoding strips embedded metadata, including GPS.",
 
   accepts: ["jxl"],
   produces: "png",

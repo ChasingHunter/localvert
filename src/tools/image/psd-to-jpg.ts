@@ -18,10 +18,7 @@ export default defineTool({
   category: "image",
   title: "PSD to JPG",
   description:
-    "Flatten a Photoshop PSD to JPG without opening Photoshop — free, " +
-    "private, in your browser. Uses the file's own flattened composite " +
-    "(8-bit RGB only), re-encoded onto the background color you choose. " +
-    "Files never leave your device.",
+    "Flatten a Photoshop PSD to JPG without Photoshop. Uses the composite saved in the file (8-bit RGB only) on a background color you pick.",
 
   accepts: ["psd"],
   produces: "jpg",

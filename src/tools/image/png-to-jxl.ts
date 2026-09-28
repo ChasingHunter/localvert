@@ -15,9 +15,7 @@ export default defineTool({
   category: "image",
   title: "PNG to JPEG XL",
   description:
-    "Convert PNG to JPEG XL (JXL) — smaller files with transparency " +
-    "preserved. Free and private: runs in your browser, no upload. " +
-    "Re-encoding strips embedded metadata.",
+    "Convert PNG to JPEG XL (JXL) for a smaller file with transparency preserved. Re-encoding strips embedded metadata.",
 
   accepts: ["png"],
   produces: "jxl",

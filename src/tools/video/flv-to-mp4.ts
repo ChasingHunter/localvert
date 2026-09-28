@@ -12,8 +12,7 @@ export default defineTool({
   category: "video",
   title: "FLV to MP4",
   description:
-    "Convert legacy Flash Video (FLV) to MP4 — the format every device " +
-    "and editor supports. Free and private: runs in your browser, no upload.",
+    "Convert legacy Flash Video (FLV) to MP4, a format every device and editor supports.",
 
   accepts: ["flv"],
   produces: "mp4",

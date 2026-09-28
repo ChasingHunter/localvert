@@ -13,9 +13,7 @@ export default defineTool({
   slug: "resize-video",
   category: "video",
   title: "Resize Video",
-  description:
-    "Resize a video to a common resolution or an exact size — free and " +
-    "private, runs in your browser. Files never leave your device.",
+  description: "Resize a video to a common resolution or an exact size.",
 
   accepts: ["mp4", "mov", "webm", "mkv"],
   produces: "same",

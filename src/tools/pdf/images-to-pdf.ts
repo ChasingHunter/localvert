@@ -24,8 +24,7 @@ export default defineTool({
   category: "pdf",
   title: "Images to PDF",
   description:
-    "Combine JPG and PNG images into one PDF, one image per page, in the " +
-    "order you choose. Free and private: runs in your browser, no upload.",
+    "Combine JPG and PNG images into one PDF, one image per page, in the order you choose.",
 
   accepts: ["jpg", "png"],
   produces: "pdf",

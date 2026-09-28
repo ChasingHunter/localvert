@@ -11,9 +11,7 @@ export default defineTool({
   category: "image",
   title: "Resize PNG",
   description:
-    "Resize a PNG by width, height, or both — free, private, in your " +
-    "browser. Files never leave your device. Re-encoding strips embedded " +
-    "metadata, including GPS.",
+    "Resize a PNG by width, height, or both. Re-encoding strips embedded metadata, including GPS.",
 
   accepts: ["png"],
   produces: "png",

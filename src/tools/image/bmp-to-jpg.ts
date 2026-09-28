@@ -6,9 +6,7 @@ export default defineTool({
   category: "image",
   title: "BMP to JPG",
   description:
-    "Convert BMP to JPG — much smaller files, and works everywhere. Free " +
-    "and private: runs in your browser, no upload. Transparent areas are " +
-    "filled with a background color.",
+    "Convert BMP to JPG for a much smaller file that works everywhere. Transparent areas are filled with a background color.",
 
   accepts: ["bmp"],
   produces: "jpg",

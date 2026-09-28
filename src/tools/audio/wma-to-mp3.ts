@@ -17,8 +17,7 @@ export default defineTool({
   category: "audio",
   title: "WMA to MP3",
   description:
-    "Convert legacy WMA audio to MP3 — the format every device and player " +
-    "supports. Free and private: runs in your browser, no upload.",
+    "Convert legacy WMA audio to MP3, a format every device and player supports.",
 
   accepts: ["wma"],
   produces: "mp3",

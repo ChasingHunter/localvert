@@ -11,9 +11,7 @@ export default defineTool({
   slug: "rotate-pdf",
   category: "pdf",
   title: "Rotate PDF",
-  description:
-    "Rotate pages in a PDF 90, 180 or 270 degrees. Free and private: runs " +
-    "in your browser, no upload.",
+  description: "Rotate pages in a PDF 90, 180 or 270 degrees.",
 
   accepts: ["pdf"],
   produces: "pdf",
@@ -22,7 +20,7 @@ export default defineTool({
     pages: z.string().meta({
       label: "Pages",
       control: "text",
-      help: 'Which pages to rotate — e.g. "1-3, 5" — or leave blank for every page.',
+      help: 'Which pages to rotate, e.g. "1-3, 5". Leave blank for every page.',
     }),
     angle: z
       .enum(["90", "180", "270"])

@@ -14,10 +14,7 @@ export default defineTool({
   category: "image",
   title: "JPG to AVIF",
   description:
-    "Convert JPG to AVIF — next-generation compression, much smaller " +
-    "files than JPG at the same quality. Free and private: runs in your " +
-    "browser, no upload. Re-encoding strips embedded metadata, including " +
-    "GPS location.",
+    "Convert JPG to AVIF for a much smaller file at the same quality. Re-encoding strips embedded metadata, including GPS.",
 
   accepts: ["jpg"],
   produces: "avif",

@@ -16,9 +16,7 @@ export default defineTool({
   category: "pdf",
   title: "Compress PDF",
   description:
-    "Compress PDF — shrink PDF file size in your browser, no upload. " +
-    "Lossless by default (no image recompression); stronger modes " +
-    "re-encode embedded images smaller. Never makes the file bigger.",
+    "Shrink a PDF. The default is lossless, and stronger modes also shrink the images inside. Never makes the file bigger.",
 
   accepts: ["pdf"],
   produces: "pdf",

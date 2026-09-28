@@ -19,8 +19,7 @@ export default defineTool({
   category: "video",
   title: "MP4 to WebM",
   description:
-    "Convert MP4 (or MOV) video to WebM — smaller, royalty-free, plays " +
-    "everywhere modern. Free and private: runs in your browser, no upload.",
+    "Convert MP4 or MOV video to WebM: smaller, royalty-free, and plays on modern devices.",
 
   accepts: ["mp4", "mov"],
   produces: "webm",

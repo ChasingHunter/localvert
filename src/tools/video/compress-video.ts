@@ -15,8 +15,7 @@ export default defineTool({
   category: "video",
   title: "Compress Video",
   description:
-    "Shrink a video's file size — pick a quality and an optional max " +
-    "resolution. Free and private: runs in your browser, no upload.",
+    "Shrink a video's file size. Pick a quality and an optional maximum resolution.",
 
   accepts: ["mp4", "mov", "webm", "mkv"],
   produces: "same",

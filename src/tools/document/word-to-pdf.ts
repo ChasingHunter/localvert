@@ -17,9 +17,7 @@ export default defineTool({
   category: "document",
   title: "Word to PDF",
   description:
-    "Convert Word, OpenDocument Text or RTF files to PDF in your browser " +
-    "with LibreOffice, fully offline. Needs a desktop browser and a " +
-    "one-time ~74 MB download. Files never leave your device.",
+    "Convert Word, OpenDocument Text or RTF files to PDF with LibreOffice. Needs a one-time 74 MB download on desktop.",
 
   accepts: ["docx", "doc", "odt", "rtf"],
   produces: "pdf",

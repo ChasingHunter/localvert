@@ -14,9 +14,7 @@ export default defineTool({
   category: "image",
   title: "JPG to WebP",
   description:
-    "Convert JPG to WebP — smaller files, same look. Free and private: " +
-    "runs in your browser, no upload. Re-encoding strips embedded " +
-    "metadata, including GPS location.",
+    "Convert JPG to WebP for a smaller file with the same look. Re-encoding strips embedded metadata, including GPS.",
 
   accepts: ["jpg"],
   produces: "webp",

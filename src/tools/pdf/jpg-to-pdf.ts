@@ -13,8 +13,7 @@ export default defineTool({
   category: "pdf",
   title: "JPG to PDF",
   description:
-    "Combine JPG images into one PDF, one image per page, in the order you " +
-    "choose. Free and private: runs in your browser, no upload.",
+    "Combine JPG images into one PDF, one image per page, in the order you choose.",
 
   accepts: ["jpg"],
   produces: "pdf",

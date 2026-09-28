@@ -10,9 +10,7 @@ export default defineTool({
   category: "image",
   title: "WebP to SVG",
   description:
-    "Convert WebP to SVG — trace images into scalable vectors, privately " +
-    "in your browser. Free and private: runs entirely on your device, no " +
-    "upload. Large images are traced at up to 1600 px on the long side.",
+    "Trace a WebP into a scalable SVG vector. Large images are traced at up to 1600 px on the long side.",
 
   accepts: ["webp"],
   produces: "svg",

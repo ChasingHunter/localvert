@@ -21,9 +21,7 @@ export default defineTool({
   category: "image",
   title: "JPG to PNG",
   description:
-    "Convert JPG to PNG — free, private, in your browser. Files never leave " +
-    "your device. Re-encoding through canvas strips embedded metadata, " +
-    "including GPS location.",
+    "Convert JPG to PNG, a lossless format. Re-encoding removes metadata such as GPS.",
 
   accepts: ["jpg"],
   produces: "png",

@@ -16,9 +16,7 @@ export default defineTool({
   category: "image",
   title: "PNG to AVIF",
   description:
-    "Convert PNG to AVIF — next-generation compression with transparency " +
-    "support. Free and private: runs in your browser, no upload. " +
-    "Re-encoding strips embedded metadata.",
+    "Convert PNG to AVIF with transparency support, for a much smaller file. Re-encoding strips embedded metadata.",
 
   accepts: ["png"],
   produces: "avif",

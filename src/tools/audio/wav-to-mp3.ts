@@ -10,8 +10,7 @@ export default defineTool({
   category: "audio",
   title: "WAV to MP3",
   description:
-    "Convert WAV to MP3 — much smaller files, still widely compatible. " +
-    "Free and private: runs in your browser, no upload.",
+    "Convert WAV to MP3 for a much smaller file that still plays everywhere.",
 
   accepts: ["wav"],
   produces: "mp3",

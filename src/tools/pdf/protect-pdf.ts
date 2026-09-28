@@ -15,9 +15,7 @@ export default defineTool({
   slug: "protect-pdf",
   category: "pdf",
   title: "Password Protect PDF",
-  description:
-    "Add a password to a PDF with AES-256 encryption. Free and private: " +
-    "runs in your browser, no upload.",
+  description: "Add a password to a PDF with AES-256 encryption.",
 
   accepts: ["pdf"],
   produces: "pdf",

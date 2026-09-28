@@ -5,9 +5,7 @@ export default defineTool({
   slug: "jpg-to-bmp",
   category: "image",
   title: "JPG to BMP",
-  description:
-    "Convert JPG to BMP — an uncompressed bitmap for tools that need one. " +
-    "Free and private: runs in your browser, no upload.",
+  description: "Convert JPG to an uncompressed BMP, for tools that need one.",
 
   accepts: ["jpg"],
   produces: "bmp",

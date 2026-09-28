@@ -14,8 +14,7 @@ export default defineTool({
   category: "pdf",
   title: "Extract PDF Pages",
   description:
-    "Pull specific pages out of a PDF into a new file, in the order you " +
-    "choose. Free and private: runs in your browser, no upload.",
+    "Pull specific pages out of a PDF into a new file, in the order you choose.",
 
   accepts: ["pdf"],
   produces: "pdf",
@@ -24,7 +23,7 @@ export default defineTool({
     pages: z.string().meta({
       label: "Pages to keep",
       control: "text",
-      help: 'e.g. "1-3, 5" — only these pages, in this order, end up in the output.',
+      help: 'e.g. "1-3, 5". Only these pages, in this order, end up in the output.',
     }),
     mode: z.enum(["keep"]).meta({ label: "Mode", control: "hidden" }),
   }),

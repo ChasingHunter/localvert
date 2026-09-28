@@ -13,8 +13,7 @@ export default defineTool({
   category: "audio",
   title: "M4A to WAV",
   description:
-    "Convert M4A (AAC) to WAV — uncompressed PCM audio for editing or " +
-    "archival. Free and private: runs in your browser, no upload.",
+    "Convert M4A (AAC) to uncompressed WAV, ready for editing or archiving.",
 
   accepts: ["m4a"],
   produces: "wav",

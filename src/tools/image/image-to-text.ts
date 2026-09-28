@@ -20,8 +20,7 @@ export default defineTool({
   category: "image",
   title: "Image to Text (OCR)",
   description:
-    "Extract text from photos and scans with OCR, privately in your " +
-    "browser. Free and private: no upload, works offline once loaded.",
+    "Extract text from photos and scans with OCR. Works offline once the language pack has loaded.",
 
   accepts: ["jpg", "png", "webp", "bmp"],
   produces: "txt",

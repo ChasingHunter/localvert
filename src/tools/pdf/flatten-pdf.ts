@@ -13,8 +13,7 @@ export default defineTool({
   category: "pdf",
   title: "Flatten PDF",
   description:
-    "Make form fields and their values permanent, non-editable page " +
-    "content. Free and private: runs in your browser, no upload.",
+    "Make form fields and their values permanent, non-editable page content.",
 
   accepts: ["pdf"],
   produces: "pdf",

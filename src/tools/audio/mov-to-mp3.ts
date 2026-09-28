@@ -9,9 +9,7 @@ export default defineTool({
   slug: "mov-to-mp3",
   category: "audio",
   title: "MOV to MP3",
-  description:
-    "Extract the audio from a QuickTime MOV video as MP3. Free and " +
-    "private: runs in your browser, no upload.",
+  description: "Pull the audio out of a QuickTime MOV video as MP3.",
 
   accepts: ["mov"],
   produces: "mp3",

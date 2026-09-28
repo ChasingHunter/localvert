@@ -13,8 +13,7 @@ export default defineTool({
   category: "audio",
   title: "FLAC to WAV",
   description:
-    "Convert FLAC to WAV — uncompressed PCM audio for editing or " +
-    "archival. Free and private: runs in your browser, no upload.",
+    "Convert FLAC to uncompressed WAV, ready for editing or archiving.",
 
   accepts: ["flac"],
   produces: "wav",

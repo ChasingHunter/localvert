@@ -17,10 +17,7 @@ export default defineTool({
   category: "image",
   title: "TIFF to JPG",
   description:
-    "Convert TIFF to JPG — free, private, in your browser. Only the first " +
-    "page of a multi-page TIFF is converted. Files never leave your " +
-    "device, and re-encoding strips embedded metadata, including GPS " +
-    "location.",
+    "Convert TIFF to JPG. Only the first page of a multi-page TIFF converts, and re-encoding strips embedded metadata, including GPS location.",
 
   accepts: ["tiff"],
   produces: "jpg",

@@ -18,9 +18,7 @@ export default defineTool({
   category: "image",
   title: "Rotate JPG",
   description:
-    "Rotate a JPG 90, 180, or 270 degrees clockwise — free, private, in " +
-    "your browser. Files never leave your device. Re-encoding strips " +
-    "embedded metadata, including GPS.",
+    "Rotate a JPG 90, 180 or 270 degrees clockwise. Re-encoding strips embedded metadata, including GPS.",
 
   accepts: ["jpg"],
   produces: "jpg",

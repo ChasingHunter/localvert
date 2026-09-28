@@ -6,8 +6,7 @@ export default defineTool({
   category: "image",
   title: "BMP to PNG",
   description:
-    "Convert BMP to PNG — much smaller files, and works everywhere. Free " +
-    "and private: runs in your browser, no upload.",
+    "Convert BMP to PNG for a much smaller file that works everywhere.",
 
   accepts: ["bmp"],
   produces: "png",

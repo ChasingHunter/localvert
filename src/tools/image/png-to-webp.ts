@@ -13,9 +13,7 @@ export default defineTool({
   category: "image",
   title: "PNG to WebP",
   description:
-    "Convert PNG to WebP — smaller files with transparency preserved. " +
-    "Free and private: runs in your browser, no upload. Re-encoding " +
-    "strips embedded metadata.",
+    "Convert PNG to WebP for a smaller file with transparency preserved. Re-encoding strips embedded metadata.",
 
   accepts: ["png"],
   produces: "webp",

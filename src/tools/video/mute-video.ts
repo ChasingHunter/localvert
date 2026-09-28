@@ -15,9 +15,7 @@ export default defineTool({
   slug: "mute-video",
   category: "video",
   title: "Mute Video",
-  description:
-    "Remove the audio track from a video — free and private, runs in " +
-    "your browser. Files never leave your device.",
+  description: "Remove the audio track from a video.",
 
   accepts: ["mp4", "mov", "webm", "mkv"],
   produces: "same",

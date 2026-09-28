@@ -17,11 +17,7 @@ export default defineTool({
   category: "document",
   title: "HTML to PDF",
   description:
-    "Convert an HTML file to PDF in your browser with LibreOffice, fully " +
-    "offline. External images and stylesheets (anything not embedded in " +
-    "the file itself) won't load — this app never makes network requests. " +
-    "Needs a desktop browser and a one-time ~74 MB download. Files never " +
-    "leave your device.",
+    "Convert an HTML file to PDF with LibreOffice. External images and stylesheets won't load, since this app makes no network requests. Needs a one-time 74 MB download on desktop.",
 
   accepts: ["html"],
   produces: "pdf",

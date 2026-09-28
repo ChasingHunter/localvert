@@ -11,8 +11,7 @@ export default defineTool({
   category: "audio",
   title: "MP3 to M4A",
   description:
-    "Convert MP3 to M4A (AAC) — better quality per bit, Apple's default " +
-    "audio format. Free and private: runs in your browser, no upload.",
+    "Convert MP3 to M4A (AAC), the format Apple devices use by default.",
 
   accepts: ["mp3"],
   produces: "m4a",

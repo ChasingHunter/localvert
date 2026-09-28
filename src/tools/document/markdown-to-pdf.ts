@@ -21,9 +21,7 @@ export default defineTool({
   slug: "markdown-to-pdf",
   category: "document",
   title: "Markdown to PDF",
-  description:
-    "Convert a Markdown file to a paginated PDF in your browser, fully " +
-    "offline. Files never leave your device.",
+  description: "Convert a Markdown file to a paginated PDF.",
 
   accepts: ["md"],
   produces: "pdf",

@@ -6,9 +6,7 @@ export default defineTool({
   category: "image",
   title: "PNG to BMP",
   description:
-    "Convert PNG to BMP — an uncompressed bitmap for tools that need one. " +
-    "Free and private: runs in your browser, no upload. Transparency is " +
-    "kept as a 32-bit alpha channel.",
+    "Convert PNG to an uncompressed BMP, for tools that need one. Transparency is kept as a 32-bit alpha channel.",
 
   accepts: ["png"],
   produces: "bmp",

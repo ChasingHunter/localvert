@@ -16,8 +16,7 @@ export default defineTool({
   category: "image",
   title: "Remove EXIF Data",
   description:
-    "Remove EXIF data from photos — strip GPS location and camera info, " +
-    "privately in your browser. Files never leave your device.",
+    "Remove EXIF data from photos, including GPS location and camera details.",
 
   accepts: ["jpg", "png", "webp"],
   produces: "same",

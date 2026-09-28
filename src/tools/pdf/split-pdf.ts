@@ -17,8 +17,7 @@ export default defineTool({
   category: "pdf",
   title: "Split PDF",
   description:
-    "Split a PDF into separate files — one per page, or by custom page " +
-    "ranges. Free and private: runs in your browser, no upload.",
+    "Split a PDF into separate files: one per page, or by custom page ranges.",
 
   accepts: ["pdf"],
   produces: "pdf",

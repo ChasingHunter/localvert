@@ -14,9 +14,7 @@ export default defineTool({
   slug: "json-to-csv",
   category: "data",
   title: "JSON to CSV",
-  description:
-    "Convert a JSON array of objects to a CSV file in your browser. " +
-    "Files never leave your device.",
+  description: "Convert a JSON array of objects to a CSV file.",
 
   accepts: ["json"],
   produces: "csv",

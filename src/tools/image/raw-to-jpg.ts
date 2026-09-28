@@ -25,12 +25,9 @@ import { jpgDefaults, jpgOptions } from "../_shared-options";
 export default defineTool({
   slug: "raw-to-jpg",
   category: "image",
-  title: "Convert RAW to JPG — CR2, NEF, ARW, DNG and more, in your browser",
+  title: "Convert RAW to JPG",
   description:
-    "Convert camera RAW photos — CR2, NEF, ARW, DNG and more — to JPG. " +
-    "Free, private, in your browser. Files never leave your device. " +
-    "Decoding through libraw and re-encoding strips embedded metadata, " +
-    "including GPS location.",
+    "Convert camera RAW photos (CR2, NEF, ARW, DNG and more) to JPG. Decoding and re-encoding strips embedded metadata, including GPS location.",
 
   accepts: ["raw"],
   produces: "jpg",
@@ -39,7 +36,7 @@ export default defineTool({
     halfSize: z.boolean().meta({
       label: "Fast half-size decode",
       control: "switch",
-      help: "Decodes at half resolution — faster, good for a quick preview.",
+      help: "Decodes at half resolution, faster and good for a quick preview.",
     }),
   }),
   defaults: { ...jpgDefaults, quality: 0.9, halfSize: false },

@@ -23,10 +23,7 @@ export default defineTool({
   category: "image",
   title: "PNG to JPG",
   description:
-    "Convert PNG to JPG — much smaller files for photos and screenshots. " +
-    "Free and private: runs in your browser, no upload. Transparent areas " +
-    "are filled with a background color; re-encoding strips embedded " +
-    "metadata, including GPS location.",
+    "Convert PNG to JPG to make photos and screenshots much smaller. Transparent areas get a background color, and re-encoding removes metadata such as GPS.",
 
   accepts: ["png"],
   produces: "jpg",

@@ -26,11 +26,7 @@ export default defineTool({
   category: "pdf",
   title: "PDF to Word",
   description:
-    "Convert a PDF to an editable .docx, privately in your browser — no " +
-    "upload. Layout is approximate: text, headings and paragraph breaks " +
-    "come across in reading order, but columns, tables, exact positioning " +
-    "and embedded images don't (this version is text-only). Scanned PDFs " +
-    "with no text layer need OCR first — see PDF to Searchable PDF.",
+    "Convert a PDF to an editable .docx. Layout is approximate and text-only: columns, tables and images don't carry over. Scanned PDFs need OCR first: see PDF to Searchable PDF.",
 
   accepts: ["pdf"],
   produces: "docx",

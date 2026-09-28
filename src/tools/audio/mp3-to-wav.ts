@@ -13,8 +13,7 @@ export default defineTool({
   category: "audio",
   title: "MP3 to WAV",
   description:
-    "Convert MP3 to WAV — uncompressed PCM audio for editing or archival. " +
-    "Free and private: runs in your browser, no upload.",
+    "Convert MP3 to uncompressed WAV, ready for editing or archiving.",
 
   accepts: ["mp3"],
   produces: "wav",

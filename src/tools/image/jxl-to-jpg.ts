@@ -10,9 +10,7 @@ export default defineTool({
   category: "image",
   title: "JPEG XL to JPG",
   description:
-    "Convert JPEG XL (JXL) to JPG — open JXL images anywhere. Free, " +
-    "private, runs in your browser. Re-encoding strips embedded metadata, " +
-    "including GPS.",
+    "Convert JPEG XL (JXL) to JPG so it opens anywhere. Re-encoding strips embedded metadata, including GPS.",
 
   accepts: ["jxl"],
   produces: "jpg",

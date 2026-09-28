@@ -9,9 +9,7 @@ export default defineTool({
   slug: "mp4-to-mp3",
   category: "audio",
   title: "MP4 to MP3",
-  description:
-    "Extract the audio from an MP4 video as MP3. Free and private: runs in " +
-    "your browser, no upload.",
+  description: "Pull the audio out of an MP4 video as MP3.",
 
   accepts: ["mp4"],
   produces: "mp3",

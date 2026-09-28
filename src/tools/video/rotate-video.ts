@@ -12,9 +12,7 @@ export default defineTool({
   slug: "rotate-video",
   category: "video",
   title: "Rotate Video",
-  description:
-    "Rotate a video 90, 180 or 270 degrees — free and private, runs in " +
-    "your browser. Files never leave your device.",
+  description: "Rotate a video 90, 180 or 270 degrees.",
 
   accepts: ["mp4", "mov", "webm", "mkv"],
   produces: "same",

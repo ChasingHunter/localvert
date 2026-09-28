@@ -10,8 +10,7 @@ export default defineTool({
   category: "audio",
   title: "Ogg to MP3",
   description:
-    "Convert Ogg Vorbis to MP3 — the most widely compatible audio format. " +
-    "Free and private: runs in your browser, no upload.",
+    "Convert Ogg Vorbis to MP3, the format that plays on nearly every device and app.",
 
   accepts: ["ogg"],
   produces: "mp3",

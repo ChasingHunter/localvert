@@ -11,8 +11,7 @@ export default defineTool({
   category: "image",
   title: "PNG to ICO",
   description:
-    "Convert PNG to a Windows icon (.ico) — free and private, runs in " +
-    "your browser. Writes every size the chosen preset needs in one file.",
+    "Convert PNG to a Windows icon (.ico), writing every size the chosen preset needs into one file.",
 
   accepts: ["png"],
   produces: "ico",

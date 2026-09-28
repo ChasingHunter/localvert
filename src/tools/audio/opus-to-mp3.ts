@@ -18,8 +18,7 @@ export default defineTool({
   category: "audio",
   title: "Opus to MP3",
   description:
-    "Convert Opus to MP3 — the most widely compatible audio format. Free " +
-    "and private: runs in your browser, no upload.",
+    "Convert Opus to MP3, the format that plays on nearly every device and app.",
 
   accepts: ["opus"],
   produces: "mp3",

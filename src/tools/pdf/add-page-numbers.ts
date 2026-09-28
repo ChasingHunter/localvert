@@ -14,9 +14,7 @@ export default defineTool({
   slug: "add-page-numbers",
   category: "pdf",
   title: "Add Page Numbers to PDF",
-  description:
-    "Add page numbers to a PDF, in the corner or edge you choose. Free " +
-    "and private: runs in your browser, no upload.",
+  description: "Add page numbers to a PDF, in the corner or edge you choose.",
 
   accepts: ["pdf"],
   produces: "pdf",
@@ -53,7 +51,7 @@ export default defineTool({
     pages: z.string().meta({
       label: "Pages",
       control: "text",
-      help: 'Which pages get a visible number — e.g. "1-3, 5" — or leave blank for every page. Numbering still counts every page in the document.',
+      help: 'Which pages get a visible number, e.g. "1-3, 5". Leave blank for every page. Numbering still counts every page in the document.',
     }),
   }),
   defaults: {

@@ -17,8 +17,7 @@ export default defineTool({
   category: "video",
   title: "MOV to MP4",
   description:
-    "Convert QuickTime MOV to MP4 — the format every device and editor " +
-    "supports. Free and private: runs in your browser, no upload.",
+    "Convert QuickTime MOV to MP4, a format every device and editor supports.",
 
   accepts: ["mov"],
   produces: "mp4",

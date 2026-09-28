@@ -7,9 +7,7 @@ export default defineTool({
   category: "image",
   title: "Rotate WebP",
   description:
-    "Rotate a WebP 90, 180, or 270 degrees clockwise — free, private, in " +
-    "your browser. Files never leave your device. Re-encoding strips " +
-    "embedded metadata, including GPS.",
+    "Rotate a WebP 90, 180 or 270 degrees clockwise. Re-encoding strips embedded metadata, including GPS.",
 
   accepts: ["webp"],
   produces: "webp",

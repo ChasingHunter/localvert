@@ -9,9 +9,7 @@ export default defineTool({
   category: "image",
   title: "Resize WebP",
   description:
-    "Resize a WebP by width, height, or both — free, private, in your " +
-    "browser. Files never leave your device. Re-encoding strips embedded " +
-    "metadata, including GPS.",
+    "Resize a WebP by width, height, or both. Re-encoding strips embedded metadata, including GPS.",
 
   accepts: ["webp"],
   produces: "webp",

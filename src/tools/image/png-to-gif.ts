@@ -8,8 +8,7 @@ export default defineTool({
   category: "image",
   title: "PNG to GIF",
   description:
-    "Convert PNG to GIF — free and private, runs in your browser. Colors " +
-    "are quantized to a 256-color palette; transparency is kept as 1-bit.",
+    "Convert PNG to GIF. Colors are quantized to a 256-color palette; transparency is kept as 1-bit.",
 
   accepts: ["png"],
   produces: "gif",

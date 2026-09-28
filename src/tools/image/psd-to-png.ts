@@ -15,11 +15,9 @@ import { defineTool, imagePipeline } from "@/lib/registry";
 export default defineTool({
   slug: "psd-to-png",
   category: "image",
-  title: "PSD to PNG — flatten Photoshop files without Photoshop",
+  title: "PSD to PNG",
   description:
-    "Flatten a Photoshop PSD to PNG without opening Photoshop — free, " +
-    "private, in your browser. Uses the file's own flattened composite " +
-    "(8-bit RGB only); files never leave your device.",
+    "Flatten a Photoshop PSD to PNG without Photoshop. Uses the composite saved in the file (8-bit RGB only).",
 
   accepts: ["psd"],
   produces: "png",

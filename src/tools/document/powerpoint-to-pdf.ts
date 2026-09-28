@@ -13,9 +13,7 @@ export default defineTool({
   category: "document",
   title: "PowerPoint to PDF",
   description:
-    "Convert PowerPoint or OpenDocument Presentation files to PDF in your " +
-    "browser with LibreOffice, fully offline. Needs a desktop browser and " +
-    "a one-time ~74 MB download. Files never leave your device.",
+    "Convert PowerPoint or OpenDocument Presentation files to PDF with LibreOffice. Needs a one-time 74 MB download on desktop.",
 
   accepts: ["pptx", "ppt", "odp"],
   produces: "pdf",

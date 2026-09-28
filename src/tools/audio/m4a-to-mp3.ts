@@ -8,8 +8,7 @@ export default defineTool({
   category: "audio",
   title: "M4A to MP3",
   description:
-    "Convert M4A (AAC) to MP3 — the most widely compatible audio format. " +
-    "Free and private: runs in your browser, no upload.",
+    "Convert M4A (AAC) to MP3, the format that plays on nearly every device and app.",
 
   accepts: ["m4a"],
   produces: "mp3",

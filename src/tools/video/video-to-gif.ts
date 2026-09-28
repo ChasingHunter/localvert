@@ -19,9 +19,7 @@ export default defineTool({
   category: "video",
   title: "Video to GIF",
   description:
-    "Convert a video clip to an animated GIF — free and private, runs " +
-    "entirely in your browser. Trim the range, pick frame rate, width and " +
-    "colors.",
+    "Convert a video clip to an animated GIF. Trim the range, and pick frame rate, width and colors.",
 
   accepts: ["mp4", "mov", "webm", "mkv"],
   produces: "gif",

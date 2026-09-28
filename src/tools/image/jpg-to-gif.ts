@@ -8,8 +8,7 @@ export default defineTool({
   category: "image",
   title: "JPG to GIF",
   description:
-    "Convert JPG to GIF — free and private, runs in your browser. Colors " +
-    "are quantized to a 256-color palette.",
+    "Convert JPG to GIF. Colors are quantized to a 256-color palette.",
 
   accepts: ["jpg"],
   produces: "gif",

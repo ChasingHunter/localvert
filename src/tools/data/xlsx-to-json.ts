@@ -11,9 +11,7 @@ export default defineTool({
   slug: "xlsx-to-json",
   category: "data",
   title: "Excel (XLSX) to JSON",
-  description:
-    "Convert an Excel spreadsheet to a JSON array of objects in your " +
-    "browser. Files never leave your device.",
+  description: "Convert an Excel spreadsheet to a JSON array of objects.",
 
   accepts: ["xlsx"],
   produces: "json",
