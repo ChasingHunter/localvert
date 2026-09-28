@@ -223,7 +223,8 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
 
 ## Phase 5 — Polish
 
-- [ ] Universal converter UX (owner request 2026-09-27): one entry point — drop any file,
+- [x] Universal converter UX (owner request 2026-09-27; shipped 2026-09-28, ADR-0015 — From/To
+      pickers + drop-any-file, accessible combobox, axe gate in e2e): one entry point — drop any file,
       input format auto-detected, "Convert to [dropdown of every reachable output]" + Convert;
       "From [format] → To [format]" pickers for people who start from the format; instant
       search across all tools; categories as secondary navigation. Per-pair pages stay (SEO)
