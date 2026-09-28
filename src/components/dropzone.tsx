@@ -108,7 +108,7 @@ export function Dropzone({
       <input
         ref={inputRef}
         type="file"
-        aria-label="Choose files to convert"
+        aria-label="Choose files"
         className="sr-only"
         accept={acceptAttr(accepts)}
         multiple={multiple}
