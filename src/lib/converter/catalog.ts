@@ -180,6 +180,7 @@ export function inputFormats(): { category: Category; formats: FormatId[] }[] {
 const CROSS_CATEGORY_LABEL: Partial<Record<Category, string>> = {
   audio: "Video (extract the audio)",
   pdf: "Image (create a PDF)",
+  document: "Spreadsheet (create a PDF)",
 };
 
 /**
