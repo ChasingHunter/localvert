@@ -96,6 +96,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@biomejs/biome": "^2.5.12",
     "@playwright/test": "^1.63.0",
     "@serwist/turbopack": "^9.5.12",
