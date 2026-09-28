@@ -70,7 +70,7 @@ export default async function CategoryPage({ params }: PageProps) {
           <p className="max-w-2xl text-ink-muted">{meta.description}</p>
         </div>
 
-        <Converter category={category} />
+        <Converter category={category} variant="hero" size="compact" />
 
         <ul className="flex flex-col divide-y divide-border">
           {tools.map((tool) => (

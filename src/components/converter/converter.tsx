@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CATEGORY_TINT_BG } from "@/components/category-tint";
 import { Combobox, type ComboboxGroup } from "@/components/combobox";
 import type { AcceptedFile, RejectedFile } from "@/components/dropzone-logic";
+import { PrivacyNote } from "@/components/privacy-note";
 import {
   inputFormats,
   matchFormat,
@@ -102,9 +103,21 @@ interface ConverterProps {
    * keyboard contract, live region — is identical in both variants.
    */
   variant?: "panel" | "hero";
+  /**
+   * Only meaningful on the "hero" variant. "compact" is one type-scale step
+   * down from the home page's own hero (ADR-0016's design review: a category
+   * page already has its own `<h1>`, so its sentence converter doesn't need
+   * to be quite as large) — used on `/[category]`. Everything about the
+   * hero's layout and behaviour stays the same, only its type size changes.
+   */
+  size?: "default" | "compact";
 }
 
-export function Converter({ category, variant = "panel" }: ConverterProps) {
+export function Converter({
+  category,
+  variant = "panel",
+  size = "default",
+}: ConverterProps) {
   const router = useRouter();
 
   const [fromQuery, setFromQuery] = useState("");
@@ -277,7 +290,13 @@ export function Converter({ category, variant = "panel" }: ConverterProps) {
 
       {isHero ? (
         <>
-          <div className="flex flex-col gap-3 font-display text-[clamp(2.25rem,5vw,3.5rem)] font-semibold leading-[1.1] text-ink sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3 sm:gap-y-2">
+          <div
+            className={`flex flex-col gap-3 font-display font-semibold leading-[1.1] text-ink sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3 sm:gap-y-2 ${
+              size === "compact"
+                ? "text-[clamp(1.75rem,4vw,2.4375rem)]"
+                : "text-[clamp(2.25rem,5vw,3.5rem)]"
+            }`}
+          >
             <span>Convert my</span>
             <span
               ref={fromSwapRef}
@@ -338,15 +357,7 @@ export function Converter({ category, variant = "panel" }: ConverterProps) {
             </button>
           </div>
 
-          <p className="max-w-2xl text-base text-ink-muted">
-            Your files stay on this device. Nothing is uploaded.{" "}
-            <a
-              href="#how-we-know"
-              className="rounded-sm font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
-            >
-              How we know
-            </a>
-          </p>
+          <PrivacyNote size={size === "compact" ? "sm" : "base"} />
         </>
       ) : (
         <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
