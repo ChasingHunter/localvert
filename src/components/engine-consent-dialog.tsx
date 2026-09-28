@@ -65,7 +65,7 @@ export function EngineConsentDialog({
     <dialog
       ref={ref}
       aria-labelledby={titleId}
-      className="max-w-md rounded-xl border border-border bg-surface p-6 text-ink shadow-lg backdrop:bg-ink/40"
+      className="max-w-md rounded-2xl border border-border bg-surface p-6 text-ink shadow-lg backdrop:bg-ink/40"
       onCancel={(e) => {
         e.preventDefault();
         onCancel();
@@ -100,10 +100,15 @@ export function EngineConsentDialog({
         </a>
       </p>
       <div className="mt-5 flex justify-end gap-3">
-        <Button type="button" variant="ghost" onClick={onCancel}>
+        <Button
+          type="button"
+          variant="ghost"
+          className="rounded-full"
+          onClick={onCancel}
+        >
           Cancel
         </Button>
-        <Button type="button" onClick={onDownload}>
+        <Button type="button" className="rounded-full" onClick={onDownload}>
           Download and convert
         </Button>
       </div>

@@ -99,6 +99,7 @@ export function FileOrderList({ files, onChange }: FileOrderListProps) {
               type="button"
               variant="ghost"
               size="icon"
+              className="rounded-full"
               aria-label={`Move ${f.file.name} up`}
               disabled={index === 0}
               onClick={() => onChange(moveUp(files, index))}
@@ -109,6 +110,7 @@ export function FileOrderList({ files, onChange }: FileOrderListProps) {
               type="button"
               variant="ghost"
               size="icon"
+              className="rounded-full"
               aria-label={`Move ${f.file.name} down`}
               disabled={index === files.length - 1}
               onClick={() => onChange(moveDown(files, index))}
@@ -119,6 +121,7 @@ export function FileOrderList({ files, onChange }: FileOrderListProps) {
               type="button"
               variant="ghost"
               size="icon"
+              className="rounded-full"
               aria-label={`Remove ${f.file.name}`}
               onClick={() => onChange(removeAt(files, index))}
             >

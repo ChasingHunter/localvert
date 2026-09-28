@@ -281,7 +281,7 @@ export function CropEditor({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="relative inline-block max-w-full select-none rounded-lg border border-border bg-surface p-2">
+      <div className="relative inline-block max-w-full select-none rounded-2xl border border-border bg-surface p-2">
         {objectUrl && (
           // eslint/Next's no-img-element doesn't apply (this project lints
           // with Biome, not next/eslint) — a plain <img> is exactly right
@@ -320,6 +320,7 @@ export function CropEditor({
             type="button"
             variant={aspect === preset.value ? "default" : "outline"}
             size="sm"
+            className="rounded-full"
             aria-pressed={aspect === preset.value}
             onClick={() => selectAspect(preset.value)}
           >
@@ -342,6 +343,7 @@ export function CropEditor({
             <Input
               id={`${baseId}-${field}`}
               type="number"
+              className="rounded-lg"
               min={0}
               max={
                 naturalSize?.[
@@ -358,10 +360,20 @@ export function CropEditor({
       </div>
 
       <div className="flex items-center gap-2">
-        <Button type="button" onClick={handleSubmit} disabled={!cropSource}>
+        <Button
+          type="button"
+          className="rounded-full"
+          onClick={handleSubmit}
+          disabled={!cropSource}
+        >
           {submitLabel}
         </Button>
-        <Button type="button" variant="ghost" onClick={onCancel}>
+        <Button
+          type="button"
+          variant="ghost"
+          className="rounded-full"
+          onClick={onCancel}
+        >
           Cancel
         </Button>
       </div>
