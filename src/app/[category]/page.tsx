@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CATEGORY_TINT_BG } from "@/components/category-tint";
 import { Converter } from "@/components/converter/converter";
 import { PageShell } from "@/components/page-shell";
-import { ToolCard } from "@/components/tool-card";
 import { groupToolsByCategory } from "@/components/tool-groups";
 import { CATEGORIES, CATEGORY_META, type Category } from "@/lib/registry";
 import { TOOLS } from "@/tools";
@@ -57,21 +58,35 @@ export default async function CategoryPage({ params }: PageProps) {
 
   return (
     <PageShell>
-      <div className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-16">
+      <div className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-16 lg:px-12">
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-semibold tracking-tight">
+          <h1 className="flex items-center gap-3 font-display text-3xl font-medium text-ink sm:text-4xl">
+            <span
+              aria-hidden="true"
+              className={`size-2.5 shrink-0 rounded-full ${CATEGORY_TINT_BG[category]}`}
+            />
             {meta.label} tools
           </h1>
-          <p className="text-ink-muted">{meta.description}</p>
+          <p className="max-w-2xl text-ink-muted">{meta.description}</p>
         </div>
 
         <Converter category={category} />
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="flex flex-col divide-y divide-border">
           {tools.map((tool) => (
-            <ToolCard key={tool.slug} tool={tool} />
+            <li key={tool.slug} className="flex flex-col gap-0.5 py-3">
+              <Link
+                href={`/tools/${tool.slug}`}
+                className="w-fit rounded-sm font-medium text-ink outline-none transition-colors hover:text-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+              >
+                {tool.title}
+              </Link>
+              <p className="max-w-2xl text-sm text-ink-muted">
+                {tool.description}
+              </p>
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
     </PageShell>
   );
