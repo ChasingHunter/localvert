@@ -398,4 +398,93 @@ describe("libreoffice adapter message protocol (fake worker)", () => {
     });
     expect(FakeWorker.instances.length).toBe(0);
   });
+
+  it("retries a stalled asset download once, then converts normally", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.stubGlobal("navigator", {});
+      vi.stubGlobal("Worker", FakeWorker as unknown as typeof Worker);
+      let wasmCalls = 0;
+      let dataCalls = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init: { signal: AbortSignal }) => {
+          const n = url.includes("wasm") ? ++wasmCalls : ++dataCalls;
+          if (n === 1) {
+            // First attempt at each asset never delivers a byte — models a
+            // connection that stalls mid-download, same as `fetch-asset
+            // .test.ts`'s `stallingResponse`.
+            return new Promise<Response>((_, reject) => {
+              init.signal.addEventListener(
+                "abort",
+                () => reject(new DOMException("stalled", "AbortError")),
+                { once: true },
+              );
+            });
+          }
+          return gzipResponse("fake-wasm-or-data-bytes");
+        }),
+      );
+
+      const instance = await libreoffice.load(ctx);
+      const job = instance.run(makeTask());
+
+      // fetchAsset's default stallMs (30s) must elapse before either asset
+      // download is abandoned and retried.
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      await waitFor(() => (FakeWorker.instances[0]?.posted.length ?? 0) === 1);
+      const worker = FakeWorker.instances[0] as FakeWorker;
+      worker.emitMessage({ type: "ready", id: "init" });
+      await waitFor(() => worker.posted.length === 2);
+      const convertMsg = worker.posted[1] as { id: string };
+      worker.emitMessage({
+        type: "result",
+        id: convertMsg.id,
+        data: new Uint8Array([0x25]),
+      });
+
+      expect((await job).kind).toBe("bytes");
+      expect(wasmCalls).toBe(2);
+      expect(dataCalls).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects with a clear error when an asset download stalls on every attempt", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.stubGlobal("navigator", {});
+      vi.stubGlobal("Worker", FakeWorker as unknown as typeof Worker);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init: { signal: AbortSignal }) => {
+          return new Promise<Response>((_, reject) => {
+            init.signal.addEventListener(
+              "abort",
+              () => reject(new DOMException("stalled", "AbortError")),
+              { once: true },
+            );
+          });
+        }),
+      );
+
+      const instance = await libreoffice.load(ctx);
+      const job = instance.run(makeTask());
+      const rejection = expect(job).rejects.toMatchObject({
+        name: "EngineError",
+        code: "load-failed",
+        message: expect.stringMatching(/download stalled/i),
+      });
+
+      await vi.advanceTimersByTimeAsync(30_000); // first attempt stalls
+      await vi.advanceTimersByTimeAsync(30_000); // the retry stalls too
+      await rejection;
+
+      expect(FakeWorker.instances.length).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

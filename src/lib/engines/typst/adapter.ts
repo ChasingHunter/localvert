@@ -29,6 +29,7 @@ import type { Operation, StepFormat } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
 import { ENGINE_MANIFEST } from "../manifest";
+import { FetchAssetHttpError, fetchAsset } from "../shared/fetch-asset";
 import type {
   EngineAdapter,
   EngineInput,
@@ -160,16 +161,27 @@ async function inputToText(input: EngineInput): Promise<string> {
   }
 }
 
+/**
+ * Reads a whole asset via `fetchAsset` (`../shared/fetch-asset.ts`), which
+ * reads the response body chunk by chunk and retries once from scratch if
+ * bytes stop arriving mid-download — see that module's doc comment for why
+ * a plain `fetch()` + `arrayBuffer()` can hang forever on a stalled
+ * connection. A non-OK status is re-thrown with this adapter's own
+ * message, unchanged from before that module existed.
+ */
 async function fetchBytes(url: string): Promise<Uint8Array> {
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new EngineError(
-      "load-failed",
-      `failed to fetch typst asset "${url}" (${res.status})`,
-      { engine: metadata.id },
-    );
+  try {
+    return await fetchAsset(url, { engine: metadata.id });
+  } catch (e) {
+    if (e instanceof FetchAssetHttpError) {
+      throw new EngineError(
+        "load-failed",
+        `failed to fetch typst asset "${url}" (${e.status})`,
+        { engine: metadata.id },
+      );
+    }
+    throw e;
   }
-  return new Uint8Array(await res.arrayBuffer());
 }
 
 /**

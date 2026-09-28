@@ -32,6 +32,7 @@ import type { Operation, StepFormat } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
 import { ENGINE_MANIFEST } from "../manifest";
+import { FetchAssetHttpError, fetchAsset } from "../shared/fetch-asset";
 import type {
   EngineAdapter,
   EngineInput,
@@ -163,19 +164,40 @@ export function describeWorkerError(e: ErrorEvent): string {
   return "worker script failed to load or was blocked (check the response's own COEP/CSP headers)";
 }
 
+interface FetchOpts {
+  signal?: AbortSignal;
+  onProgress?: (loaded: number, total: number | undefined) => void;
+}
+
+/**
+ * Reads a whole asset via `fetchAsset` (`../shared/fetch-asset.ts`), which
+ * reads the response body chunk by chunk and retries once from scratch if
+ * bytes stop arriving mid-download — the 74 MB combined download here is
+ * exactly the case that fix targets (see that module's doc comment). A
+ * non-OK status is re-thrown with this adapter's own message, unchanged
+ * from before that module existed.
+ */
 async function fetchBytes(
   ctx: EngineLoadContext,
   file: string,
+  opts: FetchOpts = {},
 ): Promise<Uint8Array> {
-  const res = await fetch(`${ctx.baseUrl}${file}`);
-  if (!res.ok) {
-    throw new EngineError(
-      "load-failed",
-      `failed to fetch libreoffice asset "${file}" (${res.status})`,
-      { engine: metadata.id },
-    );
+  try {
+    return await fetchAsset(`${ctx.baseUrl}${file}`, {
+      engine: metadata.id,
+      signal: opts.signal,
+      onProgress: opts.onProgress,
+    });
+  } catch (e) {
+    if (e instanceof FetchAssetHttpError) {
+      throw new EngineError(
+        "load-failed",
+        `failed to fetch libreoffice asset "${file}" (${e.status})`,
+        { engine: metadata.id },
+      );
+    }
+    throw e;
   }
-  return new Uint8Array(await res.arrayBuffer());
 }
 
 /** Gunzips one of this engine's `.gz` assets straight to a `blob:` URL — the
@@ -186,8 +208,9 @@ async function fetchGzippedBlobUrl(
   ctx: EngineLoadContext,
   file: string,
   mime: string,
+  opts: FetchOpts = {},
 ): Promise<string> {
-  const bytes = await fetchBytes(ctx, file);
+  const bytes = await fetchBytes(ctx, file, opts);
   const stream = new Response(
     bytes.slice().buffer as ArrayBuffer,
   ).body?.pipeThrough(new DecompressionStream("gzip"));
@@ -239,15 +262,26 @@ interface NestedWorker {
  * drives its init handshake. Every asset URL is same-origin or `blob:`
  * (never a cross-origin CDN), matching `worker-src 'self' blob:`.
  */
-async function initNestedWorker(ctx: EngineLoadContext): Promise<NestedWorker> {
+async function initNestedWorker(
+  ctx: EngineLoadContext,
+  signal: AbortSignal,
+  onProgress?: (fraction: number) => void,
+): Promise<NestedWorker> {
   checkDeviceMemory();
 
   let wasmUrl: string | undefined;
   let dataUrl: string | undefined;
   try {
+    const track = combinedDownloadProgress(onProgress);
     [wasmUrl, dataUrl] = await Promise.all([
-      fetchGzippedBlobUrl(ctx, "soffice.wasm.gz", "application/wasm"),
-      fetchGzippedBlobUrl(ctx, "soffice.data.gz", "application/octet-stream"),
+      fetchGzippedBlobUrl(ctx, "soffice.wasm.gz", "application/wasm", {
+        signal,
+        onProgress: track("wasm"),
+      }),
+      fetchGzippedBlobUrl(ctx, "soffice.data.gz", "application/octet-stream", {
+        signal,
+        onProgress: track("data"),
+      }),
     ]);
 
     for (let attempt = 1; ; attempt++) {
@@ -276,6 +310,37 @@ async function initNestedWorker(ctx: EngineLoadContext): Promise<NestedWorker> {
     if (wasmUrl) URL.revokeObjectURL(wasmUrl);
     if (dataUrl) URL.revokeObjectURL(dataUrl);
   }
+}
+
+/**
+ * Tracks loaded/total bytes across the two concurrent asset downloads in
+ * `initNestedWorker` (~74 MB combined) and reports one combined 0..1
+ * fraction to the task's own `onProgress` — chiefly so this long download
+ * keeps poking engine-host's run idle timer (see `EngineTask.onProgress`'s
+ * doc comment in `../types.ts`), with a real number on screen as a bonus
+ * once both assets' `Content-Length` are known. Silent (no call at all)
+ * until then, rather than guessing.
+ */
+function combinedDownloadProgress(
+  onProgress: ((fraction: number) => void) | undefined,
+): (
+  key: "wasm" | "data",
+) => (loaded: number, total: number | undefined) => void {
+  const loaded = { wasm: 0, data: 0 };
+  const total: { wasm: number | undefined; data: number | undefined } = {
+    wasm: undefined,
+    data: undefined,
+  };
+  return (key) => (l, t) => {
+    loaded[key] = l;
+    total[key] = t;
+    if (!onProgress || total.wasm === undefined || total.data === undefined) {
+      return;
+    }
+    const sumTotal = total.wasm + total.data;
+    if (sumTotal <= 0) return;
+    onProgress(Math.min(1, (loaded.wasm + loaded.data) / sumTotal));
+  };
 }
 
 const BOOT_TIMEOUT_PREFIX = "libreoffice engine did not start";
@@ -432,7 +497,7 @@ async function runTranscode(
 
   let nested = getCached();
   if (!nested) {
-    nested = await initNestedWorker(ctx);
+    nested = await initNestedWorker(ctx, signal, onProgress);
     setCached(nested);
   }
   signal.throwIfAborted();
