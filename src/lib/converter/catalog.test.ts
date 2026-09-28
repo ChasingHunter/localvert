@@ -81,6 +81,17 @@ describe("targetsFor", () => {
       expect(labels).toContain("Rotate");
       expect(labels).toContain("Edit PDF");
     });
+
+    it("orders actions by rank, then the fixed priority list, Compress first", () => {
+      const labels = actions.map((a) => a.label);
+      expect(labels.slice(0, 5)).toEqual([
+        "Compress",
+        "Merge",
+        "Rotate",
+        "Split",
+        "Edit PDF",
+      ]);
+    });
   });
 
   describe("duplicate pairs resolve to exactly one default", () => {

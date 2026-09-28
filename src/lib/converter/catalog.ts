@@ -33,10 +33,14 @@ export interface Target {
 
 /** A `Target` plus the input format it's reachable from — what `popular()`
  * returns, since a Popular chip needs both ends of the pair to render
- * ("PDF to Word", not just "Word"). */
+ * ("PDF to Word", not just "Word"). `title` is the tool's own catalog
+ * title ("JPG to PNG", "Compress PDF") — already the short, chip-ready
+ * form for every ranked tool, so the chip uses it directly instead of
+ * recomposing a label from `FORMATS` (which would read "JPEG to PNG"). */
 export interface PopularEntry extends Target {
   from: FormatId;
   rank: number;
+  title: string;
 }
 
 /**
@@ -83,6 +87,30 @@ const ACTION_LABELS: Record<string, string> = {
   "extract-pdf-pages": "Extract pages",
   "pdf-to-searchable-pdf": "Make searchable (OCR)",
 };
+
+/**
+ * A same-format action's spot in the To list before an unranked, generic
+ * "most reached for" ordering falls back to alphabetical (ADR-0016's design
+ * review: "Compress first", the Actions group scrollable but its first rows
+ * the most useful ones). Applies across every category — a label absent
+ * here (e.g. "Password protect") just sorts after all of these, still
+ * alphabetically among itself.
+ */
+const ACTION_PRIORITY: readonly string[] = [
+  "Compress",
+  "Merge",
+  "Rotate",
+  "Split",
+  "Crop",
+  "Resize",
+  "Trim",
+  "Edit PDF",
+];
+
+function actionPriorityIndex(label: string): number {
+  const index = ACTION_PRIORITY.indexOf(label);
+  return index === -1 ? ACTION_PRIORITY.length : index;
+}
 
 /**
  * Labels for a conversion tool that is kept as a *variant* alongside a
@@ -199,16 +227,17 @@ export function targetsFor(from: FormatId): {
     (t.accepts as readonly FormatId[]).includes(from),
   );
 
-  const actions: Target[] = [];
+  const actionRows: { target: Target; rank: number; priority: number }[] = [];
   const byFormat = new Map<FormatId, CatalogEntry[]>();
 
   for (const tool of tools) {
     const out = producedFormat(tool, from);
     if (out === from) {
-      actions.push({
-        kind: "action",
-        label: actionLabelFor(tool),
-        slug: tool.slug,
+      const label = actionLabelFor(tool);
+      actionRows.push({
+        target: { kind: "action", label, slug: tool.slug },
+        rank: tool.rank ?? Number.POSITIVE_INFINITY,
+        priority: actionPriorityIndex(label),
       });
       continue;
     }
@@ -244,7 +273,16 @@ export function targetsFor(from: FormatId): {
     }
   }
 
-  actions.sort((a, b) => a.label.localeCompare(b.label));
+  // Ranked actions (the Popular chips' own tools, e.g. Compress) sort first
+  // by that rank; everything else falls back to a fixed, generic priority
+  // list of the most-reached-for verbs, then alphabetically — see
+  // `ACTION_PRIORITY`'s doc comment.
+  actionRows.sort((a, b) => {
+    if (a.rank !== b.rank) return a.rank - b.rank;
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    return a.target.label.localeCompare(b.target.label);
+  });
+  const actions = actionRows.map((row) => row.target);
 
   return { conversions, actions };
 }
@@ -295,6 +333,7 @@ export function popular(): PopularEntry[] {
           slug: t.slug,
           from,
           rank: t.rank,
+          title: t.title,
         };
       }
       return {
@@ -304,6 +343,7 @@ export function popular(): PopularEntry[] {
         format: out,
         from,
         rank: t.rank,
+        title: t.title,
       };
     });
 }

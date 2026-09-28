@@ -96,11 +96,10 @@ export function describeUndetected(rejected: readonly RejectedFile[]): string {
   return `Couldn't detect the format of: ${names}.`;
 }
 
-/** A Popular chip's link text — "PDF to Word" for a format target, "Compress
- * PDF" for an action, so the same chip reads naturally either way. */
+/** A Popular chip's link text — the tool's own catalog title ("PDF to
+ * Word", "Compress PDF"), already short and chip-ready for every ranked
+ * tool. Composing it from `FORMATS` labels instead (e.g. "JPEG to PNG")
+ * would be longer and duplicate a string the catalog already carries. */
 export function popularChipLabel(entry: PopularEntry): string {
-  const fromLabel = FORMATS[entry.from].label;
-  return entry.kind === "action"
-    ? `${entry.label} ${fromLabel}`
-    : `${fromLabel} to ${entry.label}`;
+  return entry.title;
 }

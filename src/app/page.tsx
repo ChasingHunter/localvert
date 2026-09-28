@@ -42,16 +42,6 @@ export default function HomePage() {
           </h1>
 
           <Converter variant="hero" />
-
-          <p className="max-w-2xl text-base text-ink-muted">
-            Your files stay on this device. Nothing is uploaded.{" "}
-            <a
-              href="#how-we-know"
-              className="rounded-sm font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
-            >
-              How we know
-            </a>
-          </p>
         </section>
 
         {populatedCategories.map((category) => {
@@ -72,7 +62,7 @@ export default function HomePage() {
                   href={`/${category}`}
                   className="shrink-0 rounded-sm text-sm font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
                 >
-                  All {meta.label.toLowerCase()} tools →
+                  All {meta.label.toLowerCase()} tools
                 </Link>
               </div>
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { THEME_STORAGE_KEY } from "@/lib/theme-storage";
 
@@ -12,9 +13,15 @@ const NEXT_CHOICE: Record<ThemeChoice, ThemeChoice> = {
 };
 
 const LABEL: Record<ThemeChoice, string> = {
-  system: "Theme: system",
-  light: "Theme: light",
-  dark: "Theme: dark",
+  system: "Theme: System",
+  light: "Theme: Light",
+  dark: "Theme: Dark",
+};
+
+const ICON: Record<ThemeChoice, typeof MonitorIcon> = {
+  system: MonitorIcon,
+  light: SunIcon,
+  dark: MoonIcon,
 };
 
 function applyTheme(choice: ThemeChoice) {
@@ -64,13 +71,17 @@ export function ThemeToggle() {
     }
   }
 
+  const Icon = ICON[choice];
+
   return (
     <button
       type="button"
       onClick={cycle}
-      className="inline-flex min-h-9 items-center rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-ink-muted outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+      aria-label={LABEL[choice]}
+      title={LABEL[choice]}
+      className="inline-flex size-11 items-center justify-center rounded-full border border-border bg-surface text-ink-muted outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
     >
-      {LABEL[choice]}
+      <Icon aria-hidden="true" className="size-5" />
     </button>
   );
 }

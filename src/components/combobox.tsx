@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDownIcon } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useId, useRef, useState } from "react";
 import {
   type ComboboxAction,
   type ComboboxOption,
@@ -78,6 +78,12 @@ export interface ComboboxProps {
    * sentence layout (ADR-0016's radius hierarchy: pickers are pills).
    * Every other caller keeps the default rectangular, full-width field. */
   pill?: boolean;
+  /** Background class for a filled `pill` (its category tint, from
+   * `CATEGORY_TINT_BG`) — the caller resolves this from the selected
+   * format since this component doesn't know about formats or categories.
+   * Ignored when `pill` is false or no value is selected. Falls back to
+   * `bg-accent-soft` when a pill has a value but no tint was given. */
+  tintClassName?: string;
 }
 
 function flattenOptions(groups: ComboboxGroup[]): ComboboxOption[] {
@@ -112,6 +118,30 @@ function optionDomId(comboboxId: string, optionId: string): string {
   return `${comboboxId}-opt-${optionId}`;
 }
 
+/**
+ * A `pill` wrapper's border/background, by state — reads as a "blank in the
+ * sentence" (ADR-0016's design review): dashed and empty until a value is
+ * picked, then filled with its category tint (or `accent-soft` as a
+ * fallback), and visibly muted while disabled (the To pill before From is
+ * set) without losing its place in the sentence.
+ */
+function pillWrapperClasses(
+  hasValue: boolean,
+  disabled: boolean,
+  tintClassName?: string,
+): string {
+  if (disabled) {
+    return "border-2 border-dashed border-border bg-transparent opacity-50";
+  }
+  if (hasValue) {
+    return classes(
+      tintClassName ?? "bg-accent-soft",
+      "border border-transparent",
+    );
+  }
+  return "border-2 border-dashed border-ink-muted/40 bg-transparent hover:border-ink-muted/70";
+}
+
 export function Combobox({
   id,
   label,
@@ -127,6 +157,7 @@ export function Combobox({
   onResultsCountChange,
   hideLabel = false,
   pill = false,
+  tintClassName,
 }: ComboboxProps) {
   const listId = `${id}-listbox`;
   const reactId = useId();
@@ -236,98 +267,199 @@ export function Combobox({
       >
         {label}
       </label>
-      <div className="relative">
-        <input
-          ref={inputRef}
-          id={id}
-          role="combobox"
-          type="text"
-          autoComplete="off"
-          aria-autocomplete="list"
-          aria-expanded={state.open}
-          aria-controls={listId}
-          aria-activedescendant={activeDescendant}
-          aria-describedby={describedBy}
-          placeholder={placeholder}
-          value={state.query}
-          disabled={disabled}
-          onChange={(e) => dispatch({ type: "input", query: e.target.value })}
-          onBlur={() => {
-            if (suppressBlurRef.current) return;
-            dispatch({ type: "blur" });
-          }}
-          onKeyDown={(e) => {
-            switch (e.key) {
-              case "ArrowDown":
-                e.preventDefault();
-                dispatch({ type: "arrowDown" });
-                break;
-              case "ArrowUp":
-                e.preventDefault();
-                dispatch({ type: "arrowUp" });
-                break;
-              case "Home":
-                if (state.open) {
-                  e.preventDefault();
-                  dispatch({ type: "home" });
-                }
-                break;
-              case "End":
-                if (state.open) {
-                  e.preventDefault();
-                  dispatch({ type: "end" });
-                }
-                break;
-              case "Enter":
-                if (state.open) e.preventDefault();
-                dispatch({ type: "enter" });
-                break;
-              case "Escape":
-                if (state.open || state.query) e.preventDefault();
-                dispatch({ type: "escape" });
-                break;
-              case "Tab":
-                // Never preventDefault: Tab must still move focus on.
-                dispatch({ type: "tab" });
-                break;
-              default:
-                break;
-            }
-          }}
+      {pill ? (
+        <div
           className={classes(
-            "border border-border bg-surface px-3 py-2 pr-9 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:opacity-50",
-            pill ? "w-44 rounded-full sm:w-52" : "w-full rounded-lg",
+            "relative flex w-full items-center rounded-full transition-colors sm:inline-flex sm:w-auto",
+            pillWrapperClasses(value !== null, disabled, tintClassName),
           )}
-        />
-        <button
-          type="button"
-          tabIndex={-1}
-          disabled={disabled}
-          aria-label="Show options"
-          onMouseDown={(e) => {
-            // Keep DOM focus on the input; toggling must not steal it.
-            e.preventDefault();
-          }}
-          onClick={() => {
-            inputRef.current?.focus();
-            dispatch(state.open ? { type: "blur" } : { type: "arrowDown" });
-          }}
-          className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-ink-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <ChevronDownIcon
-            aria-hidden="true"
-            className={classes(
-              "size-4 transition-transform motion-reduce:transition-none",
-              state.open && "rotate-180",
-            )}
+          <input
+            ref={inputRef}
+            id={id}
+            role="combobox"
+            type="text"
+            autoComplete="off"
+            aria-autocomplete="list"
+            aria-expanded={state.open}
+            aria-controls={listId}
+            aria-activedescendant={activeDescendant}
+            aria-describedby={describedBy}
+            placeholder={placeholder}
+            value={state.query}
+            disabled={disabled}
+            onChange={(e) => dispatch({ type: "input", query: e.target.value })}
+            onBlur={() => {
+              if (suppressBlurRef.current) return;
+              dispatch({ type: "blur" });
+            }}
+            onKeyDown={(e) => {
+              switch (e.key) {
+                case "ArrowDown":
+                  e.preventDefault();
+                  dispatch({ type: "arrowDown" });
+                  break;
+                case "ArrowUp":
+                  e.preventDefault();
+                  dispatch({ type: "arrowUp" });
+                  break;
+                case "Home":
+                  if (state.open) {
+                    e.preventDefault();
+                    dispatch({ type: "home" });
+                  }
+                  break;
+                case "End":
+                  if (state.open) {
+                    e.preventDefault();
+                    dispatch({ type: "end" });
+                  }
+                  break;
+                case "Enter":
+                  if (state.open) e.preventDefault();
+                  dispatch({ type: "enter" });
+                  break;
+                case "Escape":
+                  if (state.open || state.query) e.preventDefault();
+                  dispatch({ type: "escape" });
+                  break;
+                case "Tab":
+                  // Never preventDefault: Tab must still move focus on.
+                  dispatch({ type: "tab" });
+                  break;
+                default:
+                  break;
+              }
+            }}
+            // Width grows with the value (min ~5ch), via a CSS var only the
+            // `sm:w-[var(--pill-ch)]` utility below reads — at mobile the
+            // pill stays `flex-1` (full width, ADR-0016's stacked hero) and
+            // this value simply goes unused.
+            style={
+              {
+                "--pill-ch": `${Math.max((state.query || placeholder || "").length, 5) + 2}ch`,
+              } as CSSProperties
+            }
+            className="min-w-0 flex-1 rounded-full bg-transparent px-3 py-1 text-ink outline-none [font:inherit] placeholder:text-ink-muted/70 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed sm:flex-none sm:w-(--pill-ch)"
           />
-        </button>
-      </div>
+          <button
+            type="button"
+            tabIndex={-1}
+            disabled={disabled}
+            aria-label="Show options"
+            onMouseDown={(e) => {
+              // Keep DOM focus on the input; toggling must not steal it.
+              e.preventDefault();
+            }}
+            onClick={() => {
+              inputRef.current?.focus();
+              dispatch(state.open ? { type: "blur" } : { type: "arrowDown" });
+            }}
+            className="flex size-9 shrink-0 items-center justify-center text-ink-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <ChevronDownIcon
+              aria-hidden="true"
+              className={classes(
+                "size-5 transition-transform motion-reduce:transition-none",
+                state.open && "rotate-180",
+              )}
+            />
+          </button>
+        </div>
+      ) : (
+        <div className="relative">
+          <input
+            ref={inputRef}
+            id={id}
+            role="combobox"
+            type="text"
+            autoComplete="off"
+            aria-autocomplete="list"
+            aria-expanded={state.open}
+            aria-controls={listId}
+            aria-activedescendant={activeDescendant}
+            aria-describedby={describedBy}
+            placeholder={placeholder}
+            value={state.query}
+            disabled={disabled}
+            onChange={(e) => dispatch({ type: "input", query: e.target.value })}
+            onBlur={() => {
+              if (suppressBlurRef.current) return;
+              dispatch({ type: "blur" });
+            }}
+            onKeyDown={(e) => {
+              switch (e.key) {
+                case "ArrowDown":
+                  e.preventDefault();
+                  dispatch({ type: "arrowDown" });
+                  break;
+                case "ArrowUp":
+                  e.preventDefault();
+                  dispatch({ type: "arrowUp" });
+                  break;
+                case "Home":
+                  if (state.open) {
+                    e.preventDefault();
+                    dispatch({ type: "home" });
+                  }
+                  break;
+                case "End":
+                  if (state.open) {
+                    e.preventDefault();
+                    dispatch({ type: "end" });
+                  }
+                  break;
+                case "Enter":
+                  if (state.open) e.preventDefault();
+                  dispatch({ type: "enter" });
+                  break;
+                case "Escape":
+                  if (state.open || state.query) e.preventDefault();
+                  dispatch({ type: "escape" });
+                  break;
+                case "Tab":
+                  // Never preventDefault: Tab must still move focus on.
+                  dispatch({ type: "tab" });
+                  break;
+                default:
+                  break;
+              }
+            }}
+            className="w-full rounded-lg border border-border bg-surface px-3 py-2 pr-9 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:opacity-50"
+          />
+          <button
+            type="button"
+            tabIndex={-1}
+            disabled={disabled}
+            aria-label="Show options"
+            onMouseDown={(e) => {
+              // Keep DOM focus on the input; toggling must not steal it.
+              e.preventDefault();
+            }}
+            onClick={() => {
+              inputRef.current?.focus();
+              dispatch(state.open ? { type: "blur" } : { type: "arrowDown" });
+            }}
+            className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-ink-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <ChevronDownIcon
+              aria-hidden="true"
+              className={classes(
+                "size-4 transition-transform motion-reduce:transition-none",
+                state.open && "rotate-180",
+              )}
+            />
+          </button>
+        </div>
+      )}
       {state.open &&
         (options.length === 0 ? (
           <div
             role="status"
-            className="absolute top-full z-10 mt-1 w-full rounded-lg border border-border bg-surface p-3 text-sm text-ink-muted shadow-md"
+            className={classes(
+              "absolute top-full z-10 mt-1 w-full rounded-lg border border-border bg-surface p-3 font-sans text-sm text-ink-muted shadow-md",
+              pill && "min-w-64",
+            )}
           >
             {emptyText}
           </div>
@@ -336,7 +468,10 @@ export function Combobox({
             id={listId}
             role="listbox"
             aria-label={label}
-            className="absolute top-full z-10 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-border bg-surface py-1 shadow-md"
+            className={classes(
+              "absolute top-full z-10 mt-1 max-h-72 w-full overflow-auto rounded-lg border border-border bg-surface py-1 font-sans shadow-md",
+              pill && "min-w-64",
+            )}
           >
             {groups.map((group) => {
               if (group.options.length === 0) return null;

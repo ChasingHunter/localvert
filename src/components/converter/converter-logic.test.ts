@@ -125,7 +125,7 @@ describe("describeUndetected", () => {
 });
 
 describe("popularChipLabel", () => {
-  it("reads 'X to Y' for a format target", () => {
+  it("reads the tool's own catalog title for a format target", () => {
     const entry: PopularEntry = {
       kind: "format",
       label: "Word",
@@ -133,17 +133,19 @@ describe("popularChipLabel", () => {
       format: "docx",
       from: "pdf",
       rank: 1,
+      title: "PDF to Word",
     };
     expect(popularChipLabel(entry)).toBe("PDF to Word");
   });
 
-  it("reads 'Verb Format' for an action target", () => {
+  it("reads the tool's own catalog title for an action target", () => {
     const entry: PopularEntry = {
       kind: "action",
       label: "Compress",
       slug: "compress-pdf",
       from: "pdf",
       rank: 4,
+      title: "Compress PDF",
     };
     expect(popularChipLabel(entry)).toBe("Compress PDF");
   });

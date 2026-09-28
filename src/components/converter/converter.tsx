@@ -249,6 +249,22 @@ export function Converter({ category, variant = "panel" }: ConverterProps) {
   const fromSwapRef = useSwapAnimation(fromId);
   const toSwapRef = useSwapAnimation(toId);
 
+  // The hero pills' fill colour once a value is picked (ADR-0016's design
+  // review: "use the selected format's category tint once chosen"). The To
+  // pill's value is a tool slug, not a format — a conversion target carries
+  // its own output `format`; a same-format action doesn't, so it falls back
+  // to From's category, which is the format it stays in.
+  const fromTint = fromId
+    ? CATEGORY_TINT_BG[FORMATS[fromId].category]
+    : undefined;
+  const selectedToTarget = toId
+    ? [...targets.conversions, ...targets.actions].find((t) => t.slug === toId)
+    : undefined;
+  const toTintFormat = selectedToTarget?.format ?? fromId ?? undefined;
+  const toTint = toTintFormat
+    ? CATEGORY_TINT_BG[FORMATS[toTintFormat].category]
+    : undefined;
+
   return (
     <div id="converter" className="flex flex-col gap-6">
       {!isHero && (
@@ -260,58 +276,78 @@ export function Converter({ category, variant = "panel" }: ConverterProps) {
       )}
 
       {isHero ? (
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-2 font-display text-[clamp(2.25rem,5vw,3.5rem)] font-semibold leading-[1.1] text-ink">
-          <span>Convert my</span>
-          <span ref={fromSwapRef} className="format-swap">
-            <Combobox
-              id="converter-from"
-              label="Convert from"
-              hideLabel
-              pill
-              placeholder="a format…"
-              groups={fromGroups}
-              query={fromQuery}
-              onQueryChange={setFromQuery}
-              value={fromId}
-              onChange={handleFromChange}
-              emptyText="No formats match."
-            />
-          </span>
-          <span>into</span>
-          <div className="flex flex-col gap-1.5">
-            <span ref={toSwapRef} className="format-swap">
+        <>
+          <div className="flex flex-col gap-3 font-display text-[clamp(2.25rem,5vw,3.5rem)] font-semibold leading-[1.1] text-ink sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3 sm:gap-y-2">
+            <span>Convert my</span>
+            <span
+              ref={fromSwapRef}
+              className="format-swap block w-full sm:inline-block sm:w-auto"
+            >
               <Combobox
-                id="converter-to"
-                label="Convert to"
+                id="converter-from"
+                label="Convert from"
                 hideLabel
                 pill
-                placeholder="a format…"
-                groups={toGroups}
-                query={toQuery}
-                onQueryChange={setToQuery}
-                value={toId}
-                onChange={handleToChange}
-                emptyText="No options match."
-                disabled={!fromId}
-                describedBy={!fromId ? TO_HINT_ID : undefined}
-                onResultsCountChange={handleToResultsCount}
+                tintClassName={fromTint}
+                placeholder="this"
+                groups={fromGroups}
+                query={fromQuery}
+                onQueryChange={setFromQuery}
+                value={fromId}
+                onChange={handleFromChange}
+                emptyText="No formats match."
               />
             </span>
-            {!fromId && (
-              <p id={TO_HINT_ID} className="text-sm font-sans text-ink-muted">
-                Choose what you're converting from first
-              </p>
-            )}
+            <span>into</span>
+            <div className="flex w-full flex-col gap-1.5 sm:w-auto">
+              <span
+                ref={toSwapRef}
+                className="format-swap block w-full sm:inline-block sm:w-auto"
+              >
+                <Combobox
+                  id="converter-to"
+                  label="Convert to"
+                  hideLabel
+                  pill
+                  tintClassName={toTint}
+                  placeholder="that"
+                  groups={toGroups}
+                  query={toQuery}
+                  onQueryChange={setToQuery}
+                  value={toId}
+                  onChange={handleToChange}
+                  emptyText="No options match."
+                  disabled={!fromId}
+                  describedBy={!fromId ? TO_HINT_ID : undefined}
+                  onResultsCountChange={handleToResultsCount}
+                />
+              </span>
+              {!fromId && (
+                <p id={TO_HINT_ID} className="text-xs font-sans text-ink-muted">
+                  Choose what you're converting from first
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleGo}
+              disabled={!canGo}
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-accent px-6 py-2 font-sans text-base font-medium text-canvas outline-none transition-colors hover:bg-accent/90 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none sm:w-auto"
+            >
+              Convert
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={handleGo}
-            disabled={!canGo}
-            className="inline-flex min-h-11 items-center justify-center rounded-full bg-accent px-6 py-2 font-sans text-base font-medium text-canvas outline-none transition-colors hover:bg-accent/90 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none"
-          >
-            Convert
-          </button>
-        </div>
+
+          <p className="max-w-2xl text-base text-ink-muted">
+            Your files stay on this device. Nothing is uploaded.{" "}
+            <a
+              href="#how-we-know"
+              className="rounded-sm font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+            >
+              How we know
+            </a>
+          </p>
+        </>
       ) : (
         <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
           <Combobox
@@ -365,6 +401,7 @@ export function Converter({ category, variant = "panel" }: ConverterProps) {
           promptText="Or drop a file here and we'll work out what it is."
           showChooseFilesBadge
           hideFooterNote
+          compactFormatsSummary
         />
       )}
 

@@ -39,6 +39,14 @@ interface DropzoneProps {
    * the only privacy statement on a category or tool page.
    */
   hideFooterNote?: boolean;
+  /**
+   * Swaps the full "Accepted: …" wall (50+ formats, unreadable on the home
+   * page) for one short line plus a `<details>` disclosure that reveals the
+   * same list on demand (ADR-0016's design review). Only the home hero
+   * turns this on — every tool page's accepted list is short enough to read
+   * as-is, so it keeps the plain line.
+   */
+  compactFormatsSummary?: boolean;
 }
 
 /** Builds an `<input accept>` value from every accepted format's ext + mime. */
@@ -69,6 +77,7 @@ export function Dropzone({
   promptText = "Drag files here, click to browse, or paste",
   showChooseFilesBadge = false,
   hideFooterNote = false,
+  compactFormatsSummary = false,
 }: DropzoneProps) {
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -136,10 +145,32 @@ export function Dropzone({
             </span>
           )}
         </span>
-        <span id={describedById} className="text-xs text-ink-muted">
-          Accepted: {acceptedFormatsLabel(accepts)}
-        </span>
+        {!compactFormatsSummary && (
+          <span id={describedById} className="text-xs text-ink-muted">
+            Accepted: {acceptedFormatsLabel(accepts)}
+          </span>
+        )}
       </button>
+      {compactFormatsSummary && (
+        // Outside the button: `<details>` is interactive content, and a
+        // `<button>` can't contain other interactive elements. `aria-
+        // describedby` doesn't require the description to be a descendant,
+        // so the button above still points at this paragraph's id.
+        <div
+          id={describedById}
+          className="flex flex-col items-center gap-1 text-center text-xs text-ink-muted"
+        >
+          <p>Works with images, video, audio, PDFs, documents and data.</p>
+          <details>
+            <summary className="cursor-pointer select-none rounded-sm outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas">
+              See all formats
+            </summary>
+            <p className="mx-auto mt-1 max-w-md">
+              {acceptedFormatsLabel(accepts)}
+            </p>
+          </details>
+        </div>
+      )}
       <input
         ref={inputRef}
         type="file"
