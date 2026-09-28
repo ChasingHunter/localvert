@@ -372,18 +372,11 @@ export function PdfEditorApp() {
           </div>
         </div>
       )}
-      {!file && (
-        <div className="flex flex-col gap-2">
-          <h2 className="font-display text-2xl font-medium text-ink">
-            Edit a PDF
-          </h2>
-          <p className="text-ink-muted">
-            Highlight, draw, add text or sign. Everything happens on this
-            device.
-          </p>
-        </div>
+      {/* The tool page's own h1, description and privacy line sit right
+          above this, so the empty state is just the drop area. */}
+      {!loaded && (
+        <Dropzone accepts={["pdf"]} onFiles={handleFiles} hideFooterNote />
       )}
-      {!loaded && <Dropzone accepts={["pdf"]} onFiles={handleFiles} />}
       <EmbedPDF engine={engineHandle.engine} plugins={plugins}>
         <EditorShell
           engineReady={engineReady}
