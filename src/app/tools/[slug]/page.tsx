@@ -3,8 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppTool } from "@/components/app-tool";
 import { Breadcrumb } from "@/components/breadcrumb";
+import { CATEGORY_TINT_BG } from "@/components/category-tint";
 import { PageShell } from "@/components/page-shell";
-import { ToolCard } from "@/components/tool-card";
+import { shortToolLabel } from "@/components/tool-groups";
 import { ToolHeading } from "@/components/tool-heading";
 import { ToolRunner } from "@/components/tool-runner";
 import { CATEGORY_META } from "@/lib/registry";
@@ -73,7 +74,7 @@ export default async function ToolPage({ params }: PageProps) {
 
   return (
     <PageShell>
-      <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-16">
+      <div className="mx-auto flex max-w-4xl flex-col gap-6 px-6 py-16 lg:px-12">
         <Breadcrumb
           items={[
             { label: "Home", href: "/" },
@@ -85,11 +86,19 @@ export default async function ToolPage({ params }: PageProps) {
         <div className="flex flex-col gap-3">
           <ToolHeading
             slug={tool.slug}
-            className="text-3xl font-semibold tracking-tight"
+            className="flex items-center gap-3 font-display text-3xl font-medium text-ink sm:text-4xl"
           >
+            {/* The one place a tool page carries its category's colour
+             * (ADR-0016's design review): a small tint dot beside the
+             * title, echoing the same dot the home page's category
+             * headings use. */}
+            <span
+              aria-hidden="true"
+              className={`size-2.5 shrink-0 rounded-full ${CATEGORY_TINT_BG[tool.category]}`}
+            />
             {tool.title}
           </ToolHeading>
-          <p className="text-ink-muted">{tool.description}</p>
+          <p className="max-w-2xl text-ink-muted">{tool.description}</p>
           <Link
             href="/#converter"
             className="self-start rounded-sm text-sm font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
@@ -106,7 +115,7 @@ export default async function ToolPage({ params }: PageProps) {
 
         <aside
           aria-label="How it works and privacy"
-          className="flex flex-col gap-2 rounded-lg border border-border bg-surface px-4 py-3 text-xs text-ink-muted"
+          className="flex flex-col gap-2 rounded-2xl border border-border bg-surface px-4 py-3 text-xs text-ink-muted"
         >
           <p>
             Your file is read in the browser, converted in a Web Worker, and
@@ -129,11 +138,18 @@ export default async function ToolPage({ params }: PageProps) {
             >
               Related tools
             </h2>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <ul className="columns-2 gap-x-8 sm:columns-3">
               {relatedTools.map((related) => (
-                <ToolCard key={related.slug} tool={related} />
+                <li key={related.slug} className="break-inside-avoid py-1">
+                  <Link
+                    href={`/tools/${related.slug}`}
+                    className="rounded-sm text-sm text-ink-muted outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+                  >
+                    {shortToolLabel(related.title)}
+                  </Link>
+                </li>
               ))}
-            </div>
+            </ul>
           </section>
         )}
       </div>

@@ -499,95 +499,104 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   const hasOptions = Object.keys(tool.options.shape).length > 0;
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Hidden mid-crop: a second drop would orphan the file already being
-          cropped, and `cropTarget` is the only file this tool page can edit
-          at once (crop tools are never batch). */}
-      {!(hasCropField && cropTarget) && (
-        <Dropzone
-          accepts={tool.accepts}
-          multiple={tool.batch || isManyToOne}
-          onFiles={handleFiles}
-        />
-      )}
+    // The drop area/job list stay the main panel; a tool's options sit in a
+    // quiet side column once there's room for one (ADR-0016's tool-page
+    // layout) — `lg:grid-cols-[1fr_18rem]` only takes effect at 1024px, so
+    // below that this is a single stacked column with options rendered
+    // after the main flow, in the same source order either way.
+    <div className="grid gap-6 lg:grid-cols-[1fr_18rem] lg:items-start">
+      <div className="flex flex-col gap-6">
+        {/* Hidden mid-crop: a second drop would orphan the file already being
+            cropped, and `cropTarget` is the only file this tool page can edit
+            at once (crop tools are never batch). */}
+        {!(hasCropField && cropTarget) && (
+          <Dropzone
+            accepts={tool.accepts}
+            multiple={tool.batch || isManyToOne}
+            onFiles={handleFiles}
+          />
+        )}
 
-      {isManyToOne && orderedFiles.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <FileOrderList files={orderedFiles} onChange={setOrderedFiles} />
-          <Button
-            type="button"
-            onClick={handleSubmitOrdered}
-            disabled={orderedFiles.length < 2}
-          >
-            {tool.actionLabel ?? "Convert"}
-          </Button>
-        </div>
-      )}
+        {isManyToOne && orderedFiles.length > 0 && (
+          <div className="flex flex-col gap-3">
+            <FileOrderList files={orderedFiles} onChange={setOrderedFiles} />
+            <Button
+              type="button"
+              onClick={handleSubmitOrdered}
+              disabled={orderedFiles.length < 2}
+            >
+              {tool.actionLabel ?? "Convert"}
+            </Button>
+          </div>
+        )}
 
-      {hasRequiredOptions && pendingRequiredFiles.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <ul className="flex flex-col gap-1 text-sm text-ink-muted">
-            {pendingRequiredFiles.map((f) => (
-              <li key={`${f.file.name}-${f.file.size}`}>{f.file.name}</li>
+        {hasRequiredOptions && pendingRequiredFiles.length > 0 && (
+          <div className="flex flex-col gap-3">
+            <ul className="flex flex-col gap-1 text-sm text-ink-muted">
+              {pendingRequiredFiles.map((f) => (
+                <li key={`${f.file.name}-${f.file.size}`}>{f.file.name}</li>
+              ))}
+            </ul>
+            <Button
+              type="button"
+              onClick={handleSubmitPending}
+              disabled={!canSubmit}
+            >
+              {tool.actionLabel ?? "Convert"}
+            </Button>
+          </div>
+        )}
+
+        {rejected.length > 0 && (
+          <ul className="flex flex-col gap-1">
+            {rejected.map((r) => (
+              <li
+                key={`${r.file.name}-${r.file.size}`}
+                className="text-xs text-danger"
+              >
+                <span className="font-medium">{r.file.name}</span>:{" "}
+                {rejectionMessage(r)}
+              </li>
             ))}
           </ul>
-          <Button
-            type="button"
-            onClick={handleSubmitPending}
-            disabled={!canSubmit}
-          >
-            {tool.actionLabel ?? "Convert"}
-          </Button>
-        </div>
-      )}
+        )}
 
-      {rejected.length > 0 && (
-        <ul className="flex flex-col gap-1">
-          {rejected.map((r) => (
-            <li
-              key={`${r.file.name}-${r.file.size}`}
-              className="text-xs text-danger"
-            >
-              <span className="font-medium">{r.file.name}</span>:{" "}
-              {rejectionMessage(r)}
-            </li>
-          ))}
-        </ul>
-      )}
+        {hasCropField && cropTarget && (
+          <CropEditor
+            file={cropTarget.file}
+            onSubmit={handleCropSubmit}
+            onCancel={handleCropCancel}
+          />
+        )}
 
-      {hasCropField && cropTarget && (
-        <CropEditor
-          file={cropTarget.file}
-          onSubmit={handleCropSubmit}
-          onCancel={handleCropCancel}
+        <JobList
+          jobs={jobs}
+          onCancel={handleCancel}
+          onRemove={handleRemove}
+          onDownloadAll={handleDownloadAll}
+          onClear={handleClear}
+          zipping={zipping}
+          onDownloadJobOutputs={handleDownloadJobOutputs}
+          zippingJobId={zippingJobId}
         />
-      )}
+
+        {zipError && <p className="text-sm text-danger">{zipError}</p>}
+        {jobZipError && <p className="text-sm text-danger">{jobZipError}</p>}
+        {consentDeclined && (
+          <p className="text-sm text-ink-muted">{consentDeclined}</p>
+        )}
+      </div>
 
       {hasOptions && (
-        <OptionsForm
-          schema={tool.options}
-          defaults={tool.defaults}
-          value={options}
-          onChange={setOptions}
-          onValidityChange={setCanSubmit}
-        />
-      )}
-
-      <JobList
-        jobs={jobs}
-        onCancel={handleCancel}
-        onRemove={handleRemove}
-        onDownloadAll={handleDownloadAll}
-        onClear={handleClear}
-        zipping={zipping}
-        onDownloadJobOutputs={handleDownloadJobOutputs}
-        zippingJobId={zippingJobId}
-      />
-
-      {zipError && <p className="text-sm text-danger">{zipError}</p>}
-      {jobZipError && <p className="text-sm text-danger">{jobZipError}</p>}
-      {consentDeclined && (
-        <p className="text-sm text-ink-muted">{consentDeclined}</p>
+        <aside aria-label="Options" className="flex flex-col gap-5">
+          <OptionsForm
+            schema={tool.options}
+            defaults={tool.defaults}
+            value={options}
+            onChange={setOptions}
+            onValidityChange={setCanSubmit}
+          />
+        </aside>
       )}
 
       {consentGate && (
