@@ -1,5 +1,51 @@
 import { describe, expect, it } from "vitest";
-import { computeResizeDims, parseResizeOptions } from "./resize-box";
+import {
+  computeResizeDims,
+  isResizePassthrough,
+  parseResizeOptions,
+} from "./resize-box";
+
+describe("resize by percentage", () => {
+  it("reads resizeBy/percent into a scale factor", () => {
+    expect(parseResizeOptions({ resizeBy: "percent", percent: 50 }).scale).toBe(
+      0.5,
+    );
+  });
+
+  it("ignores percent in exact mode and width/height in percent mode", () => {
+    expect(
+      parseResizeOptions({ resizeBy: "exact", percent: 50, width: 100 }),
+    ).toMatchObject({ scale: undefined, width: 100 });
+    const opts = parseResizeOptions({
+      resizeBy: "percent",
+      percent: 25,
+      width: 10,
+    });
+    expect(computeResizeDims(200, 100, opts)).toEqual({
+      width: 50,
+      height: 25,
+    });
+  });
+
+  it("scales both axes and never returns a zero dimension", () => {
+    const base = { fit: "contain", allowUpscale: false } as const;
+    expect(computeResizeDims(101, 51, { ...base, scale: 0.5 })).toEqual({
+      width: 51,
+      height: 26,
+    });
+    expect(computeResizeDims(3, 1, { ...base, scale: 0.1 })).toEqual({
+      width: 1,
+      height: 1,
+    });
+  });
+
+  it("is a passthrough only when nothing is set", () => {
+    const base = { fit: "contain", allowUpscale: false } as const;
+    expect(isResizePassthrough(base)).toBe(true);
+    expect(isResizePassthrough({ ...base, scale: 0.5 })).toBe(false);
+    expect(isResizePassthrough({ ...base, width: 10 })).toBe(false);
+  });
+});
 
 describe("parseResizeOptions", () => {
   it("defaults fit to contain and allowUpscale to false", () => {

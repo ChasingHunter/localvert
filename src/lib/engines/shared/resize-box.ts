@@ -13,6 +13,9 @@ export interface ResizeOptions {
   height?: number;
   fit: "contain" | "cover" | "fill";
   allowUpscale: boolean;
+  /** Uniform factor on both axes (0.5 = half size). When set it wins over
+   * `width`/`height`. Comes from the tools' "By percentage" mode. */
+  scale?: number;
 }
 
 /** Reads a pipeline step's raw `options` down to `ResizeOptions`, defaulting
@@ -21,7 +24,14 @@ export interface ResizeOptions {
 export function parseResizeOptions(
   options: Readonly<Record<string, unknown>>,
 ): ResizeOptions {
+  // "By percentage" tools send `resizeBy: "percent"` plus `percent` (10-100).
+  // The width/height fields stay in the options bag but are ignored then.
+  const byPercent =
+    options.resizeBy === "percent" &&
+    typeof options.percent === "number" &&
+    options.percent > 0;
   return {
+    scale: byPercent ? (options.percent as number) / 100 : undefined,
     width: typeof options.width === "number" ? options.width : undefined,
     height: typeof options.height === "number" ? options.height : undefined,
     fit:
@@ -46,7 +56,14 @@ export function computeResizeDims(
   srcHeight: number,
   opts: ResizeOptions,
 ): { width: number; height: number } {
-  const { width, height, fit, allowUpscale } = opts;
+  const { width, height, fit, allowUpscale, scale: uniformScale } = opts;
+
+  if (uniformScale !== undefined) {
+    return {
+      width: Math.max(1, Math.round(srcWidth * uniformScale)),
+      height: Math.max(1, Math.round(srcHeight * uniformScale)),
+    };
+  }
 
   if (width === undefined && height === undefined) {
     return { width: srcWidth, height: srcHeight };
@@ -83,4 +100,14 @@ export function computeResizeDims(
     width: Math.max(1, Math.round(srcWidth * scale)),
     height: Math.max(1, Math.round(srcHeight * scale)),
   };
+}
+
+/** True when these options ask for no change at all (neither a scale nor a
+ * width/height), so an engine can hand the raster straight back. */
+export function isResizePassthrough(opts: ResizeOptions): boolean {
+  return (
+    opts.scale === undefined &&
+    opts.width === undefined &&
+    opts.height === undefined
+  );
 }

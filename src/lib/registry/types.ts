@@ -350,6 +350,16 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
    */
   requiredOptionKeys?: readonly string[];
   /**
+   * For a rule `required` can't express (e.g. "a width OR a height, but only
+   * in exact-size mode"). While `isReady(options)` is false a dropped file
+   * waits and the action button stays disabled, with `hint` shown beside it.
+   * A plain function, so `ToolRunner` can call it without importing zod.
+   */
+  readiness?: {
+    isReady: (options: Readonly<Record<string, unknown>>) => boolean;
+    hint: string;
+  };
+  /**
    * ADR-0013: this tool's whole job is to shrink a file, so its result must
    * never come back bigger than what was dropped. Most compress tools
    * (compress-png/jpg/webp/pdf) enforce this themselves, inside their own

@@ -277,7 +277,17 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   // Plain string array on the tool definition itself (see its doc comment
   // in `src/lib/registry/types.ts`) — read structurally, same as
   // `hasCropField` above, so this file never imports zod just to check it.
-  const hasRequiredOptions = (tool?.requiredOptionKeys?.length ?? 0) > 0;
+  const readiness = tool?.readiness;
+  const hasRequiredOptions =
+    (tool?.requiredOptionKeys?.length ?? 0) > 0 || readiness !== undefined;
+  /** Every `required` field is filled and the tool's own readiness rule
+   * (if any) holds for these options. */
+  const optionsReady = useCallback(
+    (values: Readonly<Record<string, unknown>>) =>
+      requiredKeysSatisfied(tool?.requiredOptionKeys ?? [], values) &&
+      (readiness?.isReady(values) ?? true),
+    [tool, readiness],
+  );
 
   /**
    * ADR-0002 rule 4's gate, wrapping every path below that would otherwise
@@ -351,10 +361,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   const submitOrStage = useCallback(
     (accepted: AcceptedFile[]) => {
       if (!tool) return;
-      if (
-        hasRequiredOptions &&
-        !requiredKeysSatisfied(tool.requiredOptionKeys ?? [], options)
-      ) {
+      if (hasRequiredOptions && !optionsReady(options)) {
         // Staged, not submitted — see `handleSubmitPending`. A required
         // field already filled in *before* the drop (e.g. password typed
         // first) skips this and submits immediately below, same as any
@@ -379,7 +386,14 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         rememberRun(accepted, used);
       });
     },
-    [tool, options, hasRequiredOptions, ensureConsent, rememberRun],
+    [
+      tool,
+      options,
+      hasRequiredOptions,
+      optionsReady,
+      ensureConsent,
+      rememberRun,
+    ],
   );
 
   const handleFiles = useCallback(
@@ -428,6 +442,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
 
   const handleSubmitPending = useCallback(() => {
     if (!tool || pendingRequiredFiles.length === 0 || !canSubmit) return;
+    if (!optionsReady(options)) return;
     const files = pendingRequiredFiles;
     void ensureConsent(async () => {
       const engine = await jobEngine();
@@ -438,7 +453,14 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
       );
       setPendingRequiredFiles([]);
     });
-  }, [tool, pendingRequiredFiles, options, canSubmit, ensureConsent]);
+  }, [
+    tool,
+    pendingRequiredFiles,
+    options,
+    canSubmit,
+    optionsReady,
+    ensureConsent,
+  ]);
 
   const handleSubmitEstimateStaged = useCallback(() => {
     if (!tool || estimateStagedFiles.length === 0) return;
@@ -695,10 +717,13 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
             <Button
               type="button"
               onClick={handleSubmitPending}
-              disabled={!canSubmit}
+              disabled={!canSubmit || !optionsReady(options)}
             >
               {tool.actionLabel ?? "Convert"}
             </Button>
+            {readiness && !readiness.isReady(options) && (
+              <p className="text-sm text-ink-muted">{readiness.hint}</p>
+            )}
           </div>
         )}
 

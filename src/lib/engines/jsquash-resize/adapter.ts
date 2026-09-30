@@ -3,7 +3,11 @@ import type { Operation, StepFormat } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
 import { ENGINE_MANIFEST } from "../manifest";
-import { computeResizeDims, parseResizeOptions } from "../shared/resize-box";
+import {
+  computeResizeDims,
+  isResizePassthrough,
+  parseResizeOptions,
+} from "../shared/resize-box";
 import type {
   EngineAdapter,
   EngineInput,
@@ -144,7 +148,7 @@ async function runResize(
   const image = inputToRaster(input);
   const resizeOpts = parseResizeOptions(options);
 
-  if (resizeOpts.width === undefined && resizeOpts.height === undefined) {
+  if (isResizePassthrough(resizeOpts)) {
     onProgress?.(1);
     return { kind: "raster", image };
   }

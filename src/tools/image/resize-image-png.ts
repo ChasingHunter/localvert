@@ -1,5 +1,10 @@
 import { z } from "zod";
 import { defineTool, imagePipeline } from "@/lib/registry";
+import {
+  resizeDefaults,
+  resizeFields,
+  resizeReadiness,
+} from "../_resize-options";
 
 /**
  * Same shape as `resize-image-jpg.ts` minus `quality` — PNG is lossless, so
@@ -11,38 +16,17 @@ export default defineTool({
   category: "image",
   title: "Resize PNG",
   description:
-    "Resize a PNG by width, height, or both. Re-encoding strips embedded metadata, including GPS.",
+    "Resize a PNG by percentage or to an exact size. Re-encoding strips embedded metadata, including GPS.",
 
   accepts: ["png"],
   produces: "png",
 
   options: z.object({
-    width: z
-      .number()
-      .int()
-      .positive()
-      .meta({ label: "Width", control: "number", unit: "px" })
-      .optional(),
-    height: z
-      .number()
-      .int()
-      .positive()
-      .meta({ label: "Height", control: "number", unit: "px" })
-      .optional(),
-    fit: z
-      .enum(["contain", "cover", "fill"])
-      .meta({
-        label: "Fit",
-        control: "select",
-        help: "How width and height combine when both are set",
-      })
-      .default("contain"),
-    allowUpscale: z
-      .boolean()
-      .meta({ label: "Allow upscale", control: "switch" })
-      .default(false),
+    ...resizeFields,
   }),
-  defaults: { fit: "contain", allowUpscale: false },
+  defaults: { ...resizeDefaults },
+  actionLabel: "Resize",
+  readiness: resizeReadiness,
 
   pipeline: imagePipeline("png", "png", ["resize"]),
 

@@ -1,15 +1,18 @@
 import { z } from "zod";
 import { defineTool, imagePipeline } from "@/lib/registry";
+import {
+  resizeDefaults,
+  resizeFields,
+  resizeReadiness,
+} from "../_resize-options";
 
 /**
- * `width`/`height` are both optional — the `resize` step's engines
- * (`jsquash-resize`, `canvas`; see `src/lib/engines/shared/resize-box.ts`)
- * pass through unchanged when neither is set, and scale by whichever one is
- * given when only one is. `fit`/`allowUpscale` mirror `ResizeOptions` in
- * that same file exactly, so the option form's vocabulary matches the
- * engines' own. `quality` controls the re-encode, same as `compress-jpg`.
- * Every field's `.meta()` comes before `.optional()`/`.default()` — see
- * `src/lib/options/fields.ts`'s `unwrap` doc comment.
+ * Resize fields live in `../_resize-options.ts`, shared by the three resize
+ * tools: "By percentage" (default 50%) or "Exact size" (width and/or height,
+ * with `fit`/`allowUpscale`, as in `ResizeOptions` in
+ * `src/lib/engines/shared/resize-box.ts`). Exact size with both blank waits
+ * for input (`readiness`) instead of passing the file through unchanged.
+ * `quality` controls the re-encode, same as `compress-jpg`.
  */
 export default defineTool({
   slug: "resize-image-jpg",
@@ -17,36 +20,13 @@ export default defineTool({
   categoryRank: 6,
   title: "Resize JPG",
   description:
-    "Resize a JPG by width, height, or both. Re-encoding strips embedded metadata, including GPS.",
+    "Resize a JPG by percentage or to an exact size. Re-encoding strips embedded metadata, including GPS.",
 
   accepts: ["jpg"],
   produces: "jpg",
 
   options: z.object({
-    width: z
-      .number()
-      .int()
-      .positive()
-      .meta({ label: "Width", control: "number", unit: "px" })
-      .optional(),
-    height: z
-      .number()
-      .int()
-      .positive()
-      .meta({ label: "Height", control: "number", unit: "px" })
-      .optional(),
-    fit: z
-      .enum(["contain", "cover", "fill"])
-      .meta({
-        label: "Fit",
-        control: "select",
-        help: "How width and height combine when both are set",
-      })
-      .default("contain"),
-    allowUpscale: z
-      .boolean()
-      .meta({ label: "Allow upscale", control: "switch" })
-      .default(false),
+    ...resizeFields,
     quality: z
       .number()
       .min(0.05)
@@ -54,7 +34,9 @@ export default defineTool({
       .meta({ label: "Quality", control: "slider" })
       .default(0.75),
   }),
-  defaults: { fit: "contain", allowUpscale: false, quality: 0.75 },
+  defaults: { ...resizeDefaults, quality: 0.75 },
+  actionLabel: "Resize",
+  readiness: resizeReadiness,
 
   pipeline: imagePipeline("jpg", "jpg", ["resize"]),
 
