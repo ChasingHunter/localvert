@@ -24,12 +24,12 @@ export const metadata: Metadata = {
 export default function PrivacyPage() {
   return (
     <PageShell>
-      <div className="mx-auto flex max-w-2xl flex-col gap-10 px-6 py-16 lg:px-12">
+      <div className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-16 lg:px-12">
         <div className="flex flex-col gap-2">
           <h1 className="font-display text-3xl font-medium text-ink sm:text-4xl">
             How we know your files stay put
           </h1>
-          <p className="text-ink-muted">
+          <p className="max-w-2xl text-ink-muted">
             This isn't a promise to take on faith. Everything below, you can
             check yourself in a minute or two.
           </p>
@@ -39,14 +39,14 @@ export default function PrivacyPage() {
           <h2 className="font-display text-xl font-medium text-ink">
             The page can't upload your file even if it tried
           </h2>
-          <p className="text-ink-muted">
+          <p className="max-w-2xl text-ink-muted">
             Every page on this site is served with a Content Security Policy
             that only allows it to talk to itself:
           </p>
-          <pre className="overflow-x-auto rounded-lg border border-border bg-surface p-3 text-sm text-ink">
+          <pre className="max-w-2xl overflow-x-auto rounded-lg border border-border bg-surface p-3 text-sm text-ink">
             <code>connect-src 'self' blob:</code>
           </pre>
-          <p className="text-ink-muted">
+          <p className="max-w-2xl text-ink-muted">
             Open your browser's developer tools, go to the Network tab, and look
             at the response headers for this page. You'll see that line in the{" "}
             <code>Content-Security-Policy</code> header. It's a browser-enforced
@@ -60,7 +60,7 @@ export default function PrivacyPage() {
           <h2 className="font-display text-xl font-medium text-ink">
             Watch the network tab while you convert something
           </h2>
-          <p className="text-ink-muted">
+          <p className="max-w-2xl text-ink-muted">
             With that same Network tab open, convert a file. You'll see the page
             load its own code and, the first time you use a format, fetch the
             engine that handles it (details below). You won't see any request
@@ -73,7 +73,7 @@ export default function PrivacyPage() {
           <h2 className="font-display text-xl font-medium text-ink">
             It keeps working with your network off
           </h2>
-          <p className="text-ink-muted">
+          <p className="max-w-2xl text-ink-muted">
             Load the site once, then turn off your network connection (or use
             your browser's offline mode) and convert a file you've already used
             a tool for. It still works, because the conversion runs entirely on
@@ -85,7 +85,7 @@ export default function PrivacyPage() {
           <h2 className="font-display text-xl font-medium text-ink">
             The source is open
           </h2>
-          <p className="text-ink-muted">
+          <p className="max-w-2xl text-ink-muted">
             Read the code that runs on this page, or check it against what your
             browser actually loaded.
           </p>
@@ -103,7 +103,7 @@ export default function PrivacyPage() {
           <h2 className="font-display text-xl font-medium text-ink">
             What is downloaded, and when
           </h2>
-          <p className="text-ink-muted">
+          <p className="max-w-2xl text-ink-muted">
             Some formats need a real codec or library to convert, not just
             browser APIs, so the first time you use one of those tools, this
             site downloads that engine (for example FFmpeg or LibreOffice) to
@@ -119,7 +119,7 @@ export default function PrivacyPage() {
           <h2 className="font-display text-xl font-medium text-ink">
             No accounts, no cookies, no analytics
           </h2>
-          <p className="text-ink-muted">
+          <p className="max-w-2xl text-ink-muted">
             There's no sign-up, no cookie banner (because there are no cookies
             to consent to), and no analytics or tracking script anywhere on this
             site. The only things this site stores are in your own browser,
@@ -131,7 +131,7 @@ export default function PrivacyPage() {
           </p>
         </section>
 
-        <p className="border-t border-border pt-6 text-sm text-ink-muted">
+        <p className="max-w-2xl border-t border-border pt-6 text-sm text-ink-muted">
           See how Localvert compares to a few well-known converters:{" "}
           <Link
             href="/vs/ilovepdf"
