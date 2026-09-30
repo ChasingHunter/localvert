@@ -13,19 +13,40 @@
  *   photo/video codecs (JPEG among them) assume for their own luma plane.
  * - Both images are downscaled first (area-average box filter — cheap, and
  *   correct for the "compare an image to a shrunk copy of itself" case,
- *   unlike point sampling) so the long side is at most 1024 px. This bounds
- *   the cost of a search that runs SSIM ~6 times per job.
+ *   unlike point sampling) so the long side is at most `maxLongSide`
+ *   (default **512px**, not 1024 — see the perf note below).
  * - The SSIM map itself uses the paper's original **11x11 Gaussian window,
  *   sigma = 1.5** (not the simpler 8x8 uniform box window some
  *   implementations substitute) via the standard separable-filter
  *   optimisation: a 2D Gaussian convolution equals a 1D horizontal pass
- *   followed by a 1D vertical pass, so this never allocates an 11x11 kernel
- *   per pixel. Constants: `K1 = 0.01`, `K2 = 0.03`, `L = 255` (8-bit luma
- *   range), giving `C1 = (K1*L)^2`, `C2 = (K2*L)^2` — the paper's own
- *   defaults, used unmodified.
+ *   followed by a 1D vertical pass. Constants: `K1 = 0.01`, `K2 = 0.03`,
+ *   `L = 255` (8-bit luma range), giving `C1 = (K1*L)^2`, `C2 = (K2*L)^2` —
+ *   the paper's own defaults, used unmodified.
  * - The two inputs must already be the same size (the caller decodes both
  *   from the same source raster, so this is always true in practice); this
  *   throws rather than silently comparing mismatched planes.
+ *
+ * Performance (ADR-0017's search runs this ~6 times per compress job, so
+ * this is on the hot path):
+ * - All working buffers are `Float32Array` (not `Float64Array`) — half the
+ *   memory bandwidth for the same convolution math, which is what this
+ *   function is bottlenecked on, not floating-point precision.
+ * - The five statistic maps the SSIM formula needs (`μx`, `μy`, `σx²`,
+ *   `σy²`, `σxy`, computed from the blurred `x`, `y`, `x²`, `y²`, `xy`
+ *   planes) are blurred together, one shared horizontal pass and one shared
+ *   vertical pass, rather than five separate blur calls each redoing its own
+ *   edge-clamping and index arithmetic — that arithmetic is the same for all
+ *   five channels at a given pixel, so computing it once and reusing it five
+ *   times removes 4/5 of that overhead.
+ * - Default `maxLongSide` is **512px, not 1024** — a 4x pixel-count (and
+ *   therefore roughly 4x time) reduction from the original default. This
+ *   function's job here is *ranking candidate encodes against a threshold*,
+ *   not producing a publishable quality metric: the visible difference
+ *   between two adjacent integer JPEG/WebP qualities is a global, low
+ *   frequency effect (blockiness, banding, blur), not something that only
+ *   shows up at full resolution — 512px on the long side comfortably
+ *   preserves that signal. `maxLongSide` stays a parameter (e.g. `1024`)
+ *   for any future caller that does want a more precise, publishable score.
  */
 
 export interface RasterLike {
@@ -34,8 +55,14 @@ export interface RasterLike {
   data: Uint8ClampedArray | Uint8Array;
 }
 
-/** Long side is capped here — see the file doc comment. */
-const MAX_LONG_SIDE = 1024;
+export interface SsimOptions {
+  /** Long side both images are downscaled to before scoring. Default 512 —
+   * see the perf note in the file doc comment. */
+  maxLongSide?: number;
+}
+
+/** See the file doc comment's perf note for why 512, not 1024. */
+const DEFAULT_MAX_LONG_SIDE = 512;
 
 const K1 = 0.01;
 const K2 = 0.03;
@@ -50,9 +77,9 @@ const GAUSSIAN_RADIUS = 5;
 const GAUSSIAN_SIGMA = 1.5;
 const GAUSSIAN_KERNEL = buildGaussianKernel(GAUSSIAN_RADIUS, GAUSSIAN_SIGMA);
 
-function buildGaussianKernel(radius: number, sigma: number): Float64Array {
+function buildGaussianKernel(radius: number, sigma: number): Float32Array {
   const size = radius * 2 + 1;
-  const kernel = new Float64Array(size);
+  const kernel = new Float32Array(size);
   let sum = 0;
   for (let i = 0; i < size; i++) {
     const x = i - radius;
@@ -66,10 +93,10 @@ function buildGaussianKernel(radius: number, sigma: number): Float64Array {
   return kernel;
 }
 
-/** Rec. 601 luma plane, one Float64 per pixel, row-major. */
-function toLumaPlane(image: RasterLike): Float64Array {
+/** Rec. 601 luma plane, one Float32 per pixel, row-major. */
+function toLumaPlane(image: RasterLike): Float32Array {
   const { width, height, data } = image;
-  const plane = new Float64Array(width * height);
+  const plane = new Float32Array(width * height);
   for (let p = 0, i = 0; p < width * height; p++, i += 4) {
     const r = data[i] ?? 0;
     const g = data[i + 1] ?? 0;
@@ -86,15 +113,15 @@ function toLumaPlane(image: RasterLike): Float64Array {
  * used for.
  */
 function downscaleAreaAverage(
-  src: Float64Array,
+  src: Float32Array,
   srcW: number,
   srcH: number,
   dstW: number,
   dstH: number,
-): Float64Array {
+): Float32Array {
   if (dstW === srcW && dstH === srcH) return src;
 
-  const dst = new Float64Array(dstW * dstH);
+  const dst = new Float32Array(dstW * dstH);
   const scaleX = srcW / dstW;
   const scaleY = srcH / dstH;
 
@@ -123,63 +150,137 @@ function downscaleAreaAverage(
   return dst;
 }
 
-/** `{width, height}` scaled so the long side is at most `MAX_LONG_SIDE`,
+/** `{width, height}` scaled so the long side is at most `maxLongSide`,
  * preserving aspect ratio. Already-small images pass through unchanged. */
 function capLongSide(
   width: number,
   height: number,
+  maxLongSide: number,
 ): { width: number; height: number } {
   const longSide = Math.max(width, height);
-  if (longSide <= MAX_LONG_SIDE) return { width, height };
-  const scale = MAX_LONG_SIDE / longSide;
+  if (longSide <= maxLongSide) return { width, height };
+  const scale = maxLongSide / longSide;
   return {
     width: Math.max(1, Math.round(width * scale)),
     height: Math.max(1, Math.round(height * scale)),
   };
 }
 
-/** Separable Gaussian blur (horizontal pass then vertical pass), edges
- * clamped to the nearest in-bounds sample rather than zero-padded — zero
- * padding would darken every window that touches an edge. */
-function gaussianBlur(
-  plane: Float64Array,
+/** The five Gaussian-filtered maps the SSIM formula needs, all computed
+ * together (see the file doc comment's perf note): `muA`/`muB` are the
+ * blurred luma planes themselves; `muAA`/`muBB`/`muAB` are the blurred
+ * squared/cross planes, from which the caller derives the local variances
+ * and covariance (`sigmaA2 = muAA - muA*muA`, etc.) without this function
+ * needing to know about SSIM at all. */
+interface FilteredMaps {
+  muA: Float32Array;
+  muB: Float32Array;
+  muAA: Float32Array;
+  muBB: Float32Array;
+  muAB: Float32Array;
+}
+
+/**
+ * Computes `FilteredMaps` for luma planes `a`/`b` via one shared horizontal
+ * convolution pass and one shared vertical pass across all five source
+ * channels (`a`, `b`, `a*a`, `b*b`, `a*b`) — edge index clamping and kernel
+ * weight lookups happen once per pixel per pass and are reused for all five
+ * running sums, rather than recomputed per channel.
+ */
+function computeFilteredMaps(
+  a: Float32Array,
+  b: Float32Array,
   width: number,
   height: number,
-): Float64Array {
-  const kernel = GAUSSIAN_KERNEL;
+): FilteredMaps {
+  const n = width * height;
   const radius = GAUSSIAN_RADIUS;
+  const kernel = GAUSSIAN_KERNEL;
 
-  const horizontal = new Float64Array(width * height);
+  // The three product channels the SSIM formula needs beyond a/b
+  // themselves, computed once up front (cheap — O(n), no convolution).
+  const aa = new Float32Array(n);
+  const bb = new Float32Array(n);
+  const ab = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const av = a[i] ?? 0;
+    const bv = b[i] ?? 0;
+    aa[i] = av * av;
+    bb[i] = bv * bv;
+    ab[i] = av * bv;
+  }
+
+  // Horizontal pass: all five channels, one shared clamp/index per tap.
+  const ha = new Float32Array(n);
+  const hb = new Float32Array(n);
+  const haa = new Float32Array(n);
+  const hbb = new Float32Array(n);
+  const hab = new Float32Array(n);
   for (let y = 0; y < height; y++) {
     const rowOffset = y * width;
     for (let x = 0; x < width; x++) {
-      let sum = 0;
+      let sa = 0;
+      let sb = 0;
+      let saa = 0;
+      let sbb = 0;
+      let sab = 0;
       for (let k = -radius; k <= radius; k++) {
-        const sx = Math.min(width - 1, Math.max(0, x + k));
-        sum += (plane[rowOffset + sx] ?? 0) * (kernel[k + radius] ?? 0);
+        let sx = x + k;
+        if (sx < 0) sx = 0;
+        else if (sx >= width) sx = width - 1;
+        const idx = rowOffset + sx;
+        const w = kernel[k + radius] ?? 0;
+        sa += (a[idx] ?? 0) * w;
+        sb += (b[idx] ?? 0) * w;
+        saa += (aa[idx] ?? 0) * w;
+        sbb += (bb[idx] ?? 0) * w;
+        sab += (ab[idx] ?? 0) * w;
       }
-      horizontal[rowOffset + x] = sum;
+      const outIdx = rowOffset + x;
+      ha[outIdx] = sa;
+      hb[outIdx] = sb;
+      haa[outIdx] = saa;
+      hbb[outIdx] = sbb;
+      hab[outIdx] = sab;
     }
   }
 
-  const vertical = new Float64Array(width * height);
+  // Vertical pass: same shared-index structure, reading the horizontal
+  // pass's output.
+  const muA = new Float32Array(n);
+  const muB = new Float32Array(n);
+  const muAA = new Float32Array(n);
+  const muBB = new Float32Array(n);
+  const muAB = new Float32Array(n);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      let sum = 0;
+      let sa = 0;
+      let sb = 0;
+      let saa = 0;
+      let sbb = 0;
+      let sab = 0;
       for (let k = -radius; k <= radius; k++) {
-        const sy = Math.min(height - 1, Math.max(0, y + k));
-        sum += (horizontal[sy * width + x] ?? 0) * (kernel[k + radius] ?? 0);
+        let sy = y + k;
+        if (sy < 0) sy = 0;
+        else if (sy >= height) sy = height - 1;
+        const idx = sy * width + x;
+        const w = kernel[k + radius] ?? 0;
+        sa += (ha[idx] ?? 0) * w;
+        sb += (hb[idx] ?? 0) * w;
+        saa += (haa[idx] ?? 0) * w;
+        sbb += (hbb[idx] ?? 0) * w;
+        sab += (hab[idx] ?? 0) * w;
       }
-      vertical[y * width + x] = sum;
+      const outIdx = y * width + x;
+      muA[outIdx] = sa;
+      muB[outIdx] = sb;
+      muAA[outIdx] = saa;
+      muBB[outIdx] = sbb;
+      muAB[outIdx] = sab;
     }
   }
-  return vertical;
-}
 
-function multiply(a: Float64Array, b: Float64Array): Float64Array {
-  const out = new Float64Array(a.length);
-  for (let i = 0; i < a.length; i++) out[i] = (a[i] ?? 0) * (b[i] ?? 0);
-  return out;
+  return { muA, muB, muAA, muBB, muAB };
 }
 
 /**
@@ -188,29 +289,26 @@ function multiply(a: Float64Array, b: Float64Array): Float64Array {
  * `[-1, 1]`; identical inputs give exactly `1`.
  */
 function ssimOnPlanes(
-  a: Float64Array,
-  b: Float64Array,
+  a: Float32Array,
+  b: Float32Array,
   width: number,
   height: number,
 ): number {
-  const muA = gaussianBlur(a, width, height);
-  const muB = gaussianBlur(b, width, height);
-  const muA2 = multiply(muA, muA);
-  const muB2 = multiply(muB, muB);
-  const muAB = multiply(muA, muB);
-
-  const aa = gaussianBlur(multiply(a, a), width, height);
-  const bb = gaussianBlur(multiply(b, b), width, height);
-  const ab = gaussianBlur(multiply(a, b), width, height);
+  const { muA, muB, muAA, muBB, muAB } = computeFilteredMaps(
+    a,
+    b,
+    width,
+    height,
+  );
 
   let sum = 0;
   const n = width * height;
   for (let i = 0; i < n; i++) {
-    const sigmaA2 = (aa[i] ?? 0) - (muA2[i] ?? 0);
-    const sigmaB2 = (bb[i] ?? 0) - (muB2[i] ?? 0);
-    const sigmaAB = (ab[i] ?? 0) - (muAB[i] ?? 0);
     const ma = muA[i] ?? 0;
     const mb = muB[i] ?? 0;
+    const sigmaA2 = (muAA[i] ?? 0) - ma * ma;
+    const sigmaB2 = (muBB[i] ?? 0) - mb * mb;
+    const sigmaAB = (muAB[i] ?? 0) - ma * mb;
 
     const numerator = (2 * ma * mb + C1) * (2 * sigmaAB + C2);
     const denominator = (ma * ma + mb * mb + C1) * (sigmaA2 + sigmaB2 + C2);
@@ -222,17 +320,24 @@ function ssimOnPlanes(
 /**
  * SSIM between two RGBA rasters, computed on their Rec. 601 luma plane, each
  * independently downscaled (area average) so its long side is at most
- * `MAX_LONG_SIDE`. Both rasters are resized to whichever of their two capped
- * sizes is smaller — in practice they're almost always the same size already
- * (a candidate encode decoded back from the same source raster), so this is
- * a no-op resize in the common case.
+ * `options.maxLongSide` (default 512 — see the file doc comment's perf
+ * note). Both rasters are resized to whichever of their two capped sizes is
+ * smaller — in practice they're almost always the same size already (a
+ * candidate encode decoded back from the same source raster), so this is a
+ * no-op resize in the common case.
  */
-export function ssim(a: RasterLike, b: RasterLike): number {
+export function ssim(
+  a: RasterLike,
+  b: RasterLike,
+  options: SsimOptions = {},
+): number {
+  const maxLongSide = options.maxLongSide ?? DEFAULT_MAX_LONG_SIDE;
+
   const lumaA = toLumaPlane(a);
   const lumaB = toLumaPlane(b);
 
-  const capA = capLongSide(a.width, a.height);
-  const capB = capLongSide(b.width, b.height);
+  const capA = capLongSide(a.width, a.height, maxLongSide);
+  const capB = capLongSide(b.width, b.height, maxLongSide);
   // Use the smaller of the two capped sizes so both planes end up the same
   // size regardless of which input started larger.
   const targetW = Math.min(capA.width, capB.width);

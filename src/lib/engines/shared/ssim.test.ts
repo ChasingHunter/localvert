@@ -75,23 +75,44 @@ describe("ssim", () => {
     expect(heavyScore).toBeGreaterThan(0.2);
   });
 
-  it("downscales larger-than-1024 images without throwing and still scores 1 for identical input", () => {
+  it("downscales larger-than-512 images (the new default cap) without throwing and still scores 1 for identical input", () => {
     const image = makeGradient(1600, 1200);
     expect(ssim(image, clone(image))).toBeCloseTo(1, 5);
   });
 
-  it("measures cost on a 1024x768 plane (reported via console, not asserted)", () => {
+  it("still supports a 1024 cap via options.maxLongSide for a more precise score", () => {
+    const image = makeGradient(1600, 1200);
+    expect(ssim(image, clone(image), { maxLongSide: 1024 })).toBeCloseTo(1, 5);
+  });
+
+  it("measures cost on a 1024x768 plane at the default (512) cap — the search's hot path", () => {
     const a = makeGradient(1024, 768);
     const b = addNoise(a, 5);
     const start = performance.now();
-    const iterations = 2;
+    const iterations = 5;
     for (let i = 0; i < iterations; i++) ssim(a, b);
     const elapsedMs = (performance.now() - start) / iterations;
     // biome-ignore lint/suspicious/noConsole: intentional perf measurement, surfaced in the final report.
-    console.log(`ssim() on a 1024x768 plane: ${elapsedMs.toFixed(1)}ms/call`);
-    // Generous ceiling — this is a measurement, not a strict perf gate. A
-    // regression that makes SSIM unusably slow in a ~6-encode search would
-    // still fail this.
-    expect(elapsedMs).toBeLessThan(10_000);
+    console.log(
+      `ssim() on a 1024x768 plane, downscaled to 512: ${elapsedMs.toFixed(1)}ms/call`,
+    );
+    // Generous bound (the planner's own target is <150ms; this asserts a
+    // much looser <400ms so a real regression is caught without CI
+    // flakiness on a slower machine).
+    expect(elapsedMs).toBeLessThan(400);
+  }, 20_000);
+
+  it("measures cost at the full 1024 cap too, for comparison (not asserted beyond a generous bound)", () => {
+    const a = makeGradient(1024, 768);
+    const b = addNoise(a, 5);
+    const start = performance.now();
+    const iterations = 3;
+    for (let i = 0; i < iterations; i++) ssim(a, b, { maxLongSide: 1024 });
+    const elapsedMs = (performance.now() - start) / iterations;
+    // biome-ignore lint/suspicious/noConsole: intentional perf measurement, surfaced in the final report.
+    console.log(
+      `ssim() on a 1024x768 plane, uncapped (1024): ${elapsedMs.toFixed(1)}ms/call`,
+    );
+    expect(elapsedMs).toBeLessThan(2000);
   }, 20_000);
 });
