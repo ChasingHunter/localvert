@@ -144,3 +144,23 @@ test("a tool page's JSON-LD parses and its FAQ matches the visible questions", a
   );
   expect(violations).toEqual([]);
 });
+
+test("the home page carries WebSite JSON-LD", async ({ page }) => {
+  await page.goto("/");
+  const raw = await page
+    .locator('script[type="application/ld+json"]')
+    .textContent();
+  expect(JSON.parse(raw ?? "")).toMatchObject({
+    "@type": "WebSite",
+    name: "Localvert",
+  });
+});
+
+test("/llms.txt is plain text and lists the tools", async ({ request }) => {
+  const response = await request.get("/llms.txt");
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toContain("text/plain");
+  const body = await response.text();
+  expect(body.startsWith("# Localvert\n")).toBe(true);
+  expect(body).toContain("/tools/compress-pdf): ");
+});

@@ -4,6 +4,7 @@ import { Converter } from "@/components/converter/converter";
 import { PageShell } from "@/components/page-shell";
 import { groupToolsByCategory, shortToolLabel } from "@/components/tool-groups";
 import { CATEGORIES, CATEGORY_META } from "@/lib/registry";
+import { serializeJsonLd, siteJsonLd } from "@/lib/seo/structured-data";
 import { TOOLS } from "@/tools";
 
 /**
@@ -125,6 +126,11 @@ export default function HomePage() {
           </Link>
         </section>
       </div>
+      <script
+        type="application/ld+json"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: serializeJsonLd escapes "<"; the content is static.
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(siteJsonLd()) }}
+      />
     </PageShell>
   );
 }
