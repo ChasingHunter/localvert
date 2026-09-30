@@ -321,7 +321,7 @@ test.describe("protect-pdf / unlock-pdf", () => {
       .locator('input[type="file"]')
       .setInputFiles(fixturePath("a.pdf"));
 
-    const convertButton = page.getByRole("button", { name: "Convert" });
+    const convertButton = page.getByRole("button", { name: "Protect PDF" });
     await expect(convertButton).toBeVisible();
     await expect(convertButton).toBeDisabled();
     await expect(page.getByText("Password is required.")).toBeVisible();

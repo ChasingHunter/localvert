@@ -219,10 +219,12 @@ test.describe("compress-video", () => {
 
     // Staged, not submitted yet: the estimate (in its own polite live
     // region, ADR-0017's accessibility rule) appears and no job has started
-    // — an explicit "Convert" is what actually runs it. `getByText(/MB/)`
+    // — an explicit "Compress" is what actually runs it. `getByText(/MB/)`
     // alone would also match the tool's own description paragraph ("...a
     // target size like under 20 MB"), so this scopes to the live region.
-    const convertButton = page.getByRole("button", { name: "Convert" });
+    const convertButton = page
+      .getByRole("main")
+      .getByRole("button", { name: "Compress" });
     await expect(convertButton).toBeVisible();
     const estimate = page.locator('[aria-live="polite"]');
     await expect(estimate).toContainText(/MB/);
@@ -279,7 +281,9 @@ test.describe("compress-video", () => {
     // see the reduce-by-% test above for why this doesn't just use
     // `getByText(/MB/)`) and a Convert button are.
     await expect(page.getByRole("link", { name: "Download" })).toHaveCount(0);
-    const convertButton = page.getByRole("button", { name: "Convert" });
+    const convertButton = page
+      .getByRole("main")
+      .getByRole("button", { name: "Compress" });
     await expect(convertButton).toBeVisible();
     const estimate = page.locator('[aria-live="polite"]');
     await expect(estimate).toContainText(/MB/);
@@ -333,7 +337,9 @@ test.describe("compress-video", () => {
       .locator('input[type="file"]')
       .setInputFiles(fixturePath("sample.mp4"));
 
-    const convertButton = page.getByRole("button", { name: "Convert" });
+    const convertButton = page
+      .getByRole("main")
+      .getByRole("button", { name: "Compress" });
     await expect(convertButton).toBeVisible();
     await convertButton.click();
 
