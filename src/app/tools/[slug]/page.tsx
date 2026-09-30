@@ -8,30 +8,35 @@ import { PageShell } from "@/components/page-shell";
 import { shortToolLabel } from "@/components/tool-groups";
 import { ToolHeading } from "@/components/tool-heading";
 import { ToolRunner } from "@/components/tool-runner";
-import { CATEGORY_META } from "@/lib/registry";
+import {
+  serializeJsonLd,
+  toolBreadcrumb,
+  toolJsonLd,
+} from "@/lib/seo/structured-data";
+import { toolFaq } from "@/lib/seo/tool-faq";
 import { openGraph } from "@/lib/site";
 import { TOOLS, TOOLS_BY_SLUG } from "@/tools";
 
 /**
  * A "kind: app" tool renders its own component instead of `ToolRunner`'s
  * job-pipeline dropzone/job-list. `AppTool` (a small client component, same
- * as `ToolRunner` above) is imported directly, not via `next/dynamic` —
+ * as `ToolRunner` above) is imported directly, not via `next/dynamic` â€”
  * `next/dynamic`'s `ssr: false` only works from a Client Component, and this
  * page is a Server Component. This page passes `tool.app` (a string id) as a
- * prop; the actual code-split boundary — `next/dynamic(..., {ssr: false})`
- * on the tool's real component — lives in `src/components/app-registry.tsx`,
+ * prop; the actual code-split boundary â€” `next/dynamic(..., {ssr: false})`
+ * on the tool's real component â€” lives in `src/components/app-registry.tsx`,
  * a client-only module `AppTool` reads from, so an app tool's weight (e.g.
  * the PDF editor's `@embedpdf/*` packages) never lands in this page's own
- * first-load JS, nor in any other page's — see ADR-0009 and `app-tool.tsx`.
+ * first-load JS, nor in any other page's â€” see ADR-0009 and `app-tool.tsx`.
  */
 
 /** Same category as `tool`, excluding itself, capped for a tidy grid. */
 const MAX_RELATED_TOOLS = 6;
 
 /**
- * SERVER COMPONENT. Safe to import `TOOLS`/`TOOLS_BY_SLUG` here — the full
+ * SERVER COMPONENT. Safe to import `TOOLS`/`TOOLS_BY_SLUG` here â€” the full
  * registry barrel never reaches the client bundle from a server component.
- * `ToolRunner` (client) loads only its one tool, via `TOOL_LOADERS` — see
+ * `ToolRunner` (client) loads only its one tool, via `TOOL_LOADERS` â€” see
  * that file's doc comment and docs/ADDING_A_TOOL.md.
  */
 
@@ -39,14 +44,14 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-/** One static page per registered tool. No other slug resolves — see `dynamicParams`. */
+/** One static page per registered tool. No other slug resolves â€” see `dynamicParams`. */
 export function generateStaticParams(): { slug: string }[] {
   return TOOLS.map((tool) => ({ slug: tool.slug }));
 }
 
 // A slug outside the registry 404s at build/request time rather than
 // falling through to an on-demand render Next has no server to do anyway
-// (this is a static export — invariant 4, docs/ARCHITECTURE.md).
+// (this is a static export â€” invariant 4, docs/ARCHITECTURE.md).
 export const dynamicParams = false;
 
 export async function generateMetadata({
@@ -69,7 +74,7 @@ export default async function ToolPage({ params }: PageProps) {
   const tool = TOOLS_BY_SLUG.get(slug);
   if (!tool) notFound();
 
-  const categoryMeta = CATEGORY_META[tool.category];
+  const faq = toolFaq(tool);
   const relatedTools = TOOLS.filter(
     (t) => t.category === tool.category && t.slug !== tool.slug,
   ).slice(0, MAX_RELATED_TOOLS);
@@ -77,13 +82,7 @@ export default async function ToolPage({ params }: PageProps) {
   return (
     <PageShell>
       <div className="mx-auto flex max-w-4xl flex-col gap-6 px-6 py-16 lg:px-12">
-        <Breadcrumb
-          items={[
-            { label: "Home", href: "/" },
-            { label: categoryMeta.label, href: `/${tool.category}` },
-            { label: tool.title },
-          ]}
-        />
+        <Breadcrumb items={toolBreadcrumb(tool)} />
 
         <div className="flex flex-col gap-3">
           <ToolHeading
@@ -115,6 +114,35 @@ export default async function ToolPage({ params }: PageProps) {
           <ToolRunner slug={tool.slug} />
         )}
 
+        <section aria-labelledby="faq-heading" className="flex flex-col gap-3">
+          <h2 id="faq-heading" className="text-sm font-medium text-ink-muted">
+            Questions
+          </h2>
+          <dl className="flex flex-col gap-4">
+            {faq.map((item) => (
+              <div key={item.question} className="flex flex-col gap-1">
+                <dt className="text-sm font-medium text-ink">
+                  {item.question}
+                </dt>
+                <dd className="max-w-2xl text-sm text-ink-muted">
+                  {item.answer}
+                  {item.link && (
+                    <>
+                      {" "}
+                      <Link
+                        href={item.link.href}
+                        className="rounded-sm font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+                      >
+                        {item.link.label}
+                      </Link>
+                    </>
+                  )}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+
         {relatedTools.length > 0 && (
           <section
             aria-labelledby="related-tools-heading"
@@ -141,6 +169,13 @@ export default async function ToolPage({ params }: PageProps) {
           </section>
         )}
       </div>
+      <script
+        type="application/ld+json"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: serializeJsonLd escapes "<"; the content is registry data.
+        dangerouslySetInnerHTML={{
+          __html: serializeJsonLd(toolJsonLd(tool, faq)),
+        }}
+      />
     </PageShell>
   );
 }

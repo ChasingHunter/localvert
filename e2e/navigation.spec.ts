@@ -2,7 +2,8 @@ import { expect, test } from "@playwright/test";
 
 /**
  * Finding things: the header search (Ctrl+K and "/"), the Compress menu,
- * the /vs index and the per-category Popular row.
+ * the /vs index, the per-category Popular row, and the structured data
+ * (JSON-LD, llms.txt) that helps crawlers and assistants find them.
  */
 
 test.describe("header search", () => {
@@ -105,4 +106,41 @@ test("a category page shows its own Popular row", async ({ page }) => {
   const popular = page.getByRole("navigation", { name: "Popular conversions" });
   await expect(popular.getByRole("link")).toHaveCount(5);
   await expect(popular.getByRole("link", { name: "MP4 to MP3" })).toBeVisible();
+});
+
+test("a tool page's JSON-LD parses and its FAQ matches the visible questions", async ({
+  page,
+}) => {
+  // The page's meta CSP only allows hashed inline scripts; a JSON-LD block
+  // with a stale hash would show up here as a violation.
+  const violations: string[] = [];
+  page.on("console", (message) => {
+    if (/content security policy/i.test(message.text())) {
+      violations.push(message.text());
+    }
+  });
+  await page.goto("/tools/compress-pdf");
+
+  const raw = await page
+    .locator('script[type="application/ld+json"]')
+    .textContent();
+  const graph = JSON.parse(raw ?? "")["@graph"] as {
+    "@type": string;
+    mainEntity?: { name: string }[];
+    itemListElement?: { name: string }[];
+  }[];
+  expect(graph.map((node) => node["@type"])).toEqual([
+    "WebApplication",
+    "BreadcrumbList",
+    "FAQPage",
+  ]);
+
+  const faq = page.getByRole("region", { name: "Questions" });
+  await expect(faq.getByRole("term")).toHaveText(
+    graph[2]?.mainEntity?.map((q) => q.name) ?? [],
+  );
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveText(
+    (graph[1]?.itemListElement ?? []).map((item) => item.name).join("›"),
+  );
+  expect(violations).toEqual([]);
 });
