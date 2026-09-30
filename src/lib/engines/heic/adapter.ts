@@ -44,9 +44,12 @@ function supports(
  * Decode only, per ADR-0007 — this engine never appears on the encode side
  * of any pipeline, and `heic-to` has no encoder of its own anyway.
  *
- * `heic-to/next` (not the bare `heic-to` or `heic-to/csp` entry points) is
- * the variant its own README documents for use inside a Web Worker, which is
- * exactly where this adapter always runs. It is a single self-contained
+ * `heic-to/csp` (not the bare `heic-to` or `heic-to/next` entry points) is
+ * the variant for this app's CSP. The other two embed an asm.js blob worker
+ * whose code is built with `new Function`, which `script-src` (no
+ * `unsafe-eval`) blocks ("Evaluating a string as JavaScript ...", surfaced
+ * as "failed to decode heic/heif"); `/csp` ships the same libheif without it
+ * and still works from inside our worker. It is a single self-contained
  * module with no relative imports of its own — no wasm/asm.js asset for
  * `engine.json` to place under `public/engines/`, hence `location:
  * "bundled"`. It ships as libheif compiled to asm.js (built with
@@ -57,7 +60,7 @@ function supports(
  * library; neither changes this adapter's contract.
  */
 async function load(_ctx: EngineLoadContext): Promise<EngineInstance> {
-  const { heicTo } = await import("heic-to/next");
+  const { heicTo } = await import("heic-to/csp");
   return { run: (task) => run(task, heicTo), dispose };
 }
 
@@ -83,7 +86,7 @@ function inputToBlob(input: EngineInput): Blob {
   }
 }
 
-type HeicTo = typeof import("heic-to/next").heicTo;
+type HeicTo = typeof import("heic-to/csp").heicTo;
 
 async function run(task: EngineTask, heicTo: HeicTo): Promise<EngineResult> {
   try {
