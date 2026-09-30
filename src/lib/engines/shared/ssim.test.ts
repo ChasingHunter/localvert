@@ -80,22 +80,18 @@ describe("ssim", () => {
     expect(ssim(image, clone(image))).toBeCloseTo(1, 5);
   });
 
-  it(
-    "measures cost on a 1024x768 plane (reported via console, not asserted)",
-    () => {
-      const a = makeGradient(1024, 768);
-      const b = addNoise(a, 5);
-      const start = performance.now();
-      const iterations = 2;
-      for (let i = 0; i < iterations; i++) ssim(a, b);
-      const elapsedMs = (performance.now() - start) / iterations;
-      // biome-ignore lint/suspicious/noConsole: intentional perf measurement, surfaced in the final report.
-      console.log(`ssim() on a 1024x768 plane: ${elapsedMs.toFixed(1)}ms/call`);
-      // Generous ceiling — this is a measurement, not a strict perf gate. A
-      // regression that makes SSIM unusably slow in a ~6-encode search would
-      // still fail this.
-      expect(elapsedMs).toBeLessThan(10_000);
-    },
-    20_000,
-  );
+  it("measures cost on a 1024x768 plane (reported via console, not asserted)", () => {
+    const a = makeGradient(1024, 768);
+    const b = addNoise(a, 5);
+    const start = performance.now();
+    const iterations = 2;
+    for (let i = 0; i < iterations; i++) ssim(a, b);
+    const elapsedMs = (performance.now() - start) / iterations;
+    // biome-ignore lint/suspicious/noConsole: intentional perf measurement, surfaced in the final report.
+    console.log(`ssim() on a 1024x768 plane: ${elapsedMs.toFixed(1)}ms/call`);
+    // Generous ceiling — this is a measurement, not a strict perf gate. A
+    // regression that makes SSIM unusably slow in a ~6-encode search would
+    // still fail this.
+    expect(elapsedMs).toBeLessThan(10_000);
+  }, 20_000);
 });
