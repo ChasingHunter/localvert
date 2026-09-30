@@ -24,20 +24,22 @@ import type {
   EngineTask,
 } from "../types";
 import { runAudioTranscode, supportsAudioTranscode } from "./audio";
+import { chooseAudioBitrateBps, chooseVideoBitrateBps } from "./bitrate";
 import meta from "./engine.json";
 import { runToGif } from "./gif";
-import { runConversion } from "./output";
+import { inputToBlob, runConversion } from "./output";
 import {
+  dimensionsForPreset,
   isVideoContainer,
   outputFormatFor,
   pickAudioCodec,
   pickVideoCodec,
   type QualityPreset,
-  qualityForPreset,
   type ResizeOptions,
   type ResizePreset,
   resizeToVideoOptions,
   rotationFor,
+  sourceBitrates,
   validateTrim,
 } from "./video";
 
@@ -172,10 +174,35 @@ async function runVideo(task: EngineTask): Promise<EngineResult> {
     resize = { preset: opts.maxHeight };
   }
 
+  // ADR-0013's addendum (2026-09-30): every preset here used to pass
+  // mediabunny's own `Quality` constant, which resolves to a fixed
+  // quantizer or a bitrate computed purely from the *output* resolution —
+  // no awareness at all of how efficiently the source was already encoded,
+  // so re-encoding an already-compressed source could easily target a
+  // *higher* rate than it already used (see docs/adr/0013 for the full
+  // mechanism). Every video tool now targets an explicit numeric bitrate
+  // instead, capped against the source's own bitrate — `bitrate.ts`'s
+  // `chooseVideoBitrateBps`/`chooseAudioBitrateBps`. `opts.quality` defaults
+  // to "medium" for every tool here, including the ones with no `quality`
+  // option at all (resize/rotate/trim/mute-video) — the same default
+  // mediabunny itself falls back to when no quality/bitrate is given.
+  const preset = opts.quality ?? "medium";
+  const source = await sourceBitrates(inputToBlob(task.input, metadata.id));
+  signal.throwIfAborted();
+  const targetHeight =
+    resize?.preset !== undefined
+      ? dimensionsForPreset(resize.preset).height
+      : (resize?.height ?? source.height ?? 1080);
+  const videoBitrate = chooseVideoBitrateBps(
+    preset,
+    targetHeight,
+    source.video,
+  );
+
   const video = {
     codec: videoCodec,
     ...(resize ? resizeToVideoOptions(resize) : {}),
-    ...(opts.quality ? { quality: qualityForPreset(opts.quality) } : {}),
+    bitrate: videoBitrate,
     ...(opts.rotate
       ? { rotate: rotationFor(Number(opts.rotate) as 90 | 180 | 270) }
       : {}),
@@ -184,7 +211,10 @@ async function runVideo(task: EngineTask): Promise<EngineResult> {
   const audio = opts.mute
     ? { discard: true as const }
     : audioCodec
-      ? { codec: audioCodec }
+      ? {
+          codec: audioCodec,
+          bitrate: chooseAudioBitrateBps(preset, source.audio),
+        }
       : { discard: true as const };
 
   let trim: { start?: number; end?: number } | undefined;

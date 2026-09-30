@@ -7,10 +7,13 @@
  * pure pieces here can be unit-tested without a worker/WebCodecs environment.
  */
 import {
+  ALL_FORMATS,
   type AudioCodec,
+  BlobSource,
   type ConversionVideoOptions,
   canEncodeAudio,
   canEncodeVideo,
+  Input,
   MkvOutputFormat,
   MovOutputFormat,
   Mp4OutputFormat,
@@ -24,6 +27,7 @@ import {
   WebMOutputFormat,
 } from "mediabunny";
 import { FORMATS } from "@/lib/registry";
+import { estimateSourceVideoBps } from "./bitrate";
 
 /** The container formats every video tool in this slice reads or writes.
  * `StepFormat` is wider (every `FormatId`); this narrows it to what
@@ -170,6 +174,65 @@ export function validateTrim(start: number, end: number): TrimValidation {
     };
   }
   return { ok: true };
+}
+
+/** What `sourceBitrates` (below) could determine about one input file —
+ * every field `undefined` when it couldn't be, which every caller treats
+ * as "use the preset's own ceiling, unchanged" (see `bitrate.ts`). */
+export interface SourceBitrates {
+  video?: number;
+  audio?: number;
+  /** The source video track's own display height — used as the resolution
+   * bucket for `chooseVideoBitrateBps` when the output isn't being resized
+   * (so the output resolution *is* the source's). */
+  height?: number;
+}
+
+/**
+ * Reads a source's own video/audio bitrate for `chooseVideoBitrateBps`/
+ * `chooseAudioBitrateBps` (`bitrate.ts`) to cap a compress/edit preset
+ * against. Prefers each track's own container-metadata bitrate
+ * (`InputTrack.getAverageBitrate`, falling back to the peak
+ * `getBitrate`) — the same numbers a video player would report — and only
+ * falls back to `estimateSourceVideoBps`'s file-size/duration estimate when
+ * the container carries no video bitrate metadata at all (common for
+ * mp4/webm produced by another tool). Never throws: any failure to read
+ * `blob`'s metadata (a corrupt/unusual file `runConversion`'s own
+ * `Conversion.init` will separately reject) just means every field comes
+ * back `undefined`, same as "couldn't determine" for a well-formed file
+ * with no bitrate metadata.
+ */
+export async function sourceBitrates(blob: Blob): Promise<SourceBitrates> {
+  try {
+    const input = new Input({
+      source: new BlobSource(blob),
+      formats: ALL_FORMATS,
+    });
+    const [videoTrack, audioTrack] = await Promise.all([
+      input.getPrimaryVideoTrack(),
+      input.getPrimaryAudioTrack(),
+    ]);
+
+    const audio =
+      (await audioTrack?.getAverageBitrate()) ??
+      (await audioTrack?.getBitrate()) ??
+      undefined;
+
+    let video =
+      (await videoTrack?.getAverageBitrate()) ??
+      (await videoTrack?.getBitrate()) ??
+      undefined;
+    if (video === undefined) {
+      const duration =
+        (await input.getDurationFromMetadata()) ??
+        (await input.computeDuration());
+      video = estimateSourceVideoBps(blob.size, duration, audio);
+    }
+
+    return { video, audio, height: videoTrack?.displayHeight };
+  } catch {
+    return {};
+  }
 }
 
 /** `rotate-video`'s options -> mediabunny's `Rotation` (a plain clockwise

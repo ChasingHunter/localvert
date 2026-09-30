@@ -33,8 +33,11 @@ const OPFS_TEMP_DIR = "localvert-tmp";
 const MAX_BUFFERED_OUTPUT_BYTES = 300 * 1024 * 1024;
 
 /** Reads `task.input` down to a `Blob` — `BlobSource` reads it incrementally
- * from there, so this never materializes the file's bytes itself. */
-function inputToBlob(input: EngineInput, engineId: EngineId): Blob {
+ * from there, so this never materializes the file's bytes itself. Exported
+ * for `adapter.ts`'s `runVideo`, which needs the same blob a second time
+ * (before `runConversion` is even called) to probe the source's own
+ * bitrate via `video.ts`'s `sourceBitrates`. */
+export function inputToBlob(input: EngineInput, engineId: EngineId): Blob {
   switch (input.kind) {
     case "blob":
       return input.blob;
