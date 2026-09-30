@@ -368,6 +368,25 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
     hint: string;
   };
   /**
+   * For each `requiredOptionKeys` entry that also carries a `showWhen`, that
+   * condition (computed by `defineTool`, never set by hand). A required field
+   * that is currently hidden must not block the run, so `ToolRunner` skips
+   * the key while its condition is false.
+   */
+  requiredOptionShowWhen?: Readonly<
+    Record<
+      string,
+      {
+        field: string;
+        equals:
+          | string
+          | number
+          | boolean
+          | readonly (string | number | boolean)[];
+      }
+    >
+  >;
+  /**
    * ADR-0013: this tool's whole job is to shrink a file, so its result must
    * never come back bigger than what was dropped. Most compress tools
    * (compress-png/jpg/webp/pdf) enforce this themselves, inside their own

@@ -136,6 +136,26 @@ describe("defineTool", () => {
     expect(defineTool(def).requiredOptionKeys).toEqual(["password"]);
   });
 
+  it("records the showWhen of a required field that has one", () => {
+    const def = validDef({
+      options: z.object({
+        mode: z.enum(["a", "b"]).meta({ label: "Mode", control: "select" }),
+        text: z.string().meta({
+          label: "Text",
+          control: "text",
+          required: true,
+          showWhen: { field: "mode", equals: "b" },
+        }),
+      }),
+      defaults: { mode: "a", text: "" },
+    });
+    const tool = defineTool(def);
+    expect(tool.requiredOptionKeys).toEqual(["text"]);
+    expect(tool.requiredOptionShowWhen).toEqual({
+      text: { field: "mode", equals: "b" },
+    });
+  });
+
   it("computes an empty requiredOptionKeys when no field is required", () => {
     const def = validDef();
     expect(defineTool(def).requiredOptionKeys).toEqual([]);

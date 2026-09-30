@@ -7,13 +7,15 @@
 
 const TOKEN_RE = /^(\d+)(?:-(\d+)?)?$/;
 
+/** These messages reach the user verbatim (the job card shows them), so
+ * they are plain sentences: no tags, no jargon. */
 function fail(message: string): never {
-  throw new Error(`[page-range] ${message}`);
+  throw new Error(message);
 }
 
 function outOfRange(page: number, token: string, pageCount: number): never {
   fail(
-    `page ${page} is out of range in "${token}" (this document has ${pageCount} page${pageCount === 1 ? "" : "s"})`,
+    `Page ${page} isn't in this PDF (it has ${pageCount} page${pageCount === 1 ? "" : "s"}). Check "${token}".`,
   );
 }
 
@@ -50,14 +52,14 @@ export function parsePageRange(spec: string, pageCount: number): number[] {
     // malformed input.
     const token = rawToken.trim().replace(/\s*-\s*/g, "-");
     if (token === "") {
-      fail(`invalid page range "${spec}" — empty entry between commas`);
+      fail(
+        `Couldn't read "${spec}". Use page numbers like 1-3, 5 (no empty entries between commas).`,
+      );
     }
 
     const match = TOKEN_RE.exec(token);
     if (!match) {
-      fail(
-        `invalid page range "${token}" — expected a page number or a range like "1-3" or "8-"`,
-      );
+      fail(`Couldn't read "${token}". Use page numbers like 1-3, 5.`);
     }
 
     const [, startStr, endStr] = match;
@@ -79,7 +81,7 @@ export function parsePageRange(spec: string, pageCount: number): number[] {
     const end =
       endStr === undefined || endStr === "" ? pageCount : Number(endStr);
     if (end < start) {
-      fail(`invalid page range "${token}" — end is before start`);
+      fail(`"${token}" runs backwards. Put the smaller page number first.`);
     }
     if (end > pageCount) {
       outOfRange(end, token, pageCount);
@@ -138,14 +140,14 @@ export function parsePageOrder(spec: string, pageCount: number): number[] {
   for (const rawToken of trimmed.split(",")) {
     const token = rawToken.trim().replace(/\s*-\s*/g, "-");
     if (token === "") {
-      fail(`invalid page order "${spec}" — empty entry between commas`);
+      fail(
+        `Couldn't read "${spec}". Use page numbers like 3, 1-2 (no empty entries between commas).`,
+      );
     }
 
     const match = ORDER_TOKEN_RE.exec(token);
     if (!match) {
-      fail(
-        `invalid page order "${token}" — expected a page number or a range like "1-3" or "6-4"`,
-      );
+      fail(`Couldn't read "${token}". Use page numbers like 3, 1-2, 6-4.`);
     }
 
     const [, startStr, endStr] = match;

@@ -44,4 +44,5 @@ export default defineTool({
   ],
 
   batch: true,
+  actionLabel: "Protect PDF",
 });

@@ -406,9 +406,9 @@ interface SplitPart {
 /** Builds each output part's name + page indices from `options` (the tool's
  * whole parsed options object — see `EngineTask.options`'s doc comment).
  * `"each"` (the default) is one part per page; `"ranges"` splits
- * `options.ranges` on `;` — each segment is its own output, itself parsed by
- * the shared `parsePageRange` (so "1-3,5; 8-" is two parts, the first with
- * its own comma list). */
+ * `options.ranges` on `,` and `;` — each item is its own output, itself
+ * parsed by the shared `parsePageRange` (so "1-3, 5; 8-" is three parts).
+ * Anyone who wants scattered pages in ONE file uses Extract PDF Pages. */
 function buildParts(
   options: Readonly<Record<string, unknown>>,
   pageCount: number,
@@ -425,7 +425,7 @@ function buildParts(
 
   const raw = typeof options.ranges === "string" ? options.ranges : "";
   return raw
-    .split(";")
+    .split(/[;,]/)
     .map((segment) => segment.trim())
     .filter((segment) => segment !== "")
     .map((segment, k) => ({
@@ -449,7 +449,7 @@ async function runSplit(task: EngineTask): Promise<EngineResult> {
   const base = inputBaseName(input, "document");
   const parts = buildParts(options, srcDoc.getPageCount(), base);
   if (parts.length === 0) {
-    throw new EngineError("internal", "split produced no output pages", {
+    throw new EngineError("internal", "Those pages aren't in this PDF.", {
       engine: metadata.id,
     });
   }
@@ -559,8 +559,8 @@ async function runExtract(task: EngineTask): Promise<EngineResult> {
     throw new EngineError(
       "internal",
       mode === "remove"
-        ? "cannot delete every page from a PDF"
-        : "no pages selected to keep",
+        ? "You can't delete every page. Leave at least one."
+        : "Those pages aren't in this PDF.",
       { engine: metadata.id },
     );
   }

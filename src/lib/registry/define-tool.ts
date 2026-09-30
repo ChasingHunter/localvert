@@ -143,5 +143,21 @@ export function defineTool<S extends z.ZodObject>(
     })
     .map(([key]) => key);
 
+  // A required field can also be conditional (`showWhen`): hidden means not
+  // required, so keep the condition next to the key for the UI to check.
+  const showWhenByKey: Record<
+    string,
+    NonNullable<ToolDefinition["requiredOptionShowWhen"]>[string]
+  > = {};
+  for (const key of def.requiredOptionKeys) {
+    const field = def.options.shape[key];
+    const showWhen =
+      field === undefined
+        ? undefined
+        : z.globalRegistry.get(unwrapField(field as z.core.$ZodType))?.showWhen;
+    if (showWhen) showWhenByKey[key] = showWhen;
+  }
+  def.requiredOptionShowWhen = showWhenByKey;
+
   return def;
 }

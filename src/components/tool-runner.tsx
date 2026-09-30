@@ -121,8 +121,18 @@ const SLOW_LOAD_MS = 15_000;
 function requiredKeysSatisfied(
   keys: readonly string[],
   values: Readonly<Record<string, unknown>>,
+  showWhenByKey: NonNullable<ToolDefinition["requiredOptionShowWhen"]> = {},
 ): boolean {
   return keys.every((key) => {
+    // A required field hidden by its `showWhen` doesn't block the run.
+    const cond = showWhenByKey[key];
+    if (cond) {
+      const current = values[cond.field];
+      const shown = Array.isArray(cond.equals)
+        ? (cond.equals as readonly unknown[]).includes(current)
+        : current === cond.equals;
+      if (!shown) return true;
+    }
     const value = values[key];
     return typeof value === "string"
       ? value.trim() !== ""
@@ -300,7 +310,11 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
    * (if any) holds for these options. */
   const optionsReady = useCallback(
     (values: Readonly<Record<string, unknown>>) =>
-      requiredKeysSatisfied(tool?.requiredOptionKeys ?? [], values) &&
+      requiredKeysSatisfied(
+        tool?.requiredOptionKeys ?? [],
+        values,
+        tool?.requiredOptionShowWhen,
+      ) &&
       (readiness?.isReady(values) ?? true),
     [tool, readiness],
   );

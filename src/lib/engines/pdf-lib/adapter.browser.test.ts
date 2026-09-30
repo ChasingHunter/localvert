@@ -414,6 +414,38 @@ describe("pdf-lib adapter", () => {
       expect(await pageSizes(part2.bytes)).toEqual([[200, 200]]);
     });
 
+    it('mode "ranges" also splits on commas: each item is its own file', async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildPdf([
+        [100, 100],
+        [150, 150],
+        [200, 200],
+      ]);
+
+      const result = await instance.run(
+        baseTask({
+          op: "split",
+          input: blobInput(doc, "doc.pdf"),
+          options: { mode: "ranges", ranges: "1, 2-3" },
+        }),
+      );
+      if (result.kind !== "files") throw new Error("expected files result");
+
+      expect(result.files.map((f) => f.name)).toEqual([
+        "doc-part-1.pdf",
+        "doc-part-2.pdf",
+      ]);
+      const part2 = result.files[1];
+      if (!part2) throw new Error("expected two parts");
+      expect(await pageSizes(part2.bytes)).toEqual([
+        [150, 150],
+        [200, 200],
+      ]);
+    });
+
     it("falls back to a generic base name for a non-blob input", async () => {
       const instance = await adapter.load({
         baseUrl: "",

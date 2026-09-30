@@ -441,6 +441,21 @@ describe("requiredFieldsSatisfied", () => {
     ).toBe(true);
   });
 
+  it("skips a required field that showWhen currently hides", () => {
+    const ranges: FieldSpec = {
+      key: "ranges",
+      label: "Ranges",
+      control: "text",
+      required: true,
+      showWhen: { field: "mode", equals: "ranges" },
+    };
+    expect(requiredFieldsSatisfied([ranges], { mode: "each" })).toBe(true);
+    expect(requiredFieldsSatisfied([ranges], { mode: "ranges" })).toBe(false);
+    expect(
+      requiredFieldsSatisfied([ranges], { mode: "ranges", ranges: "1-2" }),
+    ).toBe(true);
+  });
+
   it("only needs a non-string required value to be defined", () => {
     const count: FieldSpec = {
       key: "count",

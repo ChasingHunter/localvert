@@ -228,14 +228,14 @@ export function isFieldVisible(
  * `password` has no `.min(1)`), so this is a separate, UI-only check from
  * `validateOptions`. A non-string required value only needs to exist
  * (`undefined`/`null` fail it); a string one also can't be
- * whitespace-only. `OptionsForm` gates the run/convert action on this.
+ * whitespace-only. A required field hidden by `showWhen` is skipped. `OptionsForm` gates the run/convert action on this.
  */
 export function requiredFieldsSatisfied(
   fields: readonly FieldSpec[],
   values: Readonly<Record<string, unknown>>,
 ): boolean {
   return fields
-    .filter((field) => field.required)
+    .filter((field) => field.required && isFieldVisible(field, values))
     .every((field) => {
       const value = values[field.key];
       if (typeof value === "string") return value.trim() !== "";

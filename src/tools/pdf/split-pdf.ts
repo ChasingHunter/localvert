@@ -8,9 +8,10 @@ import { defineTool } from "@/lib/registry";
  * (`ToolRunner` only special-cases `"many-to-one"`'s submit flow).
  *
  * `ranges` is only read when `mode` is `"ranges"` — see the `pdf-lib`
- * engine's `buildParts`, which splits it on `;` into one output per segment,
- * each segment itself parsed by the shared `parsePageRange`
- * (`src/lib/registry/page-range.ts`).
+ * engine's `buildParts`, which splits it on `,` or `;` into one output per
+ * item, each item itself parsed by the shared `parsePageRange`
+ * (`src/lib/registry/page-range.ts`). It is `required` while `mode` is
+ * `"ranges"` (hidden means not required), so a dropped file waits for it.
  */
 export default defineTool({
   slug: "split-pdf",
@@ -26,14 +27,19 @@ export default defineTool({
   options: z.object({
     mode: z
       .enum(["each", "ranges"])
-      .meta({ label: "Split", control: "select" })
+      .meta({
+        label: "Split",
+        control: "select",
+        optionLabels: { each: "One file per page", ranges: "By page ranges" },
+      })
       .default("each"),
     ranges: z
       .string()
       .meta({
         label: "Page ranges",
         control: "text",
-        help: "e.g. 1-3; 4-6 makes one file per range.",
+        help: "e.g. 1-3, 4-6 makes one file per range. A page number on its own makes a one-page file.",
+        required: true,
         showWhen: { field: "mode", equals: "ranges" },
       })
       .default(""),
@@ -51,4 +57,5 @@ export default defineTool({
 
   batch: false,
   arity: "one-to-many",
+  actionLabel: "Split PDF",
 });

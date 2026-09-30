@@ -36,31 +36,41 @@ describe("parsePageRange", () => {
   });
 
   it("throws for a page number below 1", () => {
-    expect(() => parsePageRange("0", 5)).toThrow(/out of range/);
+    expect(() => parsePageRange("0", 5)).toThrow(/isn't in this PDF/);
   });
 
   it("throws for a page number above pageCount", () => {
-    expect(() => parsePageRange("6", 5)).toThrow(/out of range/);
+    expect(() => parsePageRange("6", 5)).toThrow(/isn't in this PDF/);
   });
 
   it("throws when a range's end is above pageCount", () => {
-    expect(() => parsePageRange("1-9", 5)).toThrow(/out of range/);
+    expect(() => parsePageRange("1-9", 5)).toThrow(/isn't in this PDF/);
   });
 
   it("throws when an open range starts beyond pageCount", () => {
-    expect(() => parsePageRange("8-", 3)).toThrow(/out of range/);
+    expect(() => parsePageRange("8-", 3)).toThrow(/isn't in this PDF/);
   });
 
   it("throws when a range's end is before its start", () => {
-    expect(() => parsePageRange("5-1", 5)).toThrow(/end is before start/);
+    expect(() => parsePageRange("5-1", 5)).toThrow(/runs backwards/);
   });
 
   it("throws for a malformed token", () => {
-    expect(() => parsePageRange("abc", 5)).toThrow(/invalid page range/);
+    expect(() => parsePageRange("abc", 5)).toThrow(/Couldn't read/);
   });
 
   it("throws for an empty entry between commas", () => {
-    expect(() => parsePageRange("1,,3", 5)).toThrow(/invalid page range/);
+    expect(() => parsePageRange("1,,3", 5)).toThrow(/Couldn't read/);
+  });
+
+  it("explains a bad token in plain words, with no tag or em dash", () => {
+    let message = "";
+    try {
+      parsePageRange("abc", 5);
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toBe(`Couldn't read "abc". Use page numbers like 1-3, 5.`);
   });
 
   it("throws when pageCount is less than 1", () => {
@@ -100,28 +110,28 @@ describe("parsePageOrder", () => {
   });
 
   it("throws for a page number below 1", () => {
-    expect(() => parsePageOrder("0", 5)).toThrow(/out of range/);
+    expect(() => parsePageOrder("0", 5)).toThrow(/isn't in this PDF/);
   });
 
   it("throws for a page number above pageCount", () => {
-    expect(() => parsePageOrder("6", 5)).toThrow(/out of range/);
+    expect(() => parsePageOrder("6", 5)).toThrow(/isn't in this PDF/);
   });
 
   it("throws when either end of a range is out of range", () => {
-    expect(() => parsePageOrder("1-9", 5)).toThrow(/out of range/);
-    expect(() => parsePageOrder("9-1", 5)).toThrow(/out of range/);
+    expect(() => parsePageOrder("1-9", 5)).toThrow(/isn't in this PDF/);
+    expect(() => parsePageOrder("9-1", 5)).toThrow(/isn't in this PDF/);
   });
 
   it('rejects an open-ended range ("8-") — every page must be named', () => {
-    expect(() => parsePageOrder("8-", 10)).toThrow(/invalid page order/);
+    expect(() => parsePageOrder("8-", 10)).toThrow(/Couldn't read/);
   });
 
   it("throws for a malformed token", () => {
-    expect(() => parsePageOrder("abc", 5)).toThrow(/invalid page order/);
+    expect(() => parsePageOrder("abc", 5)).toThrow(/Couldn't read/);
   });
 
   it("throws for an empty entry between commas", () => {
-    expect(() => parsePageOrder("1,,3", 5)).toThrow(/invalid page order/);
+    expect(() => parsePageOrder("1,,3", 5)).toThrow(/Couldn't read/);
   });
 
   it("throws when pageCount is less than 1", () => {

@@ -45,4 +45,5 @@ export default defineTool({
   ],
 
   batch: true,
+  actionLabel: "Delete pages",
 });
