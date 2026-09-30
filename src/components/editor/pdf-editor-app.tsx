@@ -1756,7 +1756,7 @@ function Editor({
           <span className="text-xs text-ink-muted">{fontMatchHint}</span>
         )}
 
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1 gap-y-2">
           <Button
             type="button"
             variant="outline"
