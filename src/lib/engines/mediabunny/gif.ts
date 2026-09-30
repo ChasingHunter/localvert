@@ -18,6 +18,7 @@ import { ALL_FORMATS, BlobSource, CanvasSink, Input } from "mediabunny";
 import type { EngineId } from "@/lib/registry";
 import { EngineError } from "../errors";
 import type { EngineInput, EngineTask } from "../types";
+import { fitClipToDuration } from "./trim-range";
 
 /** ADR-mandated limits (Phase 3c brief): keep the encode bounded so a
  * pathological request (a 2-hour source at 800px/30fps) can't hang the
@@ -229,6 +230,22 @@ export async function runToGif(
   const videoTrack = await input.getPrimaryVideoTrack();
   if (!videoTrack) {
     throw new EngineError("unsupported", "no video track found", { engine });
+  }
+
+  // A start past the end of the video would give "no frames"; a window that
+  // runs past the end is shortened to fit. See `trim-range.ts`.
+  const mediaDuration =
+    (await input.getDurationFromMetadata()) ?? (await input.computeDuration());
+  const fitted = fitClipToDuration(
+    options.start,
+    options.start + options.duration,
+    mediaDuration,
+  );
+  if (!fitted.ok) {
+    throw new EngineError("unsupported", fitted.message, { engine });
+  }
+  if (fitted.end !== undefined) {
+    options.duration = Math.max(0.1, fitted.end - options.start);
   }
 
   const { width, height } = scaledDimensions(

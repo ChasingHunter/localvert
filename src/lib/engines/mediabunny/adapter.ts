@@ -34,6 +34,7 @@ import { chooseAudioBitrateBps, chooseVideoBitrateBps } from "./bitrate";
 import meta from "./engine.json";
 import { runToGif } from "./gif";
 import { deleteConversionOutput, inputToBlob, runConversion } from "./output";
+import { fitClipToDuration } from "./trim-range";
 import {
   codecFamilyFor,
   dimensionsForPreset,
@@ -225,7 +226,15 @@ async function runVideo(task: EngineTask): Promise<EngineResult> {
         });
       }
     }
-    trim = { start, end: opts.end };
+    // A start past the end of the video would silently produce an empty
+    // file; an end past it is clamped. See `trim-range.ts`.
+    const fitted = fitClipToDuration(start, opts.end, source.duration);
+    if (!fitted.ok) {
+      throw new EngineError("unsupported", fitted.message, {
+        engine: metadata.id,
+      });
+    }
+    trim = { start: fitted.start, end: fitted.end };
   }
 
   // ADR-0017 (2026-09-30): compress-video's target-size and reduce-by-%
