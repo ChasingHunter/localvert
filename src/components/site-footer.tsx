@@ -1,9 +1,11 @@
+import Link from "next/link";
+
 /**
  * SERVER COMPONENT, no client JS. Deliberately small and plain: the privacy
- * fact restated once more, a link to the source (so "verify it yourself"
- * has somewhere to go) and the two font licences (ADR-0016 self-hosts
- * Fraunces and Figtree, both OFL-1.1 — attribution belongs on every page
- * that uses them, not just docs/THIRD_PARTY_LICENSES.md).
+ * fact restated once more, links to the pages that back it up (Privacy,
+ * Compress, and the /vs comparison pages) and the two font licences
+ * (ADR-0016 self-hosts Fraunces and Figtree, both OFL-1.1 — attribution
+ * belongs on every page that uses them, not just docs/THIRD_PARTY_LICENSES.md).
  */
 export function SiteFooter() {
   return (
@@ -14,6 +16,24 @@ export function SiteFooter() {
           tab while you use it and see for yourself.
         </p>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <Link
+            href="/privacy"
+            className="rounded-sm font-medium text-ink outline-none transition-colors hover:text-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+          >
+            Privacy
+          </Link>
+          <Link
+            href="/compress"
+            className="rounded-sm font-medium text-ink outline-none transition-colors hover:text-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+          >
+            Compress
+          </Link>
+          <Link
+            href="/vs/ilovepdf"
+            className="rounded-sm font-medium text-ink outline-none transition-colors hover:text-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+          >
+            Compare
+          </Link>
           <a
             href="https://github.com/ChasingHunter/localvert"
             target="_blank"
