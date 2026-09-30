@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CompressMenu } from "@/components/compress-menu";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   categoriesWithTools,
@@ -6,6 +7,9 @@ import {
 } from "@/components/tool-groups";
 import { CATEGORIES, CATEGORY_META } from "@/lib/registry";
 import { TOOLS } from "@/tools";
+
+const NAV_LINK =
+  "shrink-0 rounded-sm text-sm font-medium text-ink-muted outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas";
 
 /**
  * SERVER COMPONENT, no client JS of its own — see `PageShell`'s doc comment
@@ -17,6 +21,9 @@ import { TOOLS } from "@/tools";
 export function SiteHeader() {
   const byCategory = groupToolsByCategory(TOOLS);
   const navCategories = categoriesWithTools(CATEGORIES, byCategory);
+  const compressors = TOOLS.filter((tool) =>
+    tool.slug.startsWith("compress-"),
+  ).map(({ slug, title }) => ({ slug, title }));
 
   return (
     <header className="border-b border-border">
@@ -41,15 +48,15 @@ export function SiteHeader() {
         </div>
 
         <nav
-          aria-label="Categories"
+          aria-label="Main"
           className="flex gap-x-5 overflow-x-auto pb-0.5 sm:flex-wrap sm:gap-y-2 sm:overflow-visible sm:pb-0"
         >
+          <Link href="/#converter" className={NAV_LINK}>
+            Convert
+          </Link>
+          <CompressMenu tools={compressors} />
           {navCategories.map((category) => (
-            <Link
-              key={category}
-              href={`/${category}`}
-              className="shrink-0 rounded-sm text-sm font-medium text-ink-muted outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
-            >
+            <Link key={category} href={`/${category}`} className={NAV_LINK}>
               {CATEGORY_META[category].label}
             </Link>
           ))}
