@@ -224,7 +224,9 @@ test.describe("compress-video", () => {
     // as a `<p>` next to the download link) — proves `EngineResult`'s
     // `opfs.note` made it all the way to the job card, not just that a
     // file came out the other end.
-    await expect(page.getByText(/smallest we could make it|% of your/)).toBeVisible();
+    await expect(
+      page.getByText(/smallest we could make it|% of your/),
+    ).toBeVisible();
 
     const downloadPromise = page.waitForEvent("download");
     await downloadLink.click();
