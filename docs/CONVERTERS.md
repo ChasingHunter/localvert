@@ -138,7 +138,7 @@ them, so that column reads their own **Arity** instead.
 | `trim-video` | MP4, MOV, WebM, MKV | same container | mediabunny | Yes | Cuts to a start/end time in seconds; `end` must be greater than `start` (validated in the engine, not the option schema — see `video.ts`'s `validateTrim`) |
 | `mute-video` | MP4, MOV, WebM, MKV | same container | mediabunny | Yes | Discards the audio track; video copied without re-encode when the container/codec pair allows it |
 | `resize-video` | MP4, MOV, WebM, MKV | same container | mediabunny | Yes | `1080p`/`720p`/`480p` presets (height-based, width from aspect ratio) or a custom width/height + fit |
-| `compress-video` | MP4, MOV, WebM, MKV | same container | mediabunny | Yes | `quality` select (Low/Medium/High) plus an optional max-resolution cap |
+| `compress-video` | MP4, MOV, WebM, MKV | same container | mediabunny | Yes | Best quality (default, bits-per-pixel ceiling), custom quality (Low/Medium/High), target size (MB), or reduce by % — plus an optional max-resolution cap (ADR-0017) |
 | `rotate-video` | MP4, MOV, WebM, MKV | same container | mediabunny | Yes | Rotates 90/180/270 degrees clockwise |
 
 ## Audio

@@ -170,4 +170,54 @@ test.describe("compress-video", () => {
     const original = readFileSync(fixturePath("sample.mp4")).length;
     expect(bytes.length).toBeLessThanOrEqual(original);
   });
+
+  // ADR-0017 (2026-09-30): the "reduce by %" mode end to end. `sample.mp4`
+  // is only ~30 KB, well below even the "target size" option's own 0.1 MB
+  // minimum, so this exercises "reduce by %" instead (unit-less, works at
+  // any source size). At 30 KB, a 50% target (~15 KB) is smaller than the
+  // audio+container overhead the planner reserves before video even gets a
+  // share of the budget (`planTargetSizeBudget`'s "target unreachable"
+  // case, `src/lib/engines/mediabunny/video-planner.ts`) — this fixture is
+  // too small to prove "output <= target" honestly, so this test instead
+  // proves the mode runs end to end through the real wasm/WebCodecs path,
+  // still produces a valid, downloadable, never-bigger-than-source file,
+  // and surfaces a result note (this run's is the "unreachable" wording,
+  // not the "hit" wording a bigger real-world file would get — see
+  // ADR-0017's "Result contract"). A synthetic longer fixture would let a
+  // real "hit" assertion run instead; out of scope for this slice.
+  test("reduce-by-% mode runs end to end and never exceeds the source size", async ({
+    page,
+  }) => {
+    await page.goto("/tools/compress-video");
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles(fixturePath("sample.mp4"));
+
+    // The options form renders selects as a Radix combobox, not a native
+    // <select> (see e2e/pdf.spec.ts's identical note) — open it, pick the
+    // option.
+    await page.getByLabel("Mode", { exact: true }).click();
+    await page.getByRole("option", { name: /reduce by percentage/i }).click();
+
+    const downloadLink = page.getByRole("link", { name: "Download" });
+    await expect(downloadLink).toBeVisible({ timeout: 30_000 });
+
+    // The result-contract note (`job-card.tsx` renders `job.output.note`
+    // as a `<p>` next to the download link) — proves `EngineResult`'s
+    // `opfs.note` made it all the way to the job card, not just that a
+    // file came out the other end.
+    await expect(page.getByText(/MB/)).toBeVisible();
+
+    const downloadPromise = page.waitForEvent("download");
+    await downloadLink.click();
+    const download = await downloadPromise;
+    const path = await download.path();
+    if (!path) throw new Error("download produced no local path");
+    const bytes = readFileSync(path);
+
+    expect(bytes.length).toBeGreaterThan(0);
+    expect(hasFtypMagic(new Uint8Array(bytes.subarray(0, 12)))).toBe(true);
+    const original = readFileSync(fixturePath("sample.mp4")).length;
+    expect(bytes.length).toBeLessThanOrEqual(original);
+  });
 });
