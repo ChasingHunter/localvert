@@ -45,7 +45,8 @@ import { TOOLS } from "@/tools";
  *    the output next to the other fixtures — same pattern as `e2e/pdf.spec.ts`'s
  *    doc comment describes for `a.pdf`/`photos.pdf`.
  * 3. If neither is cheap (a real codec-encoded audio/video container like
- *    mp3/flac/mov/webm/mkv/wmv, or a proprietary raw/heic image), leave it
+ *    mp3/flac/mov/webm/mkv/wmv, or a proprietary raw/heic image: no encoder
+ *    or redistributable sample exists offline, so heic/raw stay uncovered), leave it
  *    out — it'll surface in `NO_FIXTURE` instead of being silently skipped.
  * 4. A many-to-one tool (`arity: "many-to-one"`) additionally needs a
  *    *second*, distinct fixture of the same format in
@@ -105,6 +106,10 @@ const FIXTURE_BY_FORMAT: Partial<Record<FormatId, string>> = {
   // Two-chapter EPUB 3 (spine order differs from manifest order, so the
   // epub engine's spine ordering is exercised), zipped with Python's stdlib.
   epub: "sample.epub",
+  // Minimal hand-built OOXML packages from `scripts/gen-office-fixture.ts`
+  // (fflate zip, no Office/LibreOffice involved), same as `e2e/office.spec.ts`.
+  docx: "sample.docx",
+  pptx: "sample.pptx",
 };
 
 /** A second, distinct fixture of the same format — only needed by
