@@ -12,6 +12,11 @@ import {
 import { FileOrderList } from "@/components/file-order-list";
 import { JobList } from "@/components/job-list";
 import { PrivacyNote } from "@/components/privacy-note";
+import {
+  nextRunFiles,
+  sameOptions,
+  shouldShowRerun,
+} from "@/components/rerun-logic";
 import { Button } from "@/components/ui/button";
 import { takePendingFiles } from "@/lib/converter/handoff";
 import type { ConsentPrompt } from "@/lib/engines/consent-gate";
@@ -206,6 +211,12 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
     proceed: () => void;
   } | null>(null);
   const [consentDeclined, setConsentDeclined] = useState<string | null>(null);
+  // The files (just `File` references the browser already holds) and options
+  // of the last direct run, so "Run again with new settings" can repeat it.
+  const [lastRun, setLastRun] = useState<{
+    files: AcceptedFile[];
+    options: Record<string, unknown>;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -317,6 +328,60 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
     setConsentGate(null);
   }, [consentGate]);
 
+  /** Remembers what a direct (non-staged) run used, for "Run again". */
+  const rememberRun = useCallback(
+    (files: AcceptedFile[], used: Record<string, unknown>) => {
+      const hasJobs = jobs.length > 0;
+      setLastRun((prev) => ({
+        files: nextRunFiles(
+          prev?.files ?? [],
+          files,
+          prev !== null && sameOptions(prev.options, used),
+          hasJobs,
+        ),
+        options: used,
+      }));
+    },
+    [jobs.length],
+  );
+
+  /** Routes files for a one-to-one tool: stage them if something must be
+   * filled in first, otherwise run straight away. Used by drops and by
+   * "Run again", so both honour the same staging rules. */
+  const submitOrStage = useCallback(
+    (accepted: AcceptedFile[]) => {
+      if (!tool) return;
+      if (
+        hasRequiredOptions &&
+        !requiredKeysSatisfied(tool.requiredOptionKeys ?? [], options)
+      ) {
+        // Staged, not submitted — see `handleSubmitPending`. A required
+        // field already filled in *before* the drop (e.g. password typed
+        // first) skips this and submits immediately below, same as any
+        // other tool.
+        setPendingRequiredFiles((prev) => [...prev, ...accepted]);
+        return;
+      }
+      if (shouldStageForEstimate(tool.estimateKind, options)) {
+        // Staged, not submitted — see `handleSubmitEstimateStaged` and
+        // `estimateStagedFiles`'s own doc comment above.
+        setEstimateStagedFiles((prev) => [...prev, ...accepted]);
+        return;
+      }
+      const used = options;
+      void ensureConsent(async () => {
+        const engine = await jobEngine();
+        engine.submit(
+          tool,
+          accepted.map((a) => ({ file: a.file, format: a.format })),
+          used,
+        );
+        rememberRun(accepted, used);
+      });
+    },
+    [tool, options, hasRequiredOptions, ensureConsent, rememberRun],
+  );
+
   const handleFiles = useCallback(
     (accepted: AcceptedFile[], rejectedFiles: RejectedFile[]) => {
       setRejected(rejectedFiles);
@@ -335,40 +400,9 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         setOrderedFiles((prev) => [...prev, ...accepted]);
         return;
       }
-      if (
-        hasRequiredOptions &&
-        !requiredKeysSatisfied(tool.requiredOptionKeys ?? [], options)
-      ) {
-        // Staged, not submitted — see `handleSubmitPending`. A required
-        // field already filled in *before* the drop (e.g. password typed
-        // first) skips this and submits immediately below, same as any
-        // other tool.
-        setPendingRequiredFiles((prev) => [...prev, ...accepted]);
-        return;
-      }
-      if (shouldStageForEstimate(tool.estimateKind, options)) {
-        // Staged, not submitted — see `handleSubmitEstimateStaged` and
-        // `estimateStagedFiles`'s own doc comment above.
-        setEstimateStagedFiles((prev) => [...prev, ...accepted]);
-        return;
-      }
-      void ensureConsent(async () => {
-        const engine = await jobEngine();
-        engine.submit(
-          tool,
-          accepted.map((a) => ({ file: a.file, format: a.format })),
-          options,
-        );
-      });
+      submitOrStage(accepted);
     },
-    [
-      tool,
-      options,
-      hasCropField,
-      isManyToOne,
-      hasRequiredOptions,
-      ensureConsent,
-    ],
+    [tool, hasCropField, isManyToOne, submitOrStage],
   );
 
   // ADR-0015: the Converter island hands files over in-memory rather than
@@ -430,9 +464,10 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         files.map((a) => ({ file: a.file, format: a.format })),
         options,
       );
+      rememberRun(files, options);
       setOrderedFiles([]);
     });
-  }, [tool, orderedFiles, options, ensureConsent]);
+  }, [tool, orderedFiles, options, ensureConsent, rememberRun]);
 
   const handleCropSubmit = useCallback(
     (crop: Rect) => {
@@ -475,6 +510,36 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
       jobStore.getState().remove(job.id);
     }
   }, [jobs]);
+
+  const handleRerun = useCallback(async () => {
+    if (!tool || !lastRun) return;
+    const files = lastRun.files;
+    // Same path as "Clear": cancels anything live, then `remove` revokes each
+    // result's object URL.
+    await handleClear();
+    if (isManyToOne) {
+      const used = options;
+      void ensureConsent(async () => {
+        const engine = await jobEngine();
+        engine.submit(
+          tool,
+          files.map((a) => ({ file: a.file, format: a.format })),
+          used,
+        );
+        setLastRun({ files, options: used });
+      });
+      return;
+    }
+    submitOrStage(files);
+  }, [
+    tool,
+    lastRun,
+    handleClear,
+    isManyToOne,
+    options,
+    ensureConsent,
+    submitOrStage,
+  ]);
 
   const handleDownloadAll = useCallback(async () => {
     if (!tool) return;
@@ -561,6 +626,17 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   }
 
   const hasOptions = Object.keys(tool.options.shape).length > 0;
+  const showRerun = shouldShowRerun({
+    hasOptions,
+    hasCropField,
+    lastOptions: lastRun?.options ?? null,
+    currentOptions: options,
+    jobStatuses: jobs.map((j) => j.status),
+    hasStagedFiles:
+      orderedFiles.length > 0 ||
+      pendingRequiredFiles.length > 0 ||
+      estimateStagedFiles.length > 0,
+  });
 
   return (
     // The drop area/job list stay the main panel; a tool's options sit in a
@@ -667,6 +743,14 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
             onSubmit={handleCropSubmit}
             onCancel={handleCropCancel}
           />
+        )}
+
+        {showRerun && (
+          <div>
+            <Button type="button" onClick={() => void handleRerun()}>
+              Run again with new settings
+            </Button>
+          </div>
         )}
 
         <JobList
