@@ -151,3 +151,23 @@ test.describe("mute-video", () => {
     expect(hasFtypMagic(new Uint8Array(bytes.subarray(0, 12)))).toBe(true);
   });
 });
+
+test.describe("compress-video", () => {
+  // ADR-0013's addendum (2026-09-30): the bug this test guards against —
+  // "compress-video made a file bigger" — reported against an
+  // already-compressed source, which `sample.mp4` (a tiny synthetic
+  // fixture, not efficiently encoded) can't reproduce on its own. This
+  // still proves the never-larger safety net holds end to end: whatever
+  // compress-video's encoder actually produces, the downloaded file is
+  // never bigger than what was dropped in.
+  test("compressing sample.mp4 never produces a bigger file", async ({
+    page,
+  }) => {
+    const bytes = await convertSample(page, "compress-video");
+    expect(bytes.length).toBeGreaterThan(0);
+    expect(hasFtypMagic(new Uint8Array(bytes.subarray(0, 12)))).toBe(true);
+
+    const original = readFileSync(fixturePath("sample.mp4")).length;
+    expect(bytes.length).toBeLessThanOrEqual(original);
+  });
+});
