@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FORMATS, type FormatId, sniffFormat } from "@/lib/registry";
 import { isEngineError } from "../errors";
 import type { EngineTask, RasterImage } from "../types";
@@ -299,6 +299,36 @@ describe("canvas adapter", () => {
       ).rejects.toSatisfy(
         (e: unknown) => isEngineError(e) && e.code === "aborted",
       );
+    });
+
+    it("rejects as aborted after decode without encoding when cancelled mid-run", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const controller = new AbortController();
+      const srcBlob = await sourceImage("image/png");
+      const encodeSpy = vi.spyOn(OffscreenCanvas.prototype, "convertToBlob");
+
+      try {
+        await expect(
+          instance.run(
+            baseTask({
+              input: { kind: "blob", blob: srcBlob },
+              signal: controller.signal,
+              // Progress 0.9 is reported after the draw; cancel right there.
+              onProgress: (fraction) => {
+                if (fraction >= 0.9) controller.abort();
+              },
+            }),
+          ),
+        ).rejects.toSatisfy(
+          (e: unknown) => isEngineError(e) && e.code === "aborted",
+        );
+        expect(encodeSpy).not.toHaveBeenCalled();
+      } finally {
+        encodeSpy.mockRestore();
+      }
     });
 
     it("throws EngineError('decode-failed') on garbage bytes", async () => {

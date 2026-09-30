@@ -265,7 +265,13 @@ async function runTranscode(task: EngineTask): Promise<EngineResult> {
     signal.throwIfAborted();
     onProgress?.(0.9);
 
-    return await encodeCanvas(ctx.canvas, outputFormat, options, onProgress);
+    return await encodeCanvas(
+      ctx.canvas,
+      outputFormat,
+      options,
+      signal,
+      onProgress,
+    );
   } finally {
     bitmap.close();
   }
@@ -309,6 +315,7 @@ async function runDecode(task: EngineTask): Promise<EngineResult> {
       ctx.canvas.height,
     );
 
+    signal.throwIfAborted();
     onProgress?.(1);
     return { kind: "raster", image: { width, height, data } };
   } finally {
@@ -439,7 +446,13 @@ async function runEncode(task: EngineTask): Promise<EngineResult> {
   signal.throwIfAborted();
   onProgress?.(0.5);
 
-  return await encodeCanvas(ctx.canvas, outputFormat, options, onProgress);
+  return await encodeCanvas(
+    ctx.canvas,
+    outputFormat,
+    options,
+    signal,
+    onProgress,
+  );
 }
 
 /**
@@ -483,12 +496,15 @@ async function runEncodeIco(
       // compositing, unlike jpg's opaque background.
       ctx.drawImage(sourceBitmap, offsetX, offsetY, dims.width, dims.height);
 
+      signal.throwIfAborted();
       const pngBlob = await ctx.canvas.convertToBlob({ type: "image/png" });
       const png = new Uint8Array(await pngBlob.arrayBuffer());
+      signal.throwIfAborted();
       entries.push({ size, png });
       onProgress?.(entries.length / sizes.length);
     }
 
+    signal.throwIfAborted();
     const bytes = buildIcoContainer(entries);
     return {
       kind: "bytes",
@@ -505,8 +521,11 @@ async function encodeCanvas(
   canvas: OffscreenCanvas,
   outputFormat: FormatId,
   options: Readonly<Record<string, unknown>>,
+  signal: AbortSignal,
   onProgress: ((fraction: number) => void) | undefined,
 ): Promise<EngineResult> {
+  // Cancel can land while the caller was drawing or reporting progress.
+  signal.throwIfAborted();
   const mime = FORMATS[outputFormat].mime;
   const quality =
     outputFormat === "jpg" || outputFormat === "webp"
@@ -516,6 +535,7 @@ async function encodeCanvas(
   const encoded = await canvas.convertToBlob(
     quality === undefined ? { type: mime } : { type: mime, quality },
   );
+  signal.throwIfAborted();
   // Browsers silently fall back to PNG for a type they cannot encode (e.g.
   // webp on Safari) rather than rejecting the promise.
   if (encoded.type !== mime) {
@@ -525,6 +545,7 @@ async function encodeCanvas(
   }
 
   const bytes = await encoded.arrayBuffer();
+  signal.throwIfAborted();
   onProgress?.(1);
   return { kind: "bytes", bytes, mime };
 }
@@ -563,6 +584,7 @@ async function runResize(task: EngineTask): Promise<EngineResult> {
       dims.width,
       dims.height,
     );
+    signal.throwIfAborted();
     onProgress?.(1);
     return { kind: "raster", image: { width, height, data } };
   } finally {
@@ -615,6 +637,7 @@ async function runRotate(task: EngineTask): Promise<EngineResult> {
     ctx.drawImage(sourceBitmap, -image.width / 2, -image.height / 2);
 
     const { data, width, height } = ctx.getImageData(0, 0, outWidth, outHeight);
+    signal.throwIfAborted();
     onProgress?.(1);
     return { kind: "raster", image: { width, height, data } };
   } finally {
