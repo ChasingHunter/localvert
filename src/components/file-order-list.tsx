@@ -32,6 +32,45 @@ function formatBytes(bytes: number): string {
 }
 
 /**
+ * A 40px preview of an image file, so photos named IMG_4821.jpg can still be
+ * put in order. The object URL is created on mount and revoked on unmount or
+ * when the row's file changes; the browser decodes it, this code never does.
+ * Non-images render nothing (merge-pdf rows stay names only), and so does an
+ * image the browser can't display.
+ */
+function FileThumb({ file }: { file: File }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const isImage = file.type.startsWith("image/");
+
+  useEffect(() => {
+    if (!isImage) return;
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    setFailed(false);
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+      setUrl(null);
+    };
+  }, [file, isImage]);
+
+  if (!isImage || !url || failed) return null;
+  return (
+    // A plain <img> on a blob: URL, same as crop-editor.tsx: the browser
+    // decodes it off the main thread, and next/image can't optimize it.
+    // biome-ignore lint/performance/noImgElement: blob: preview, see above.
+    <img
+      src={url}
+      alt=""
+      width={40}
+      height={40}
+      onError={() => setFailed(true)}
+      className="size-10 shrink-0 rounded-md border border-border object-cover"
+    />
+  );
+}
+
+/**
  * The ordered file list a `"many-to-one"` tool submits from (ADR-0008, e.g.
  * merge-pdf) — order is part of the result, so every row gets a drag handle
  * and an always-visible keyboard alternative (Up/Down buttons), plus remove.
@@ -84,6 +123,8 @@ export function FileOrderList({ files, onChange }: FileOrderListProps) {
           >
             <GripVerticalIcon aria-hidden="true" className="size-4" />
           </button>
+
+          <FileThumb file={f.file} />
 
           <div className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-sm font-medium text-ink">
