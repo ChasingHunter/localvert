@@ -279,18 +279,18 @@ test.describe("pdf-editor interactions", () => {
   });
 
   // Owner bug #5 -- font picker. Choosing a standard font before placing
-  // FreeText should carry through to the exported annotation's /DA. PDFium's
-  // AcroForm-style default resource names ("TiRo" for Times-Roman) are the
-  // documented convention its DA generator uses for the 14 standard fonts --
-  // not independently re-verified against a live export in this slice (this
-  // suite isn't run here; the planner runs e2e on main).
+  // FreeText should carry through to the exported annotation's /DA. Verified
+  // against a real export: PDFium writes the standard font as its own
+  // resource name, e.g. "/FXF_Times-Roman 16 Tf" (not the AcroForm "TiRo").
   test("choosing Serif (Times) sets the exported FreeText's font", async ({
     page,
   }) => {
     await openEditor(page);
 
     await page.getByRole("button", { name: "Add text" }).click();
-    await page.getByLabel("Font").selectOption({ label: "Serif (Times)" });
+    await page
+      .getByLabel("Font", { exact: true })
+      .selectOption({ label: "Serif (Times)" });
     const point = await pointOnPage(page, 0, 0.5, 0.2);
     await page.mouse.click(point.x, point.y);
     await page.keyboard.type("Localvert");
@@ -301,7 +301,7 @@ test.describe("pdf-editor interactions", () => {
       (d) => subtypeOf(d) === "FreeText",
     );
     if (!dict) throw new Error("no FreeText annotation after export");
-    expect(daOf(dict)).toMatch(/TiRo/);
+    expect(daOf(dict)).toMatch(/Times-Roman/);
   });
 
   // Owner bug #5 -- "Match document". `e2e/fixtures/pdf-editor.pdf`'s own
@@ -315,7 +315,9 @@ test.describe("pdf-editor interactions", () => {
     await openEditor(page);
 
     await page.getByRole("button", { name: "Add text" }).click();
-    await page.getByLabel("Font").selectOption({ label: "Match document" });
+    await page
+      .getByLabel("Font", { exact: true })
+      .selectOption({ label: "Match document" });
     const point = await pointOnPage(page, 0, 0.5, 0.2);
     await page.mouse.click(point.x, point.y);
     await page.keyboard.type("Localvert");
