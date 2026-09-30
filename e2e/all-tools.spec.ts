@@ -65,6 +65,10 @@ function fixturePath(name: string): string {
  * throwaway script (see this file's doc comment, item 2) and committed. */
 const FIXTURE_BY_FORMAT: Partial<Record<FormatId, string>> = {
   jpg: "photo-small.jpg",
+  // Tiny synthetic samples the engine browser tests already commit (see
+  // each folder's README), reused here rather than duplicated.
+  heic: "../../src/lib/engines/heic/fixtures/sample.heic",
+  raw: "../../src/lib/engines/libraw/fixtures/sample.dng",
   png: "not-a-jpg.png",
   webp: "sample.webp",
   avif: "sample.avif",
@@ -344,7 +348,16 @@ for (const tool of TOOLS) {
   const fixture = tool.kind === "app" ? undefined : primaryFixture(tool);
   const needsSecondFixture = tool.arity === "many-to-one";
   const secondFixture = fixture && SECOND_FIXTURE_BY_FORMAT[fixture.format];
-  const requiredKeys = tool.requiredOptionKeys ?? [];
+  // A required field hidden by its `showWhen` at the tool's defaults (e.g.
+  // split-pdf's ranges outside "ranges" mode) doesn't block the run.
+  const requiredKeys = (tool.requiredOptionKeys ?? []).filter((key) => {
+    const cond = tool.requiredOptionShowWhen?.[key];
+    if (!cond) return true;
+    const current = (tool.defaults as Record<string, unknown>)[cond.field];
+    return Array.isArray(cond.equals)
+      ? (cond.equals as readonly unknown[]).includes(current)
+      : current === cond.equals;
+  });
   const requiredValues = REQUIRED_FIELD_VALUES[tool.slug];
   const requiredScripted =
     requiredKeys.length === 0 ||
