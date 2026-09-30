@@ -9,6 +9,7 @@ import { shortToolLabel } from "@/components/tool-groups";
 import { ToolHeading } from "@/components/tool-heading";
 import { ToolRunner } from "@/components/tool-runner";
 import { CATEGORY_META } from "@/lib/registry";
+import { openGraph } from "@/lib/site";
 import { TOOLS, TOOLS_BY_SLUG } from "@/tools";
 
 /**
@@ -59,6 +60,7 @@ export async function generateMetadata({
     title: tool.title,
     description: tool.description,
     alternates: { canonical: `/tools/${tool.slug}` },
+    openGraph: openGraph(`/tools/${tool.slug}`),
   };
 }
 

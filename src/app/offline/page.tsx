@@ -3,6 +3,8 @@ import { PageShell } from "@/components/page-shell";
 
 export const metadata: Metadata = {
   title: "Offline",
+  // Offline fallback page, not real content — keep it out of search results.
+  robots: { index: false },
 };
 
 export default function OfflinePage() {

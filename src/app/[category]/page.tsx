@@ -6,6 +6,7 @@ import { Converter } from "@/components/converter/converter";
 import { PageShell } from "@/components/page-shell";
 import { groupToolsByCategory } from "@/components/tool-groups";
 import { CATEGORIES, CATEGORY_META, type Category } from "@/lib/registry";
+import { openGraph } from "@/lib/site";
 import { TOOLS } from "@/tools";
 
 /**
@@ -46,6 +47,7 @@ export async function generateMetadata({
     title: `${meta.label} tools`,
     description: meta.description,
     alternates: { canonical: `/${category}` },
+    openGraph: openGraph(`/${category}`),
   };
 }
 

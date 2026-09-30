@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import { openGraph, SITE_URL } from "@/lib/site";
 import { THEME_STORAGE_KEY } from "@/lib/theme-storage";
 import { ServiceWorker } from "./service-worker";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "Localvert · file conversion that never leaves your browser",
     template: "%s · Localvert",
@@ -13,6 +15,8 @@ export const metadata: Metadata = {
     "Convert images, video, audio, PDFs and documents entirely on your own device. No upload, no account, no server. Your files never leave your browser.",
   applicationName: "Localvert",
   robots: { index: true, follow: true },
+  alternates: { canonical: "/" },
+  openGraph: openGraph("/"),
 };
 
 export const viewport: Viewport = {
