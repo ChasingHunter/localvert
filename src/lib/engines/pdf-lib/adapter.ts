@@ -1368,7 +1368,12 @@ async function runCompressToTarget(
     mime: FORMATS.pdf.mime,
     note:
       picked.note ??
-      pdfTargetNote({ targetBytes, nonImageBytes, result: ladderResult }),
+      pdfTargetNote({
+        targetBytes,
+        nonImageBytes,
+        result: ladderResult,
+        ladder: PDF_COMPRESS_LADDER,
+      }),
   };
 }
 

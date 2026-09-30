@@ -97,4 +97,38 @@ describe("pdfTargetNote", () => {
     });
     expect(note).toBe("The smallest we could make it is about 23 MB.");
   });
+
+  it("reports already-under-target at the lightest step, not a misleading percent (real-world validation, 2026-09-30)", () => {
+    // A photo-heavy PDF whose very first (mildest) ladder rung already
+    // undershoots the target — there's no lighter step to have tried, so
+    // "29% of your target" would wrongly imply the result could have been
+    // closer.
+    const note = pdfTargetNote({
+      targetBytes: 0.9 * 1024 * 1024,
+      nonImageBytes: 0.1 * 1024 * 1024,
+      result: {
+        step: PDF_COMPRESS_LADDER[0] as (typeof PDF_COMPRESS_LADDER)[number],
+        totalBytes: 0.3 * 1024 * 1024,
+        hit: true,
+      },
+      ladder: PDF_COMPRESS_LADDER,
+    });
+    expect(note).toBe(
+      "Already under 0.9 MB at the lightest compression (0.3 MB).",
+    );
+  });
+
+  it("still reports a percent when the hit lands on a later (heavier) step", () => {
+    const note = pdfTargetNote({
+      targetBytes: 20 * 1024 * 1024,
+      nonImageBytes: 1 * 1024 * 1024,
+      result: {
+        step: PDF_COMPRESS_LADDER[2] as (typeof PDF_COMPRESS_LADDER)[number],
+        totalBytes: 19.4 * 1024 * 1024,
+        hit: true,
+      },
+      ladder: PDF_COMPRESS_LADDER,
+    });
+    expect(note).toBe("19.4 MB, 97% of your 20 MB target.");
+  });
 });

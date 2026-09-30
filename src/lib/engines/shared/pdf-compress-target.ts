@@ -83,21 +83,34 @@ export function formatMB(bytes: number): string {
 /**
  * ADR-0017's PDF "Result contract": non-image bytes alone over target
  * ("The text and fonts alone are 3.1 MB, so 2 MB isn't possible."), a hit
- * ("19.4 MB, 97% of your 20 MB target."), or unreachable even after the
- * whole ladder ("The smallest we could make it is 23 MB.").
+ * ("19.4 MB, 97% of your 20 MB target."), already under target at the
+ * ladder's own lightest step ("Already under 1 MB at the lightest
+ * compression (0.3 MB)." — real-world validation, 2026-09-30: a photo-heavy
+ * PDF whose *first* ladder rung (150 dpi, quality 0.8, the mildest this mode
+ * tries) already undershoots the target reported a misleading "29% of your
+ * target" instead, the same class of bug as the image codecs' `atCeiling`:
+ * there's no lighter step to try, so the percent implies room to improve
+ * that doesn't exist), or unreachable even after the whole ladder ("The
+ * smallest we could make it is 23 MB.").
  */
 export function pdfTargetNote(args: {
   targetBytes: number;
   nonImageBytes: number;
   result?: PdfLadderResult;
+  ladder?: readonly PdfLadderStep[];
 }): string {
-  const { targetBytes, nonImageBytes, result } = args;
+  const { targetBytes, nonImageBytes, result, ladder } = args;
   if (nonImageBytes > targetBytes) {
     return `The text and fonts alone are ${formatMB(nonImageBytes)}, so ${formatMB(targetBytes)} isn't possible.`;
   }
   if (!result?.hit) {
     const smallest = result?.totalBytes ?? nonImageBytes;
     return `The smallest we could make it is about ${formatMB(smallest)}.`;
+  }
+  const atLightestStep =
+    ladder !== undefined && ladder.length > 0 && result.step === ladder[0];
+  if (atLightestStep) {
+    return `Already under ${formatMB(targetBytes)} at the lightest compression (${formatMB(result.totalBytes)}).`;
   }
   const percentOfTarget = Math.round((result.totalBytes / targetBytes) * 100);
   return `${formatMB(result.totalBytes)}, ${percentOfTarget}% of your ${formatMB(targetBytes)} target.`;
