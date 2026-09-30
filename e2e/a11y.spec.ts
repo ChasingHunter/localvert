@@ -90,6 +90,17 @@ test.describe("accessibility", () => {
     await assertNoSeriousViolations(page);
   });
 
+  test("header search open with results", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: /Search tools/ }).click();
+    await page
+      .getByRole("combobox", { name: "Search tools" })
+      .pressSequentially("compress");
+    await expect(page.getByRole("option").first()).toBeVisible();
+    await assertNoSeriousViolations(page);
+  });
+
   test("home page with the To listbox open", async ({ page }) => {
     await page.goto("/");
 
