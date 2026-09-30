@@ -14,36 +14,14 @@ import { JobList } from "@/components/job-list";
 import { PrivacyNote } from "@/components/privacy-note";
 import { Button } from "@/components/ui/button";
 import { takePendingFiles } from "@/lib/converter/handoff";
-import {
-  downloadBytes,
-  enginesNeedingConsent,
-  grantConsent,
-  hasConsent,
-} from "@/lib/engines/consent";
+import type { ConsentPrompt } from "@/lib/engines/consent-gate";
 import { engineDisplayName } from "@/lib/engines/display-names";
-import { ENGINE_MANIFEST } from "@/lib/engines/manifest";
 import { shouldStageForEstimate } from "@/lib/estimate/stage";
 import { jobStore, selectOrderedJobs } from "@/lib/jobs/store";
 import { FORMATS, formatFromFilename } from "@/lib/registry/formats";
-import type { EngineId, ToolDefinition } from "@/lib/registry/types";
+import type { ToolDefinition } from "@/lib/registry/types";
 import { collectToBlob } from "@/lib/sinks/collect";
 import { TOOL_LOADERS } from "@/tools/loaders";
-
-/**
- * Upstream source repository per consent-gated engine, for the GPL
- * source-offer link in `EngineConsentDialog` (ADR-0002 rule 5) — kept here,
- * not in the generated manifest, since it's a UI-only concern and only
- * engines with `consent: true` ever need it.
- */
-const ENGINE_SOURCE_URLS: Partial<Record<EngineId, string>> = {
-  ffmpeg: "https://github.com/ffmpegwasm/ffmpeg.wasm",
-  // The npm package's own page — it has no repository field or README (see
-  // docs/adr/0012-libreoffice-office-to-pdf.md's provenance note). The
-  // corresponding LibreOffice *core* source (MPL-2.0's actual obligation,
-  // since this package is a wasm build of it, not a fork) is linked from
-  // that ADR instead of here — this dialog only ever shows one link.
-  libreoffice: "https://www.npmjs.com/package/@bentopdf/libreoffice-wasm",
-};
 
 /**
  * Same code-splitting reasoning as `OptionsForm`/`CropEditor` above: most
@@ -224,7 +202,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   // that was about to run — `handleConsentDownload` calls it once consent is
   // granted, with no need to re-derive which files/options it was for.
   const [consentGate, setConsentGate] = useState<{
-    engineId: EngineId;
+    prompt: ConsentPrompt;
     proceed: () => void;
   } | null>(null);
   const [consentDeclined, setConsentDeclined] = useState<string | null>(null);
@@ -292,9 +270,10 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
 
   /**
    * ADR-0002 rule 4's gate, wrapping every path below that would otherwise
-   * call `jobEngine().submit(...)` directly. `enginesNeedingConsent` reads
-   * only the (already-loaded, engine-code-free) `ENGINE_MANIFEST` — no
-   * engine adapter is touched until consent is actually granted. If every
+   * call `jobEngine().submit(...)` directly. The manifest-aware half
+   * (`consent-gate.ts`) is imported lazily here, so the engine manifest is
+   * not part of the page's first load; it reads only that engine-code-free
+   * manifest — no engine adapter is touched until consent is granted. If every
    * engine this submission might reach already has stored consent (or
    * needs none), `proceed` runs immediately and no dialog ever renders. If
    * not, `proceed` is held in `consentGate` until `handleConsentDownload`
@@ -302,42 +281,38 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
    * tool needing two consent-gated engines asks once per engine in turn.
    */
   const ensureConsent = useCallback(
-    (proceed: () => void) => {
+    async (proceed: () => void) => {
       setConsentDeclined(null);
       if (!tool) return;
-      const needed = enginesNeedingConsent(tool, ENGINE_MANIFEST);
-      const ungranted = needed.find(
-        (id) =>
-          !hasConsent(window.localStorage, id, ENGINE_MANIFEST[id].version),
+      const { pendingConsentPrompt } = await import(
+        "@/lib/engines/consent-gate"
       );
-      if (!ungranted) {
+      const prompt = pendingConsentPrompt(tool, window.localStorage);
+      if (!prompt) {
         proceed();
         return;
       }
-      setConsentGate({ engineId: ungranted, proceed });
+      setConsentGate({ prompt, proceed });
     },
     [tool],
   );
 
-  const handleConsentDownload = useCallback(() => {
+  const handleConsentDownload = useCallback(async () => {
     if (!consentGate) return;
-    const { engineId, proceed } = consentGate;
-    grantConsent(
-      window.localStorage,
-      engineId,
-      ENGINE_MANIFEST[engineId].version,
-    );
+    const { prompt, proceed } = consentGate;
+    const { grantEngineConsent } = await import("@/lib/engines/consent-gate");
+    grantEngineConsent(window.localStorage, prompt.engineId);
     setConsentGate(null);
     // Re-run the gate: covers a submission that needs more than one
     // consent-gated engine, and is a no-op (calls `proceed` straight away)
     // for the common case of exactly one.
-    ensureConsent(proceed);
+    void ensureConsent(proceed);
   }, [consentGate, ensureConsent]);
 
   const handleConsentCancel = useCallback(() => {
     if (!consentGate) return;
     setConsentDeclined(
-      `Not converted. ${engineDisplayName(consentGate.engineId)} wasn't downloaded.`,
+      `Not converted. ${engineDisplayName(consentGate.prompt.engineId)} wasn't downloaded.`,
     );
     setConsentGate(null);
   }, [consentGate]);
@@ -377,7 +352,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         setEstimateStagedFiles((prev) => [...prev, ...accepted]);
         return;
       }
-      ensureConsent(async () => {
+      void ensureConsent(async () => {
         const engine = await jobEngine();
         engine.submit(
           tool,
@@ -420,7 +395,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   const handleSubmitPending = useCallback(() => {
     if (!tool || pendingRequiredFiles.length === 0 || !canSubmit) return;
     const files = pendingRequiredFiles;
-    ensureConsent(async () => {
+    void ensureConsent(async () => {
       const engine = await jobEngine();
       engine.submit(
         tool,
@@ -434,7 +409,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   const handleSubmitEstimateStaged = useCallback(() => {
     if (!tool || estimateStagedFiles.length === 0) return;
     const files = estimateStagedFiles;
-    ensureConsent(async () => {
+    void ensureConsent(async () => {
       const engine = await jobEngine();
       engine.submit(
         tool,
@@ -448,7 +423,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   const handleSubmitOrdered = useCallback(() => {
     if (!tool || orderedFiles.length < 2) return;
     const files = orderedFiles;
-    ensureConsent(async () => {
+    void ensureConsent(async () => {
       const engine = await jobEngine();
       engine.submit(
         tool,
@@ -463,7 +438,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
     (crop: Rect) => {
       if (!tool || !cropTarget) return;
       const target = cropTarget;
-      ensureConsent(async () => {
+      void ensureConsent(async () => {
         const engine = await jobEngine();
         engine.submit(tool, [{ file: target.file, format: target.format }], {
           ...options,
@@ -727,10 +702,10 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
       {consentGate && (
         <EngineConsentDialog
           open={true}
-          engineId={consentGate.engineId}
-          license={ENGINE_MANIFEST[consentGate.engineId].license}
-          bytes={downloadBytes(ENGINE_MANIFEST[consentGate.engineId])}
-          sourceUrl={ENGINE_SOURCE_URLS[consentGate.engineId] ?? "#"}
+          engineId={consentGate.prompt.engineId}
+          license={consentGate.prompt.license}
+          bytes={consentGate.prompt.bytes}
+          sourceUrl={consentGate.prompt.sourceUrl}
           onDownload={handleConsentDownload}
           onCancel={handleConsentCancel}
         />
