@@ -29,7 +29,7 @@ export function SiteFooter() {
             Compress
           </Link>
           <Link
-            href="/vs/ilovepdf"
+            href="/vs"
             className="rounded-sm font-medium text-ink outline-none transition-colors hover:text-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
           >
             Compare

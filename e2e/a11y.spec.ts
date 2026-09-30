@@ -80,6 +80,11 @@ test.describe("accessibility", () => {
     await assertNoSeriousViolations(page);
   });
 
+  test("the comparison index", async ({ page }) => {
+    await page.goto("/vs");
+    await assertNoSeriousViolations(page);
+  });
+
   test("a comparison page", async ({ page }) => {
     await page.goto("/vs/ilovepdf");
     await assertNoSeriousViolations(page);

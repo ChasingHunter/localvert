@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { PageShell } from "@/components/page-shell";
 
@@ -37,6 +38,12 @@ export function VsPage({
     <PageShell>
       <div className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-16 lg:px-12">
         <div className="flex max-w-2xl flex-col gap-2">
+          <Link
+            href="/vs"
+            className="w-fit rounded-sm text-sm font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+          >
+            All comparisons
+          </Link>
           <h1 className="font-display text-3xl font-medium text-ink sm:text-4xl">
             Localvert vs {name}
           </h1>

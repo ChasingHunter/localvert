@@ -20,6 +20,7 @@ export const dynamic = "force-static";
 const STATIC_PAGES = [
   "/compress",
   "/privacy",
+  "/vs",
   "/vs/ilovepdf",
   "/vs/smallpdf",
   "/vs/vert",
