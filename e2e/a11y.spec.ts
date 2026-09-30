@@ -65,6 +65,26 @@ test.describe("accessibility", () => {
     await assertNoSeriousViolations(page);
   });
 
+  test("the pdf hub", async ({ page }) => {
+    await page.goto("/pdf");
+    await assertNoSeriousViolations(page);
+  });
+
+  test("the compress hub", async ({ page }) => {
+    await page.goto("/compress");
+    await assertNoSeriousViolations(page);
+  });
+
+  test("the privacy page", async ({ page }) => {
+    await page.goto("/privacy");
+    await assertNoSeriousViolations(page);
+  });
+
+  test("a comparison page", async ({ page }) => {
+    await page.goto("/vs/ilovepdf");
+    await assertNoSeriousViolations(page);
+  });
+
   test("home page with the To listbox open", async ({ page }) => {
     await page.goto("/");
 
