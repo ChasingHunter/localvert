@@ -85,7 +85,11 @@ export default defineTool({
       .meta({
         label: "Bitrate",
         control: "select",
-        unit: "kbps",
+        optionLabels: {
+          "64": "64 kbps",
+          "96": "96 kbps",
+          "128": "128 kbps",
+        },
         showWhen: { field: "mode", equals: "custom" },
       })
       .default("96"),
@@ -105,5 +109,6 @@ export default defineTool({
 
   batch: true,
   neverLarger: true,
+  actionLabel: "Compress",
   estimateKind: "audio",
 });

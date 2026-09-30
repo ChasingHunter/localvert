@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   describeFields,
   type FieldSpec,
+  formatPercent,
   isFieldVisible,
   requiredFieldsSatisfied,
   validateOptions,
@@ -100,6 +101,30 @@ describe("describeFields", () => {
     expect(describeFields(schema)).toMatchObject([
       { min: 0, max: 1, step: 0.01 },
     ]);
+  });
+
+  it("marks a unitless 0..1 slider as a percent display", () => {
+    const schema = z.object({
+      quality: z
+        .number()
+        .min(0.1)
+        .max(1)
+        .meta({ label: "Quality", control: "slider", step: 0.01 }),
+      percent: z
+        .number()
+        .min(10)
+        .max(90)
+        .meta({ label: "Reduce by", control: "slider", unit: "%" }),
+    });
+    const [quality, other] = describeFields(schema);
+    expect(quality).toMatchObject({ percent: true, min: 0.1, max: 1 });
+    expect(other).not.toHaveProperty("percent");
+  });
+
+  it("formatPercent keeps the stored 0..1 value out of the readout", () => {
+    expect(formatPercent(0.85)).toBe("85%");
+    expect(formatPercent(0.75)).toBe("75%");
+    expect(formatPercent(1)).toBe("100%");
   });
 
   it("uses an explicit meta.step over the derived (max-min)/100", () => {

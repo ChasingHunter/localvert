@@ -29,10 +29,28 @@ export default defineTool({
         "top-right",
         "top-left",
       ])
-      .meta({ label: "Position", control: "select" }),
-    format: z
-      .enum(["1", "Page 1", "Page 1 of N", "1 / N"])
-      .meta({ label: "Format", control: "select" }),
+      .meta({
+        label: "Position",
+        control: "select",
+        optionLabels: {
+          "bottom-center": "Bottom center",
+          "bottom-right": "Bottom right",
+          "bottom-left": "Bottom left",
+          "top-center": "Top center",
+          "top-right": "Top right",
+          "top-left": "Top left",
+        },
+      }),
+    format: z.enum(["1", "Page 1", "Page 1 of N", "1 / N"]).meta({
+      label: "Format",
+      control: "select",
+      optionLabels: {
+        "1": "1",
+        "Page 1": "Page 1",
+        "Page 1 of N": "Page 1 of N",
+        "1 / N": "1 / N",
+      },
+    }),
     startAt: z
       .number()
       .int()

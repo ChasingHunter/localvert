@@ -9,12 +9,23 @@ import { defineTool } from "@/lib/registry";
  * no filesystem image lookup — see that file's doc comment).
  */
 const options = z.object({
-  pageSize: z
-    .enum(["a4", "letter"])
-    .meta({ label: "Page size", control: "select" }),
-  fontSize: z
-    .enum(["10", "11", "12"])
-    .meta({ label: "Font size", control: "select", unit: "pt" }),
+  pageSize: z.enum(["a4", "letter"]).meta({
+    label: "Page size",
+    control: "select",
+    optionLabels: {
+      a4: "A4",
+      letter: "Letter",
+    },
+  }),
+  fontSize: z.enum(["10", "11", "12"]).meta({
+    label: "Font size",
+    control: "select",
+    optionLabels: {
+      "10": "10 pt",
+      "11": "11 pt",
+      "12": "12 pt",
+    },
+  }),
 });
 
 export default defineTool({

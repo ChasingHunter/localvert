@@ -28,7 +28,13 @@ export default defineTool({
   options: z.object({
     language: z
       .enum(["eng"])
-      .meta({ label: "Language", control: "select" })
+      .meta({
+        label: "Language",
+        control: "select",
+        optionLabels: {
+          eng: "English",
+        },
+      })
       .default("eng"),
   }),
   defaults: { language: "eng" },

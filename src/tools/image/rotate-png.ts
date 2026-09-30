@@ -15,7 +15,15 @@ export default defineTool({
   options: z.object({
     rotate: z
       .enum(["90", "180", "270"])
-      .meta({ label: "Rotate", control: "select" })
+      .meta({
+        label: "Rotate",
+        control: "select",
+        optionLabels: {
+          "90": "90\u00b0 clockwise",
+          "180": "180\u00b0",
+          "270": "270\u00b0 clockwise",
+        },
+      })
       .default("90"),
   }),
   defaults: { rotate: "90" },

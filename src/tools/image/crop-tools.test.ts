@@ -44,9 +44,11 @@ describe("crop-jpg", () => {
     const parsed = cropJpg.options.safeParse(cropJpg.defaults);
     expect(parsed).toMatchObject({
       success: true,
-      data: { quality: 0.85, background: "#ffffff" },
+      data: { quality: 0.85 },
     });
     expect(parsed.success && "crop" in parsed.data).toBe(false);
+    // A JPG source has no alpha, so there is no background field to fill.
+    expect(parsed.success && "background" in parsed.data).toBe(false);
   });
 
   it("accepts a valid crop rectangle alongside the quality default", () => {

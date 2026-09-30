@@ -1,5 +1,5 @@
 import { defineTool, imagePipeline } from "@/lib/registry";
-import { jpgDefaults, jpgOptions } from "../_shared-options";
+import { jpgQualityDefaults, jpgQualityOptions } from "../_shared-options";
 
 /**
  * Pipeline is `imagePipeline("heic", "jpg")` — decode via `heic-to` (ADR-0002,
@@ -7,10 +7,10 @@ import { jpgDefaults, jpgOptions } from "../_shared-options";
  * decodes a HEIC/HEIF file's *primary* image; a "Live Photo" HEIC's paired
  * video and a burst's secondary frames are never read.
  *
- * `jpgOptions`/`jpgDefaults` are shared with every other `*-to-jpg` tool
- * (see `src/tools/_shared-options.ts`) — jpg has no transparency, so
- * `background` is what a decoded HEIC's alpha (if any) composites onto
- * before encoding.
+ * `jpgQualityOptions` (`src/tools/_shared-options.ts`) is just the quality
+ * slider: phone HEIC photos are opaque, so the "background for transparent
+ * areas" field the other `*-to-jpg` tools carry would do nothing here (the
+ * encoder still fills any stray alpha with white).
  */
 export default defineTool({
   slug: "heic-to-jpg",
@@ -24,8 +24,8 @@ export default defineTool({
   produces: "jpg",
   rank: 6,
 
-  options: jpgOptions,
-  defaults: jpgDefaults,
+  options: jpgQualityOptions,
+  defaults: jpgQualityDefaults,
 
   pipeline: imagePipeline("heic", "jpg"),
 

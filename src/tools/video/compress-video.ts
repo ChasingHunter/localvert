@@ -65,6 +65,7 @@ export default defineTool({
       .meta({
         label: "Custom quality",
         control: "select",
+        optionLabels: { low: "Low", medium: "Medium", high: "High" },
         showWhen: { field: "mode", equals: "custom" },
       })
       .default("medium"),
@@ -99,6 +100,12 @@ export default defineTool({
       .meta({
         label: "Max resolution",
         control: "select",
+        optionLabels: {
+          "1080p": "1080p",
+          "720p": "720p",
+          "480p": "480p",
+          none: "Keep original",
+        },
         help: "Downscale if the source is taller than this",
       })
       .default("none"),
@@ -120,4 +127,5 @@ export default defineTool({
   // Convert button) instead of submitting on drop — see `ToolRunner`'s
   // `shouldStageForEstimate`. `best-quality`/`custom` are unaffected.
   estimateKind: "video",
+  actionLabel: "Compress",
 });

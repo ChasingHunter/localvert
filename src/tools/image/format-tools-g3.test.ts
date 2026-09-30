@@ -88,15 +88,20 @@ describe("format-tools-g3", () => {
 
   it("jpg-producing tools expose quality (0.1-1) and background options", () => {
     for (const tool of [heicToJpg, svgToJpg, tiffToJpg, psdToJpg]) {
-      expect(tool.defaults).toMatchObject({
-        quality: 0.85,
-        background: "#ffffff",
-      });
+      expect(tool.defaults).toMatchObject({ quality: 0.85 });
       const parsed = tool.options.safeParse({
         ...tool.defaults,
         quality: 0.05,
       });
       expect(parsed.success).toBe(false);
+    }
+  });
+
+  it("only sources that can be transparent offer a background fill", () => {
+    // HEIC photos are opaque, so its form is just the quality slider.
+    expect(heicToJpg.defaults).not.toHaveProperty("background");
+    for (const tool of [svgToJpg, tiffToJpg, psdToJpg]) {
+      expect(tool.defaults).toMatchObject({ background: "#ffffff" });
     }
   });
 

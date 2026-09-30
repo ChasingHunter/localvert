@@ -40,15 +40,33 @@ export default defineTool({
       .min(0.05)
       .max(1)
       .meta({ label: "Opacity", control: "slider", step: 0.05 }),
-    angle: z
-      .enum(["diagonal", "horizontal"])
-      .meta({ label: "Angle", control: "select" }),
-    color: z
-      .enum(["gray", "red", "blue", "black"])
-      .meta({ label: "Color", control: "select" }),
-    position: z
-      .enum(["center", "top", "bottom"])
-      .meta({ label: "Position", control: "select" }),
+    angle: z.enum(["diagonal", "horizontal"]).meta({
+      label: "Angle",
+      control: "select",
+      optionLabels: {
+        diagonal: "Diagonal",
+        horizontal: "Horizontal",
+      },
+    }),
+    color: z.enum(["gray", "red", "blue", "black"]).meta({
+      label: "Color",
+      control: "select",
+      optionLabels: {
+        gray: "Gray",
+        red: "Red",
+        blue: "Blue",
+        black: "Black",
+      },
+    }),
+    position: z.enum(["center", "top", "bottom"]).meta({
+      label: "Position",
+      control: "select",
+      optionLabels: {
+        center: "Center",
+        top: "Top",
+        bottom: "Bottom",
+      },
+    }),
     pages: z.string().meta({
       label: "Pages",
       control: "text",

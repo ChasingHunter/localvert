@@ -1,10 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/registry";
-import {
-  audioBitrateSelect,
-  audioChannelsSelect,
-  audioSampleRateSelect,
-} from "../_shared-options";
+import { audioBitrateSelect } from "../_shared-options";
 
 /**
  * Phase 3b, the one audio tool with a runtime-selectable output container.
@@ -41,19 +37,25 @@ export default defineTool({
   options: z.object({
     format: z
       .enum(["mp3", "m4a", "wav", "ogg", "opus"])
-      .meta({ label: "Output format", control: "select" })
+      .meta({
+        label: "Output format",
+        control: "select",
+        optionLabels: {
+          mp3: "MP3",
+          m4a: "M4A",
+          wav: "WAV",
+          ogg: "Ogg",
+          opus: "Opus",
+        },
+      })
       .default("mp3"),
     bitrate: audioBitrateSelect.meta({
       showWhen: { field: "format", equals: ["mp3", "m4a", "ogg", "opus"] },
     }),
-    sampleRate: audioSampleRateSelect,
-    channels: audioChannelsSelect,
   }),
   defaults: {
     format: "mp3",
     bitrate: "192",
-    sampleRate: "keep",
-    channels: "keep",
   },
 
   outputName: (inputName, opts) => {

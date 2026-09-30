@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   describeFields,
   type FieldSpec,
+  formatPercent,
   isFieldVisible,
   requiredFieldsSatisfied,
   validateOptions,
@@ -176,13 +177,19 @@ function OptionField({
       <div className="flex items-baseline justify-between gap-2">
         <Label htmlFor={id}>
           {field.label}
-          {field.unit && !isNumeric(field) && (
-            <span className="text-ink-muted">({field.unit})</span>
+          {/* A select's option labels carry their own unit ("192 kbps"), so
+              a unit here would render as a stray "(kbps)" beside the name. */}
+          {field.unit && !isNumeric(field) && field.control !== "select" && (
+            <span className="ml-1 text-ink-muted">({field.unit})</span>
           )}
         </Label>
         {isNumeric(field) && (
           <span className="font-mono text-sm text-ink-muted">
-            {String(value ?? "")}
+            {field.control === "slider" &&
+            field.percent &&
+            typeof value === "number"
+              ? formatPercent(value)
+              : String(value ?? "")}
             {field.unit}
           </span>
         )}

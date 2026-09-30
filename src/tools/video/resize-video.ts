@@ -21,7 +21,16 @@ export default defineTool({
   options: z.object({
     preset: z
       .enum(["1080p", "720p", "480p", "custom"])
-      .meta({ label: "Size", control: "select" })
+      .meta({
+        label: "Size",
+        control: "select",
+        optionLabels: {
+          "1080p": "1080p",
+          "720p": "720p",
+          "480p": "480p",
+          custom: "Custom size",
+        },
+      })
       .default("720p"),
     width: z
       .number()
@@ -50,6 +59,11 @@ export default defineTool({
       .meta({
         label: "Fit",
         control: "select",
+        optionLabels: {
+          contain: "Fit inside",
+          cover: "Fill and crop",
+          fill: "Stretch",
+        },
         help: "How width and height combine when both are set",
         showWhen: { field: "preset", equals: "custom" },
       })

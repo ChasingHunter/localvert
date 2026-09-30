@@ -20,7 +20,16 @@ export type FieldSpec = {
 } & (
   | { control: "switch" }
   | { control: "select"; options: readonly { value: string; label: string }[] }
-  | { control: "slider" | "number"; min: number; max: number; step: number }
+  | {
+      control: "slider" | "number";
+      min: number;
+      max: number;
+      step: number;
+      /** A unitless 0..1 slider (quality, opacity): the form shows it as a
+       * percent ("85%") while the stored value stays 0..1. See
+       * `isPercentSlider`. */
+      percent?: boolean;
+    }
   | { control: "text" }
   | { control: "password" }
   | { control: "crop" }
@@ -69,6 +78,26 @@ export function optionLabel(
   labels?: Record<string, string>,
 ): string {
   return labels?.[value] ?? value.replace(/[-_]+/g, " ");
+}
+
+/**
+ * A slider that runs 0..1 with no unit of its own is a fraction (quality,
+ * opacity), which people read as a percent. The stored value is untouched;
+ * only the form's readout changes. Documented on `OptionMeta` in
+ * `src/lib/registry/types.ts`.
+ */
+function isPercentSlider(
+  control: string,
+  min: number,
+  max: number,
+  unit: string | undefined,
+): boolean {
+  return control === "slider" && unit === undefined && min >= 0 && max === 1;
+}
+
+/** "85%" for a stored 0.85. */
+export function formatPercent(value: number): string {
+  return `${Math.round(value * 100)}%`;
 }
 
 function isFiniteBound(n: number | null): n is number {
@@ -141,7 +170,14 @@ function describeField(key: string, rawField: CoreField): FieldSpec {
       const max = maxValue ?? Number.POSITIVE_INFINITY;
       const step =
         meta.step ?? (numberField.format === "safeint" ? 1 : (max - min) / 100);
-      return { ...base, control, min, max, step };
+      return {
+        ...base,
+        control,
+        min,
+        max,
+        step,
+        ...(isPercentSlider(control, min, max, unit) && { percent: true }),
+      };
     }
     case "text": {
       if (type !== "string") {

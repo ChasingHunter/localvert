@@ -22,9 +22,15 @@ export default defineTool({
       control: "text",
       help: 'Which pages to rotate, e.g. "1-3, 5". Leave blank for every page.',
     }),
-    angle: z
-      .enum(["90", "180", "270"])
-      .meta({ label: "Rotate", control: "select" }),
+    angle: z.enum(["90", "180", "270"]).meta({
+      label: "Rotate",
+      control: "select",
+      optionLabels: {
+        "90": "90\u00b0 clockwise",
+        "180": "180\u00b0",
+        "270": "270\u00b0 clockwise",
+      },
+    }),
   }),
   defaults: { pages: "", angle: "90" },
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineTool, imagePipeline } from "@/lib/registry";
-import { jpgDefaults, jpgOptions } from "../_shared-options";
+import { jpgQualityDefaults, jpgQualityOptions } from "../_shared-options";
 
 /**
  * Pipeline is `imagePipeline("raw", "jpg")` (ADR-0007: decode -> encode),
@@ -8,13 +8,10 @@ import { jpgDefaults, jpgOptions } from "../_shared-options";
  * LGPL-2.1/CDDL-1.0 — arms-length per that ADR, same as this repo's other
  * copyleft engines) and the jsquash-jpeg/canvas preference table's encode.
  *
- * `jpgOptions`/`jpgDefaults` (`quality`/`background`) are shared with every
- * other `*-to-jpg` tool — see `src/tools/_shared-options.ts` — so the form
- * matches the rest of the family. JPG has no alpha channel, so an encode
- * with any transparency needs a fill color; camera raw decodes fully opaque
- * (libraw's demosaic never produces alpha), so `background` is a no-op here
- * in practice, but keeping the field means the form looks the same whichever
- * "-to-jpg" tool a user picks. `quality` defaults to 0.9 rather than the
+ * `jpgQualityOptions` (`src/tools/_shared-options.ts`) is just the quality
+ * slider: camera raw decodes fully opaque (libraw's demosaic never produces
+ * alpha), so the background-fill field the other `*-to-jpg` tools carry
+ * would do nothing here. `quality` defaults to 0.9 rather than the
  * shared 0.85 — camera raw is already a high-value source image, so this
  * tool biases toward preserving more of it by default.
  *
@@ -32,14 +29,14 @@ export default defineTool({
   accepts: ["raw"],
   produces: "jpg",
 
-  options: jpgOptions.extend({
+  options: jpgQualityOptions.extend({
     halfSize: z.boolean().meta({
       label: "Fast half-size decode",
       control: "switch",
       help: "Decodes at half resolution, faster and good for a quick preview.",
     }),
   }),
-  defaults: { ...jpgDefaults, quality: 0.9, halfSize: false },
+  defaults: { ...jpgQualityDefaults, quality: 0.9, halfSize: false },
 
   pipeline: imagePipeline("raw", "jpg"),
 

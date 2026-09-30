@@ -21,7 +21,15 @@ export default defineTool({
   options: z.object({
     quality: z
       .enum(["low", "medium", "high"])
-      .meta({ label: "Quality", control: "select" })
+      .meta({
+        label: "Quality",
+        control: "select",
+        optionLabels: {
+          low: "Low",
+          medium: "Medium",
+          high: "High",
+        },
+      })
       .default("medium"),
   }),
   defaults: { quality: "medium" },

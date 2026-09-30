@@ -96,4 +96,5 @@ export default defineTool({
   ],
 
   batch: true,
+  actionLabel: "Compress",
 });

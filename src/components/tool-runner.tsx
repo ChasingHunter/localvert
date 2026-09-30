@@ -861,7 +861,9 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
           onDownloadJobOutputs={handleDownloadJobOutputs}
           zippingJobId={zippingJobId}
           showSaving={
-            tool.neverLarger === true || tool.estimateKind !== undefined
+            tool.neverLarger === true ||
+            tool.estimateKind !== undefined ||
+            tool.slug.startsWith("compress-")
           }
         />
 

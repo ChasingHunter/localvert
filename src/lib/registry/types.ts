@@ -33,6 +33,12 @@ declare module "zod/v4/core" {
      */
     step?: number;
     /**
+     * Percent display is automatic, not a meta flag: a `slider` that runs
+     * 0..1 and has no `unit` (quality, opacity) reads as "85%" in the form
+     * while the stored value stays 0.85. Give a slider a `unit` to opt out.
+     * See `isPercentSlider` in `src/lib/options/fields.ts`.
+     */
+    /**
      * Display text for a `select` field's enum values, keyed by value. Any
      * value without an entry falls back to itself with separators turned
      * into spaces (`"target-size"` → "target size") — see `optionLabel` in

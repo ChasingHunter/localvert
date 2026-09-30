@@ -21,24 +21,35 @@ import { z } from "zod";
  * inside each of *those* — never files sitting in `src/tools/` itself.
  */
 
-export const jpgOptions = z.object({
+/** Just the quality knob. For JPG tools whose source can never be
+ * transparent (JPG, HEIC, camera RAW): the background fill would do nothing,
+ * so it isn't offered. The encoder falls back to white if it is absent. */
+export const jpgQualityOptions = z.object({
   quality: z
     .number()
     .min(0.1)
     .max(1)
     .meta({ label: "Quality", control: "slider", step: 0.01 })
     .default(0.85),
+});
+export const jpgQualityDefaults: z.infer<typeof jpgQualityOptions> = {
+  quality: 0.85,
+};
+
+/** Quality plus the fill for transparent areas: for sources that can carry
+ * alpha (PNG, WebP, GIF, AVIF, SVG, TIFF, ...). */
+export const jpgOptions = jpgQualityOptions.extend({
   background: z
     .string()
     .meta({
       label: "Background for transparent areas",
       control: "text",
-      help: "JPG has no transparency — this color fills any transparent pixels before encoding.",
+      help: "JPG has no transparency, so this colour fills any transparent pixels before encoding.",
     })
     .default("#ffffff"),
 });
 export const jpgDefaults: z.infer<typeof jpgOptions> = {
-  quality: 0.85,
+  ...jpgQualityDefaults,
   background: "#ffffff",
 };
 
@@ -120,6 +131,11 @@ export const icoOptions = z.object({
     .meta({
       label: "Sizes",
       control: "select",
+      optionLabels: {
+        favicon: "Favicon (16, 32, 48 px)",
+        app: "App icon (up to 256 px)",
+        single: "Single 256 px",
+      },
       help:
         '"Favicon" (16/32/48px) covers browser tabs and bookmarks. "App" ' +
         "adds the larger sizes (64–256px) desktop/taskbar icons use. " +
@@ -146,7 +162,11 @@ export const svgOptions = z.object({
     .default(16),
   detail: z
     .enum(["low", "medium", "high"])
-    .meta({ label: "Detail", control: "select" })
+    .meta({
+      label: "Detail",
+      control: "select",
+      optionLabels: { low: "Low", medium: "Medium", high: "High" },
+    })
     .default("medium"),
   maxSize: z
     .number()
@@ -190,43 +210,62 @@ export const svgDefaults: z.infer<typeof svgOptions> = {
  */
 export const audioBitrateSelect = z
   .enum(["96", "128", "192", "256", "320"])
-  .meta({ label: "Bitrate", control: "select", unit: "kbps" })
+  .meta({
+    label: "Bitrate",
+    control: "select",
+    optionLabels: {
+      "96": "96 kbps",
+      "128": "128 kbps",
+      "192": "192 kbps",
+      "256": "256 kbps",
+      "320": "320 kbps",
+    },
+  })
   .default("192");
 
+/** Sample rate and channels are only offered on `compress-audio` (where
+ * mono is a real size lever). Plain format converters don't expose them, so
+ * both stay unset and the adapter keeps the source's own values
+ * (`sampleRateOf`/`numberOfChannelsOf` treat an absent value as "keep"). */
 export const audioSampleRateSelect = z
   .enum(["keep", "44100", "48000"])
-  .meta({ label: "Sample rate", control: "select" })
+  .meta({
+    label: "Sample rate",
+    control: "select",
+    optionLabels: {
+      keep: "Keep original",
+      "44100": "44.1 kHz",
+      "48000": "48 kHz",
+    },
+  })
   .default("keep");
 
 export const audioChannelsSelect = z
   .enum(["keep", "mono", "stereo"])
-  .meta({ label: "Channels", control: "select" })
+  .meta({
+    label: "Channels",
+    control: "select",
+    optionLabels: {
+      keep: "Keep original",
+      mono: "Mono",
+      stereo: "Stereo",
+    },
+  })
   .default("keep");
 
 /** For a tool whose output codec is lossy (mp3, m4a/AAC, ogg/opus) — bitrate
- * is a real knob there. */
+ * is the one real knob there. */
 export const lossyAudioOptions = z.object({
   bitrate: audioBitrateSelect,
-  sampleRate: audioSampleRateSelect,
-  channels: audioChannelsSelect,
 });
 export const lossyAudioDefaults: z.infer<typeof lossyAudioOptions> = {
   bitrate: "192",
-  sampleRate: "keep",
-  channels: "keep",
 };
 
 /** For a tool whose output codec is lossless (wav/PCM, flac) — no bitrate
- * knob; sample rate/channels still apply (resampling/downmixing is
- * independent of the codec's own losslessness). */
-export const losslessAudioOptions = z.object({
-  sampleRate: audioSampleRateSelect,
-  channels: audioChannelsSelect,
-});
-export const losslessAudioDefaults: z.infer<typeof losslessAudioOptions> = {
-  sampleRate: "keep",
-  channels: "keep",
-};
+ * knob and nothing else worth exposing, so the form is empty. */
+export const losslessAudioOptions = z.object({});
+export const losslessAudioDefaults: z.infer<typeof losslessAudioOptions> = {};
 
 /**
  * Shared by every tool that reads a CSV file (`csv-to-json`, `csv-to-xlsx`)
@@ -241,13 +280,22 @@ export const losslessAudioDefaults: z.infer<typeof losslessAudioOptions> = {
 export const csvInputOptions = z.object({
   delimiter: z
     .enum(["auto", "comma", "semicolon", "tab"])
-    .meta({ label: "Delimiter", control: "select" })
+    .meta({
+      label: "Delimiter",
+      control: "select",
+      optionLabels: {
+        auto: "Detect automatically",
+        comma: "Comma",
+        semicolon: "Semicolon",
+        tab: "Tab",
+      },
+    })
     .default("auto"),
   dynamicTyping: z.boolean().meta({
     label: "Detect numbers and booleans",
     control: "switch",
     help:
-      'Off keeps every cell a string — on, a cell like "42" or "true" ' +
+      'Off keeps every cell a string. On, a cell like "42" or "true" ' +
       "becomes a real number or boolean.",
   }),
 });
@@ -264,12 +312,19 @@ export const csvInputDefaults: z.infer<typeof csvInputOptions> = {
  * for exactly what each value does.
  */
 export const imagesToPdfOptions = z.object({
-  pageSize: z
-    .enum(["fit", "a4", "letter"])
-    .meta({ label: "Page size", control: "select" }),
+  pageSize: z.enum(["fit", "a4", "letter"]).meta({
+    label: "Page size",
+    control: "select",
+    optionLabels: { fit: "Fit to image", a4: "A4", letter: "Letter" },
+  }),
   orientation: z.enum(["auto", "portrait", "landscape"]).meta({
     label: "Orientation",
     control: "select",
+    optionLabels: {
+      auto: "Match the image",
+      portrait: "Portrait",
+      landscape: "Landscape",
+    },
     showWhen: { field: "pageSize", equals: ["a4", "letter"] },
   }),
   margin: z

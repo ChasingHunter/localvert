@@ -1,9 +1,14 @@
 import { defineTool, imagePipeline } from "@/lib/registry";
-import { cropField, jpgDefaults, jpgOptions } from "../_shared-options";
+import {
+  cropField,
+  jpgQualityDefaults,
+  jpgQualityOptions,
+} from "../_shared-options";
 
 /**
  * Pipeline is `imagePipeline("jpg", "jpg", ["crop"])` — decode -> crop ->
- * encode (ADR-0007), the same three-step shape as `rotate-jpg.ts`. The
+ * encode (ADR-0007), the same three-step shape as `rotate-jpg.ts`. A JPG
+ * source has no alpha, so only `quality` is offered (no background). The
  * `crop` transform only has one candidate engine (`canvas` —
  * `TRANSFORM_PREFERENCE.crop` in `image-pipeline.ts`), so this always
  * resolves to `canvas` for that step regardless of which codec handles
@@ -27,8 +32,8 @@ export default defineTool({
   accepts: ["jpg"],
   produces: "jpg",
 
-  options: jpgOptions.extend({ crop: cropField }),
-  defaults: jpgDefaults,
+  options: jpgQualityOptions.extend({ crop: cropField }),
+  defaults: jpgQualityDefaults,
 
   pipeline: imagePipeline("jpg", "jpg", ["crop"]),
 
