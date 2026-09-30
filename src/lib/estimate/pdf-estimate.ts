@@ -22,13 +22,19 @@ export interface PdfEstimateProbe {
   nonImageBytes: number;
 }
 
-/** Roughly what `PDF_COMPRESS_LADDER`'s strongest rung (72 dpi, quality
- * 0.35) tends to keep of a photo's original JPEG re-encode size — DPI down
- * from a typical scan/photo's effective 150-300 to 72 is itself close to a
- * 4-9x pixel-count cut, and quality 0.35 is aggressive on top of that. Used
- * only to say "likely still too big" before a real encode — never shown as
- * the estimate itself. */
-const STRONGEST_RETENTION = 0.12;
+/** What `PDF_COMPRESS_LADDER`'s strongest rung (72 dpi, quality 0.35) tends
+ * to keep of a photo's image bytes. Deliberately on the pessimistic side
+ * (2026-09-30 audit, B8): a scan at 300 dpi keeps closer to 10%, but a PDF
+ * whose images are already at 72 dpi (nothing to downsample) kept 45%
+ * (`e2e/fixtures/photos.pdf`: 1.25 MB of image, 557 KB at the bottom of the
+ * ladder), and an estimate that promises a size the run then misses is worse
+ * than one that is a bit gloomy. */
+const STRONGEST_RETENTION = 0.45;
+
+/** "Looks reachable" is only said when the likely floor sits at least this
+ * far under the target. Between the margin and the target we say it might
+ * land a little over instead of promising. */
+const REACHABLE_MARGIN = 0.8;
 
 export function estimatePdfTargetSize(params: {
   targetBytes: number;
@@ -43,7 +49,10 @@ export function estimatePdfTargetSize(params: {
   const smallestLikely =
     probe.nonImageBytes + probe.imageBytes * STRONGEST_RETENTION;
   if (smallestLikely > targetBytes) {
-    return `${formatMB(targetBytes)} may not be reachable — the smallest we can likely make it is about ${formatAchieved(smallestLikely)}.`;
+    return `${formatMB(targetBytes)} may not be reachable. The smallest we can likely make it is about ${formatAchieved(smallestLikely)}.`;
+  }
+  if (smallestLikely > targetBytes * REACHABLE_MARGIN) {
+    return `Might land a little over ${formatMB(targetBytes)}. We'll get as close as we can.`;
   }
 
   return `About ${formatMB(targetBytes)} looks reachable.`;
