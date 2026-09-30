@@ -155,7 +155,7 @@ function pdfEstimate(
   probe: PdfProbeResult,
   sourceBytes: number,
 ): string | undefined {
-  const mode = typeof options.mode === "string" ? options.mode : "lossless";
+  const mode = typeof options.mode === "string" ? options.mode : "recommended";
   if (mode !== "target-size" && mode !== "percent") return undefined;
 
   const targetBytes =

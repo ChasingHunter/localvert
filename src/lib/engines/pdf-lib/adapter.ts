@@ -1,4 +1,4 @@
-import type { PDFDict } from "@cantoo/pdf-lib";
+﻿import type { PDFDict } from "@cantoo/pdf-lib";
 import encodeJpeg, { init as initJpegEncode } from "@jsquash/jpeg/encode";
 import {
   DEFAULT_BLANK_SIZE,
@@ -99,7 +99,7 @@ function supports(
  * initialise ahead of time, and the actual `import("@cantoo/pdf-lib")`
  * happens inside `run()`, once per call.
  *
- * ADR-0017: `compress`'s `"balanced"`/`"strong"`/`"target-size"`/`"percent"`
+ * ADR-0017: `compress`'s `"recommended"`/`"strong"`/`"target-size"`/`"percent"`
  * modes all re-encode embedded raster images with **mozjpeg** (the same
  * wasm encoder `jsquash-jpeg`'s own adapter drives) instead of the browser's
  * built-in `OffscreenCanvas.convertToBlob` JPEG encoder. mozjpeg's own wasm
@@ -744,7 +744,7 @@ async function runUnlock(task: EngineTask): Promise<EngineResult> {
 
 type CompressMode =
   | "lossless"
-  | "balanced"
+  | "recommended"
   | "strong"
   | "target-size"
   | "percent";
@@ -758,14 +758,14 @@ type CompressMode =
  * 2026-09-26 update): embedded raster images dominate PDF size, so
  * re-encoding them gets most of a dedicated PDF-compression engine's
  * benefit with no extra wasm download beyond mozjpeg, which the app already
- * ships for `compress-jpg`. `lossless` (the tool's default) never reaches
+ * ships for `compress-jpg`. `lossless` never reaches
  * this table — it does no image recompression at all, see `runCompress`.
  */
 const COMPRESS_PRESETS: Record<
   Exclude<CompressMode, "lossless" | "target-size" | "percent">,
   { dpi: number; quality: number }
 > = {
-  balanced: { dpi: 150, quality: 0.75 },
+  recommended: { dpi: 150, quality: 0.65 },
   strong: { dpi: 96, quality: 0.5 },
 };
 
@@ -1126,7 +1126,7 @@ async function compressImageStream(
 
 /**
  * Re-encodes every image XObject `doc` has, at one fixed `(dpi, quality)`
- * preset — the one loop body shared by `"balanced"`/`"strong"` (a single
+ * preset — the one loop body shared by `"recommended"`/`"strong"` (a single
  * pass) and each rung of the `"target-size"`/`"percent"` ladder (one pass
  * per rung, on a freshly-reloaded `doc` each time — see `runCompress`).
  * Computes `collectImagePlacements` once per call and looks up each image's
@@ -1209,7 +1209,7 @@ export async function probePdf(bytes: ArrayBuffer): Promise<{
 /**
  * compress (pdf -> pdf, ADR-0013 + ADR-0017): `mode: "lossless"` (the tool's
  * default) does no image recompression at all — only `pruneUnreferencedObjects`
- * plus `useObjectStreams: true`, both purely structural. `"balanced"`/
+ * plus `useObjectStreams: true`, both purely structural. `"recommended"`/
  * `"strong"` re-encode every embedded raster image at one fixed DPI/quality
  * preset (`compressAllImages`). `"target-size"`/`"percent"` walk
  * ADR-0017's ladder (`PDF_COMPRESS_LADDER`), reloading the document fresh
@@ -1233,12 +1233,14 @@ async function runCompress(
 
   const mod = await import("@cantoo/pdf-lib");
 
+  // `"balanced"` was `recommended`'s old name (ADR-0017 addendum, 2026-09-30).
+  const requested = options.mode === "balanced" ? "recommended" : options.mode;
   const mode: CompressMode =
-    options.mode === "balanced" ||
-    options.mode === "strong" ||
-    options.mode === "target-size" ||
-    options.mode === "percent"
-      ? options.mode
+    requested === "recommended" ||
+    requested === "strong" ||
+    requested === "target-size" ||
+    requested === "percent"
+      ? requested
       : "lossless";
 
   if (mode === "target-size" || mode === "percent") {

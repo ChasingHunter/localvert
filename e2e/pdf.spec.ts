@@ -352,10 +352,9 @@ test.describe("compress-pdf", () => {
 
     const inputBytes = readFileSync(fixturePath("photos.pdf"));
 
-    // ADR-0013: the default mode is now "lossless" (no image recompression),
-    // which doesn't reliably shrink an image-heavy PDF by much — select
-    // "strong" explicitly so this test still exercises (and measures) real
-    // image recompression, same as before the mode selector existed.
+    // The default mode is "recommended" (ADR-0017 addendum), which shrinks
+    // less than strong. Select "strong" explicitly so this test measures the
+    // biggest real image recompression.
     // The options form renders selects as a Radix combobox, not a native
     // <select>, so `selectOption` doesn't apply: open it, pick the option.
     await page.getByLabel("Compression", { exact: true }).click();

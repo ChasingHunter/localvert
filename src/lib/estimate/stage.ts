@@ -7,7 +7,7 @@ import type { ToolDefinition } from "@/lib/registry/types";
  * immediately (today's behaviour for every mode) would burn a real encode
  * before the user has any idea whether the number they typed makes sense.
  * "Best quality" and every fixed-preset mode (`custom`/`lossless`/
- * `balanced`/`strong`) keep submitting on drop, unchanged.
+ * `recommended`/`strong`) keep submitting on drop, unchanged.
  *
  * Kept in its own module with type-only imports: `ToolRunner` needs this on
  * every tool page's first load, and importing it from `./index` pulled all

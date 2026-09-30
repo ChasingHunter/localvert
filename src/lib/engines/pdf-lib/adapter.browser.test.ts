@@ -1049,7 +1049,7 @@ describe("pdf-lib adapter", () => {
   });
 
   describe("run: compress", () => {
-    it("shrinks an image-heavy pdf by at least 40% in balanced mode", async () => {
+    it("shrinks an image-heavy pdf by at least 40% in recommended mode", async () => {
       const instance = await adapter.load({
         baseUrl: "",
         capabilities: {} as never,
@@ -1060,7 +1060,7 @@ describe("pdf-lib adapter", () => {
         baseTask({
           op: "compress",
           input: bytesInput(doc),
-          options: { mode: "balanced" },
+          options: { mode: "recommended" },
         }),
       );
       if (result.kind !== "bytes") throw new Error("expected bytes result");
@@ -1071,7 +1071,7 @@ describe("pdf-lib adapter", () => {
       const reopened = await PDFDocument.load(result.bytes);
       expect(reopened.getPageCount()).toBe(3);
 
-      // ADR-0017: balanced targets 150 DPI — the two big JPEGs (3000x2000,
+      // ADR-0017: recommended targets 150 DPI — the two big JPEGs (3000x2000,
       // drawn at HEAVY_JPEG_DRAWN_PT) should downsample to what that implies,
       // computed via the same shared math `compressImageStream` itself uses.
       const expectedMax = targetDimensionsForImage({
@@ -1100,7 +1100,7 @@ describe("pdf-lib adapter", () => {
         baseTask({
           op: "compress",
           input: bytesInput(doc),
-          options: { mode: "balanced" },
+          options: { mode: "recommended" },
         }),
       );
       if (result.kind !== "bytes") throw new Error("expected bytes result");
@@ -1110,7 +1110,7 @@ describe("pdf-lib adapter", () => {
       expect(reopened.getPageCount()).toBe(1);
     });
 
-    it("mode lossless (the default) never recompresses embedded images", async () => {
+    it("mode lossless never recompresses embedded images", async () => {
       const instance = await adapter.load({
         baseUrl: "",
         capabilities: {} as never,
@@ -1126,11 +1126,11 @@ describe("pdf-lib adapter", () => {
       );
       if (result.kind !== "bytes") throw new Error("expected bytes result");
 
-      // No downscaling to balanced mode's 150 DPI ceiling — the fixture's
+      // No downscaling to recommended mode's 150 DPI ceiling — the fixture's
       // own embedded images are bigger than what that implies (see
       // buildImageHeavyPdf/HEAVY_JPEG_DRAWN_PT), so a mode that recompressed
       // them would shrink every width to at or below it, exactly what
-      // "run: compress"'s balanced-mode test above asserts.
+      // "run: compress"'s recommended-mode test above asserts.
       const expectedMaxIfCompressed = targetDimensionsForImage({
         pixelWidth: 3000,
         pixelHeight: 2000,
@@ -1197,7 +1197,7 @@ describe("pdf-lib adapter", () => {
 
     // ADR-0017: target-size/percent walk PDF_COMPRESS_LADDER and stop at the
     // first rung that fits, always reporting the result via `note`. Uses the
-    // same synthetic image-heavy fixture as the balanced/strong tests above
+    // same synthetic image-heavy fixture as the recommended/strong tests above
     // (this suite builds every fixture in-test rather than reading a file —
     // e2e/fixtures/photos.pdf, the brief's suggested fixture, is a similar
     // one-page noisy-JPEG PDF but isn't read here for that reason).
@@ -1207,7 +1207,7 @@ describe("pdf-lib adapter", () => {
         capabilities: {} as never,
       });
       const doc = await buildImageHeavyPdf();
-      // Comfortably reachable — balanced mode alone gets >=40% off (see the
+      // Comfortably reachable — recommended mode alone gets >=40% off (see the
       // test above), so 60% of the original is well within the ladder's
       // range without needing every rung.
       const targetBytes = doc.byteLength * 0.6;
@@ -1280,7 +1280,7 @@ describe("pdf-lib adapter", () => {
           baseTask({
             op: "compress",
             input: bytesInput(encrypted),
-            options: { mode: "balanced" },
+            options: { mode: "recommended" },
           }),
         ),
       ).rejects.toSatisfy(
@@ -1302,7 +1302,7 @@ describe("pdf-lib adapter", () => {
           baseTask({
             op: "compress",
             input: bytesInput(doc),
-            options: { mode: "balanced" },
+            options: { mode: "recommended" },
             signal: controller.signal,
           }),
         ),
