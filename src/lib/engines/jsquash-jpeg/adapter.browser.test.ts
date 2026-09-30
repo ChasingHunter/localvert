@@ -311,7 +311,14 @@ describe("jsquash-jpeg adapter", () => {
       expect(result.bytes.byteLength).toBeLessThan(srcBlob.size);
     });
 
-    it("mode strong produces a smaller file than mode visually-lossless", async () => {
+    it("mode strong never produces a larger file than mode visually-lossless (ADR-0017 perceptual search)", async () => {
+      // ADR-0017: both modes now run an SSIM-thresholded search
+      // (searchBestQuality) rather than a fixed quality number — "strong"'s
+      // looser threshold (0.999 vs 0.9999) means its required quality is
+      // always <= "visually-lossless"'s, so its output is never bigger,
+      // though on a fixture harsh enough that even max quality (95) misses
+      // both thresholds, they can tie (both fall back to the same quality
+      // 95 encode) rather than "strong" strictly winning.
       const instance = await adapter.load({
         baseUrl: baseUrl(),
         capabilities: {} as never,
@@ -339,7 +346,7 @@ describe("jsquash-jpeg adapter", () => {
       if (visuallyLossless.kind !== "bytes" || strong.kind !== "bytes") {
         throw new Error("expected bytes results");
       }
-      expect(strong.bytes.byteLength).toBeLessThan(
+      expect(strong.bytes.byteLength).toBeLessThanOrEqual(
         visuallyLossless.bytes.byteLength,
       );
     });
@@ -393,6 +400,79 @@ describe("jsquash-jpeg adapter", () => {
       );
       if (result.kind !== "bytes") throw new Error("expected a bytes result");
       expect(result.bytes.byteLength).toBeLessThanOrEqual(5 * 1024 * 1.2);
+    });
+
+    it("mode target-size's note reports the achieved size against the target (ADR-0017 result contract)", async () => {
+      const instance = await adapter.load({
+        baseUrl: baseUrl(),
+        capabilities: {} as never,
+      });
+      const srcBlob = await noisySourceJpeg();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "jpg",
+          outputFormat: "jpg",
+          options: { mode: "target-size", targetSizeKB: 5 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      // A note is always attached for target-size (either the hit/miss
+      // wording, or — if the never-larger fallback won instead — its own
+      // message). Either way, the plain "no note" case shouldn't happen.
+      expect(result.note).toBeTruthy();
+    });
+
+    it("mode percent reduces the file relative to the source, and behaves like target-size", async () => {
+      const instance = await adapter.load({
+        baseUrl: baseUrl(),
+        capabilities: {} as never,
+      });
+      const srcBlob = await noisySourceJpeg();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "jpg",
+          outputFormat: "jpg",
+          options: { mode: "percent", percent: 50 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      // 50% of the source, generously bounded (JPEG's own container/marker
+      // overhead means it won't be exactly half).
+      expect(result.bytes.byteLength).toBeLessThan(srcBlob.size * 0.7);
+    });
+
+    it("mode target-size falls back to a downscale when quality alone can't reach an aggressive target, and notes the new dimensions", async () => {
+      const instance = await adapter.load({
+        baseUrl: baseUrl(),
+        capabilities: {} as never,
+      });
+      // A larger, busier source so there's real room to shrink by resizing,
+      // and a target small enough that quality 30 (the search floor) can't
+      // reach it on its own.
+      const srcBlob = await noisySourceJpeg(400);
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "jpg",
+          outputFormat: "jpg",
+          options: { mode: "target-size", targetSizeKB: 2 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(result.bytes.byteLength).toBeLessThan(srcBlob.size);
+      // Either it found a way to hit the target via downscaling (note
+      // mentions "Resized"), or it's reporting the closest it could get —
+      // both are valid outcomes of the ADR-0017 contract, but *some* note
+      // should always be present once quality 30 alone wasn't enough.
+      expect(result.note).toBeTruthy();
     });
 
     it("never returns a file bigger than the input, and notes it when it doesn't", async () => {

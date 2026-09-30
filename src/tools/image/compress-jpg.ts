@@ -2,25 +2,27 @@ import { z } from "zod";
 import { defineTool } from "@/lib/registry";
 
 /**
- * ADR-0013: `lossless` is metadata-strip only (the `exif` engine's
+ * ADR-0013/0017: `lossless` is metadata-strip only (the `exif` engine's
  * byte-level `stripJpeg`, reused verbatim — no re-encode, pixels untouched)
  * since a JPEG's size lives almost entirely in its lossy pixel data, which a
- * metadata strip alone barely touches. `visually-lossless` is the actual
- * default: mozjpeg quality ~0.85, the commonly-cited threshold below which
- * compression artifacts start being visible on typical photos at normal
- * viewing distance — a real size win nobody has to second-guess. `strong`
- * (~0.6) and `custom` (a direct quality slider, shown only in this mode) are
- * explicit, visibly-lossy choices; `target-size` is the pre-existing
- * byte-budget behaviour, unchanged. All five run through the single
- * `jsquash-jpeg` `compress` op (`runCompress`), which never returns a file
- * bigger than the input.
+ * metadata strip alone barely touches. `visually-lossless` ("High quality",
+ * the actual default) and `strong` ("Smallest file") no longer use a fixed
+ * quality number — both run a perceptual search (`searchBestQuality`,
+ * SSIM-thresholded: 0.9999 for high quality, 0.999 for smaller) that picks
+ * the smallest integer quality that still looks the same. `custom` (a
+ * direct quality slider, shown only in this mode) is the one remaining
+ * explicit, visibly-lossy choice. `target-size` and `percent` both resolve
+ * to a byte budget and share the same search (percent = source size x
+ * (1 - percent/100), then behaves exactly like target-size, per ADR-0017).
+ * All six run through the single `jsquash-jpeg` `compress` op
+ * (`runCompress`), which never returns a file bigger than the input.
  */
 export default defineTool({
   slug: "compress-jpg",
   category: "image",
   title: "Compress JPG",
   description:
-    "Shrink a JPG. Keep high quality (the default), go smaller, set the quality yourself, or aim for a size like under 200 KB. Never makes the file bigger.",
+    "Shrink a JPG. Keep high quality (the default), go smaller, set the quality yourself, aim for a size like under 200 KB, or cut it by a percentage. Never makes the file bigger.",
 
   accepts: ["jpg"],
   produces: "jpg",
@@ -33,6 +35,7 @@ export default defineTool({
         "strong",
         "custom",
         "target-size",
+        "percent",
       ])
       .meta({
         label: "Mode",
@@ -44,6 +47,7 @@ export default defineTool({
           strong: "Smallest file",
           custom: "Custom quality",
           "target-size": "Target file size",
+          percent: "Reduce by percentage",
         },
       })
       .default("visually-lossless"),
@@ -77,8 +81,25 @@ export default defineTool({
       // shown. No precedent in the registry combines the two for that
       // reason; see docs/adr/0013-compression-modes.md.
       .default(200),
+    percent: z
+      .number()
+      .int()
+      .min(10)
+      .max(90)
+      .meta({
+        label: "Reduce by",
+        control: "slider",
+        unit: "%",
+        showWhen: { field: "mode", equals: "percent" },
+      })
+      .default(50),
   }),
-  defaults: { mode: "visually-lossless", quality: 0.75, targetSizeKB: 200 },
+  defaults: {
+    mode: "visually-lossless",
+    quality: 0.75,
+    targetSizeKB: 200,
+    percent: 50,
+  },
 
   pipeline: [
     {

@@ -7,8 +7,16 @@ import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
 import { stripJpeg } from "../exif/strip";
 import { ENGINE_MANIFEST } from "../manifest";
+import { searchBestQuality } from "../shared/best-quality-search";
+import { computeDownscaleDims } from "../shared/downscale-for-target";
+import { downscaleRasterAreaAverage } from "../shared/downscale-raster";
+import { estimateJpegQuality } from "../shared/jpeg-quality";
 import { neverLarger } from "../shared/never-larger";
+import { classifyImageKind } from "../shared/photo-or-graphic";
+import { percentToTargetBytes } from "../shared/reduce-percent";
+import { ssim } from "../shared/ssim";
 import { encodeToTargetSize } from "../shared/target-size";
+import { formatTargetSizeNote } from "../shared/target-size-note";
 import type {
   EngineAdapter,
   EngineInput,
@@ -210,7 +218,7 @@ async function runDecode(
  * upstream ever changes theirs.
  *
  * `options.targetSizeKB` (a positive number, from a tool's "Target size"
- * option) switches to `encodeToTargetSize`: it bisects `quality` instead of
+ * option) switches to `encodeToTargetSize`: it searches `quality` instead of
  * using `options.quality` directly, re-encoding until the output fits that
  * byte budget. Without it, behaviour is unchanged from before target-size
  * support existed.
@@ -294,26 +302,61 @@ type CompressMode =
   | "visually-lossless"
   | "strong"
   | "custom"
-  | "target-size";
+  | "target-size"
+  | "percent";
 
-/**
- * Fixed quality per non-custom, non-target-size mode (ADR-0013):
- * `visually-lossless` (this tool's actual default) is mozjpeg's own
- * commonly-cited "artifacts start being visible on typical photos at normal
- * viewing distance" threshold; `strong` is a real, visibly-lossy size win.
- */
-const QUALITY_BY_MODE: Record<"visually-lossless" | "strong", number> = {
-  "visually-lossless": 0.85,
-  strong: 0.6,
+/** ADR-0017: SSIM thresholds for the two perceptual-search modes. "High
+ * quality" (this tool's default, `visually-lossless`) requires the encode to
+ * be visually indistinguishable from the source; "Smaller" (`strong`) trades
+ * a little more, still-not-obviously-visible quality for a smaller file. */
+const SSIM_THRESHOLD_BY_MODE: Record<"visually-lossless" | "strong", number> = {
+  "visually-lossless": 0.9999,
+  strong: 0.999,
 };
 
+/** ADR-0017: integer quality search floor for the perceptual search — never
+ * go below 40, regardless of how low the source's own quality estimate (or
+ * the SSIM threshold) would otherwise allow. */
+const BEST_QUALITY_SEARCH_MIN = 40;
+
+/** ADR-0017: target-size/percent search floor. Below this, the ADR calls
+ * for a downscale round instead of pushing quality any lower. */
+const TARGET_SIZE_QUALITY_FLOOR = 0.3;
+
+/** At least how many resize rounds ADR-0017 allows when quality alone can't
+ * reach a target size. */
+const MAX_DOWNSCALE_ROUNDS = 2;
+
 /**
- * compress (jpg -> jpg, ADR-0013): a single byte-to-byte step, not the
- * generic ADR-0007 raster pipeline — `mode: "lossless"` never touches the
- * wasm decoder/encoder at all (a pure metadata strip via the `exif` engine's
- * `stripJpeg`, reused directly), and every other mode's never-larger check
- * needs the exact original input bytes alongside its own final result, which
- * a two-step decode/encode handoff can't give it.
+ * ADR-0017's mozjpeg chroma-subsampling heuristic: 4:2:0 (`chroma_subsample:
+ * 2`) for photos, 4:4:4 (`chroma_subsample: 1`) for graphics/text or once
+ * quality reaches 90+ (subsampling savings aren't worth it at that quality
+ * anyway). `auto_subsample: false` is required alongside this — mozjpeg's
+ * own `auto_subsample: true` default silently ignores `chroma_subsample` and
+ * picks a subsampling itself based on quality, which would make this
+ * heuristic a no-op.
+ */
+function chromaOptionsFor(
+  kind: "photo" | "graphic",
+  qualityInt: number,
+): Partial<EncodeOptions> {
+  const fullChroma = kind === "graphic" || qualityInt >= 90;
+  return { auto_subsample: false, chroma_subsample: fullChroma ? 1 : 2 };
+}
+
+/**
+ * compress (jpg -> jpg, ADR-0013/0017): a single byte-to-byte step, not the
+ * generic ADR-0007 raster pipeline — `mode: "lossless"` never even touches
+ * the wasm decoder/encoder (a pure metadata strip only), and every other
+ * mode's never-larger check needs the exact original input bytes alongside
+ * its own final result, which a two-step decode/encode handoff can't give
+ * it.
+ *
+ * `visually-lossless`/`strong` run `searchBestQuality` (SSIM-thresholded
+ * bisection, ADR-0017) instead of a fixed quality number.
+ * `target-size`/`percent` run `encodeToTargetSize` (log-size interpolation)
+ * and, if quality alone can't reach the target even at the search floor,
+ * fall back to up to `MAX_DOWNSCALE_ROUNDS` resize rounds.
  */
 async function runCompress(
   task: EngineTask,
@@ -330,7 +373,8 @@ async function runCompress(
     options.mode === "visually-lossless" ||
     options.mode === "strong" ||
     options.mode === "custom" ||
-    options.mode === "target-size"
+    options.mode === "target-size" ||
+    options.mode === "percent"
       ? options.mode
       : "lossless";
 
@@ -374,22 +418,26 @@ async function runCompress(
     { width: decoded.width, height: decoded.height, data: decoded.data },
     options.background,
   );
-  const imageData = new ImageData(
-    composited.data,
-    composited.width,
-    composited.height,
-  );
 
   await ensureEncodeReady();
   signal.throwIfAborted();
   onProgress?.(0.45);
 
   const progressive = options.progressive !== false;
-  const encodeAtQuality = async (quality: number): Promise<ArrayBuffer> => {
+  const imageKind = classifyImageKind(composited);
+
+  /** Encodes `raster` at integer mozjpeg quality `qualityInt` (0-100), with
+   * the chroma heuristic applied. */
+  const encodeRasterAtQuality = async (
+    raster: RasterImage,
+    qualityInt: number,
+  ): Promise<ArrayBuffer> => {
     try {
+      const imageData = new ImageData(raster.data, raster.width, raster.height);
       return await encodeJpeg(imageData, {
         progressive,
-        quality: Math.round(clamp01(quality) * 100),
+        quality: qualityInt,
+        ...chromaOptionsFor(imageKind, qualityInt),
       });
     } catch (e) {
       throw new EngineError("encode-failed", "failed to encode jpeg", {
@@ -400,35 +448,122 @@ async function runCompress(
   };
 
   let encoded: ArrayBuffer;
-  if (mode === "target-size") {
+  let resultNote: string | undefined;
+
+  if (mode === "target-size" || mode === "percent") {
     const targetSizeKB = options.targetSizeKB;
-    if (typeof targetSizeKB !== "number" || targetSizeKB <= 0) {
+    const targetBytes =
+      mode === "percent"
+        ? percentToTargetBytes(
+            originalBytes.byteLength,
+            typeof options.percent === "number" ? options.percent : 50,
+          )
+        : typeof targetSizeKB === "number" && targetSizeKB > 0
+          ? targetSizeKB * 1024
+          : undefined;
+
+    if (targetBytes === undefined) {
       throw new EngineError(
         "internal",
         "target-size mode requires a positive targetSizeKB",
         { engine: metadata.id },
       );
     }
+
+    let raster = composited;
+    let resizedTo: { width: number; height: number } | undefined;
     let iteration = 0;
-    const result = await encodeToTargetSize(
-      async (quality) => {
-        const out = await encodeAtQuality(quality);
+    let searchResult = await encodeToTargetSize(
+      async (q) => {
+        const out = await encodeRasterAtQuality(
+          raster,
+          Math.round(clamp01(q) * 100),
+        );
         iteration += 1;
         onProgress?.(0.45 + 0.4 * Math.min(iteration / 8, 1));
         return out;
       },
-      targetSizeKB * 1024,
-      { signal },
+      targetBytes,
+      { min: TARGET_SIZE_QUALITY_FLOOR, max: 0.95, signal },
     );
-    encoded = result.bytes;
+
+    // ADR-0017: quality alone hit its floor and still overshoots — try
+    // shrinking the raster instead, up to MAX_DOWNSCALE_ROUNDS times.
+    for (
+      let round = 0;
+      round < MAX_DOWNSCALE_ROUNDS &&
+      !searchResult.hitTarget &&
+      searchResult.quality <= TARGET_SIZE_QUALITY_FLOOR + 1e-9;
+      round++
+    ) {
+      const dims = computeDownscaleDims(
+        raster.width,
+        raster.height,
+        searchResult.bytes.byteLength,
+        targetBytes,
+      );
+      if (dims.width >= raster.width && dims.height >= raster.height) break;
+
+      raster = downscaleRasterAreaAverage(raster, dims.width, dims.height);
+      resizedTo = { width: raster.width, height: raster.height };
+
+      searchResult = await encodeToTargetSize(
+        async (q) => {
+          const out = await encodeRasterAtQuality(
+            raster,
+            Math.round(clamp01(q) * 100),
+          );
+          iteration += 1;
+          onProgress?.(0.45 + 0.4 * Math.min(iteration / 8, 1));
+          return out;
+        },
+        targetBytes,
+        { min: TARGET_SIZE_QUALITY_FLOOR, max: 0.95, signal },
+      );
+    }
+
+    encoded = searchResult.bytes;
+    resultNote = formatTargetSizeNote({
+      achievedBytes: encoded.byteLength,
+      targetBytes,
+      hitTarget: searchResult.hitTarget,
+      resizedTo,
+    });
+  } else if (mode === "visually-lossless" || mode === "strong") {
+    const sourceQuality = estimateJpegQuality(new Uint8Array(originalBytes));
+    const maxQuality = Math.min(95, sourceQuality ?? 95);
+    const minQuality = Math.min(BEST_QUALITY_SEARCH_MIN, maxQuality);
+
+    let iteration = 0;
+    const searchResult = await searchBestQuality(
+      composited,
+      async (qualityInt) => {
+        const out = await encodeRasterAtQuality(composited, qualityInt);
+        iteration += 1;
+        onProgress?.(0.45 + 0.4 * Math.min(iteration / 6, 1));
+        return out;
+      },
+      async (bytes) => {
+        const id = await decodeJpeg(bytes);
+        return { width: id.width, height: id.height, data: id.data };
+      },
+      (a, b) => ssim(a, b),
+      {
+        min: minQuality,
+        max: maxQuality,
+        threshold: SSIM_THRESHOLD_BY_MODE[mode],
+        signal,
+      },
+    );
+    encoded = searchResult.bytes;
   } else {
+    // custom
     const quality =
-      mode === "custom"
-        ? typeof options.quality === "number"
-          ? options.quality
-          : 0.75
-        : QUALITY_BY_MODE[mode];
-    encoded = await encodeAtQuality(quality);
+      typeof options.quality === "number" ? options.quality : 0.75;
+    encoded = await encodeRasterAtQuality(
+      composited,
+      Math.round(clamp01(quality) * 100),
+    );
   }
   onProgress?.(0.9);
 
@@ -453,7 +588,11 @@ async function runCompress(
     kind: "bytes",
     bytes: picked.bytes,
     mime: FORMATS.jpg.mime,
-    ...(picked.note ? { note: picked.note } : {}),
+    ...(picked.note
+      ? { note: picked.note }
+      : resultNote
+        ? { note: resultNote }
+        : {}),
   };
 }
 
