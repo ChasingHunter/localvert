@@ -1,4 +1,5 @@
 import type { PDFDict } from "@cantoo/pdf-lib";
+import encodeJpeg, { init as initJpegEncode } from "@jsquash/jpeg/encode";
 import {
   DEFAULT_BLANK_SIZE,
   normalizeRotation,
@@ -15,6 +16,17 @@ import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
 import { ENGINE_MANIFEST } from "../manifest";
 import { neverLarger } from "../shared/never-larger";
+import {
+  PDF_COMPRESS_LADDER,
+  pdfTargetNote,
+  runCompressLadder,
+} from "../shared/pdf-compress-target";
+import {
+  type ContentOp,
+  largestPlacement,
+  scanImagePlacements,
+  targetDimensionsForImage,
+} from "../shared/pdf-image-dpi";
 import type {
   EngineAdapter,
   EngineInput,
@@ -85,9 +97,42 @@ function supports(
  * ships inside its own lazily-imported worker chunk; `load()` has nothing to
  * initialise ahead of time, and the actual `import("@cantoo/pdf-lib")`
  * happens inside `run()`, once per call.
+ *
+ * ADR-0017: `compress`'s `"balanced"`/`"strong"`/`"target-size"`/`"percent"`
+ * modes all re-encode embedded raster images with **mozjpeg** (the same
+ * wasm encoder `jsquash-jpeg`'s own adapter drives) instead of the browser's
+ * built-in `OffscreenCanvas.convertToBlob` JPEG encoder. mozjpeg's own wasm
+ * is that *other* engine's asset, not this one's (`pdf-lib` is "bundled" —
+ * no assets of its own per `engine.json`), so `ensureMozjpegEncodeReady`
+ * below fetches it from `ENGINE_MANIFEST["jsquash-jpeg"].baseUrl` directly —
+ * a plain string, independent of this engine's own `ctx.baseUrl` — memoising
+ * the compiled module across every `compress` call this loaded instance
+ * handles, same pattern as `jsquash-jpeg/adapter.ts`'s own `ensureEncodeReady`.
  */
 async function load(_ctx: EngineLoadContext): Promise<EngineInstance> {
-  return { run, dispose };
+  let mozjpegEncodeReady: Promise<void> | undefined;
+
+  function ensureMozjpegEncodeReady(): Promise<void> {
+    if (!mozjpegEncodeReady) {
+      mozjpegEncodeReady = (async () => {
+        if (typeof WebAssembly.compileStreaming !== "function") {
+          throw new EngineError(
+            "unsupported",
+            "WebAssembly.compileStreaming is not available",
+            { engine: metadata.id },
+          );
+        }
+        const baseUrl = ENGINE_MANIFEST["jsquash-jpeg"].baseUrl;
+        const module = await WebAssembly.compileStreaming(
+          fetch(`${baseUrl}mozjpeg_enc.wasm`),
+        );
+        await initJpegEncode(module);
+      })();
+    }
+    return mozjpegEncodeReady;
+  }
+
+  return { run: (task) => run(task, ensureMozjpegEncodeReady), dispose };
 }
 
 /** Reads one `EngineInput` down to an `ArrayBuffer` — what `PDFDocument.load`
@@ -131,7 +176,10 @@ function inputBaseName(input: EngineInput, fallback: string): string {
   return dot <= 0 ? name : name.slice(0, dot);
 }
 
-async function run(task: EngineTask): Promise<EngineResult> {
+async function run(
+  task: EngineTask,
+  ensureMozjpegEncodeReady: () => Promise<void>,
+): Promise<EngineResult> {
   try {
     switch (task.op) {
       case "merge":
@@ -155,7 +203,7 @@ async function run(task: EngineTask): Promise<EngineResult> {
       case "unlock":
         return await runUnlock(task);
       case "compress":
-        return await runCompress(task);
+        return await runCompress(task, ensureMozjpegEncodeReady);
       case "flatten":
         return await runFlatten(task);
       case "replacePagesWithImages":
@@ -693,23 +741,31 @@ async function runUnlock(task: EngineTask): Promise<EngineResult> {
   };
 }
 
-type CompressMode = "lossless" | "balanced" | "strong";
+type CompressMode =
+  | "lossless"
+  | "balanced"
+  | "strong"
+  | "target-size"
+  | "percent";
 
 /**
- * Downscale ceiling (long side, px) and JPEG re-encode quality per non-
- * lossless mode (ADR-0013) — ADR-0008 rejected PDFium for this (see docs/
- * adr/0008's 2026-09-26 update): embedded raster images dominate PDF size,
- * so re-encoding them through OffscreenCanvas gets most of a dedicated
- * PDF-compression engine's benefit with no extra wasm download. `lossless`
- * (the tool's default) never reaches this table — it does no image
- * recompression at all, see `runCompress`.
+ * DPI ceiling + mozjpeg re-encode quality per fixed non-lossless mode
+ * (ADR-0017 supersedes ADR-0013's old fixed-pixel `maxDim` table with an
+ * effective-DPI ceiling instead — see `compressAllImages`/
+ * `collectImagePlacements` below for how "effective DPI" is measured).
+ * ADR-0008 rejected PDFium for this re-encode (see docs/adr/0008's
+ * 2026-09-26 update): embedded raster images dominate PDF size, so
+ * re-encoding them gets most of a dedicated PDF-compression engine's
+ * benefit with no extra wasm download beyond mozjpeg, which the app already
+ * ships for `compress-jpg`. `lossless` (the tool's default) never reaches
+ * this table — it does no image recompression at all, see `runCompress`.
  */
 const COMPRESS_PRESETS: Record<
-  Exclude<CompressMode, "lossless">,
-  { maxDim: number; quality: number }
+  Exclude<CompressMode, "lossless" | "target-size" | "percent">,
+  { dpi: number; quality: number }
 > = {
-  strong: { maxDim: 1000, quality: 0.5 },
-  balanced: { maxDim: 1600, quality: 0.7 },
+  balanced: { dpi: 150, quality: 0.75 },
+  strong: { dpi: 96, quality: 0.5 },
 };
 
 /**
@@ -730,8 +786,8 @@ function pruneUnreferencedObjects(
   mod: PdfLibModule,
   doc: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>,
 ): void {
-  type PDFRefLike = ReturnType<PdfLibModule["PDFRef"]["of"]>;
-
+  // `PDFRefLike` (module scope, near `findImageStreams`) is the same alias
+  // used here.
   const reachable = new Set<string>();
   const stack: PDFRefLike[] = [];
 
@@ -768,16 +824,25 @@ function pruneUnreferencedObjects(
 }
 
 type RawStream = ReturnType<PdfLibModule["PDFRawStream"]["of"]>;
+type PDFRefLike = ReturnType<PdfLibModule["PDFRef"]["of"]>;
+
+interface ImageStreamEntry {
+  ref: PDFRefLike;
+  stream: RawStream;
+}
 
 /** Every indirect object in `doc` whose dict says `/Subtype /Image` and
  * which is a `PDFRawStream` (the shape every image XObject this adapter can
- * touch takes — a `PDFContentStream` is never an image). */
+ * touch takes — a `PDFContentStream` is never an image). Carries each
+ * object's own `ref` alongside its stream (ADR-0017) — `collectImagePlacements`
+ * below keys its drawn-size map by that same ref, so `compressAllImages` can
+ * look a placement up for the exact object it's about to re-encode. */
 function findImageStreams(
   mod: PdfLibModule,
   doc: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>,
-): RawStream[] {
-  const streams: RawStream[] = [];
-  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+): ImageStreamEntry[] {
+  const streams: ImageStreamEntry[] = [];
+  for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
     if (!(obj instanceof mod.PDFRawStream)) continue;
     const subtype = obj.dict.lookupMaybe(
       mod.PDFName.of("Subtype"),
@@ -787,9 +852,115 @@ function findImageStreams(
     // token, e.g. `"/Image"`) — unlike `decodeText()`, which strips it. Every
     // name comparison in this file matches on the encoded form, same as
     // `stripOrphanedEncryptDict`'s existing `"/Standard"` check above.
-    if (subtype?.asString() === "/Image") streams.push(obj);
+    if (subtype?.asString() === "/Image") streams.push({ ref, stream: obj });
   }
   return streams;
+}
+
+function concatUint8Arrays(parts: readonly Uint8Array[]): Uint8Array {
+  const total = parts.reduce((sum, p) => sum + p.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const p of parts) {
+    out.set(p, offset);
+    offset += p.length;
+  }
+  return out;
+}
+
+/** The biggest `MediaBox` (by area) across every page — the "page size as an
+ * upper bound" fallback ADR-0017 calls for when an image's placement can't
+ * be determined (`collectImagePlacements` found no `Do` naming it anywhere:
+ * a Form XObject painting it, or a resource dict entry with no matching
+ * `Do` at all). US Letter is the fallback for the never-really-happens case
+ * of a zero-page document. */
+function largestPageSize(
+  doc: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>,
+): { widthPt: number; heightPt: number } {
+  let best = { widthPt: 612, heightPt: 792 };
+  let bestArea = 0;
+  for (const page of doc.getPages()) {
+    const { width, height } = page.getSize();
+    const area = width * height;
+    if (area > bestArea) {
+      bestArea = area;
+      best = { widthPt: width, heightPt: height };
+    }
+  }
+  return best;
+}
+
+/**
+ * ADR-0017's "effective DPI" data collection: for every page, maps each
+ * `/XObject` resource name to the ref it names, decodes that page's content
+ * stream(s), and runs the shared `scanImagePlacements` (q/Q/cm/Do tracking —
+ * see `shared/pdf-image-dpi.ts` for the CTM math and its documented limits,
+ * chiefly no recursion into Form XObjects) over the result. Placements of
+ * the same shared image across multiple pages (or multiple `Do`s on one
+ * page) all merge under that image's one ref key, keyed by `PDFRef.toString()`
+ * exactly like `pruneUnreferencedObjects`'s own reachability set above.
+ */
+function collectImagePlacements(
+  mod: PdfLibModule,
+  doc: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>,
+): Map<string, { widthPt: number; heightPt: number }[]> {
+  const merged = new Map<string, { widthPt: number; heightPt: number }[]>();
+
+  for (const page of doc.getPages()) {
+    const resources = page.node.Resources();
+    const xObjectDict = resources?.lookupMaybe(
+      mod.PDFName.of("XObject"),
+      mod.PDFDict,
+    );
+    if (!xObjectDict) continue;
+
+    const nameToKey = new Map<string, string>();
+    for (const [name, value] of xObjectDict.entries()) {
+      if (value instanceof mod.PDFRef) {
+        nameToKey.set(name.decodeText(), value.toString());
+      }
+    }
+    if (nameToKey.size === 0) continue;
+
+    const contentsObj = page.node.Contents();
+    const contentStreams: RawStream[] = [];
+    if (contentsObj instanceof mod.PDFArray) {
+      for (let i = 0; i < contentsObj.size(); i++) {
+        const entry = contentsObj.lookupMaybe(i, mod.PDFRawStream);
+        if (entry) contentStreams.push(entry);
+      }
+    } else if (contentsObj instanceof mod.PDFRawStream) {
+      contentStreams.push(contentsObj);
+    }
+    if (contentStreams.length === 0) continue;
+
+    const decoded: Uint8Array[] = [];
+    for (const s of contentStreams) {
+      try {
+        decoded.push(mod.decodePDFRawStream(s).decode());
+      } catch {
+        // An undecodable content stream on this page — its images just fall
+        // back to the page-size upper bound instead of failing the compress.
+      }
+    }
+    if (decoded.length === 0) continue;
+
+    let operations: ContentOp[];
+    try {
+      operations = mod.parseContentStream(
+        concatUint8Arrays(decoded),
+      ) as unknown as ContentOp[];
+    } catch {
+      continue;
+    }
+
+    const placements = scanImagePlacements(operations, nameToKey);
+    for (const [key, list] of placements) {
+      merged.set(key, (merged.get(key) ?? []).concat(list));
+    }
+  }
+
+  return merged;
 }
 
 /**
@@ -865,12 +1036,21 @@ async function decodeImageStream(
   }
 }
 
+/** In [0,1] on our side, mozjpeg (via jSquash) wants 0..100 — same
+ * conversion `jsquash-jpeg/adapter.ts`'s own `runEncode`/`runCompress` use. */
+function clamp01(n: number): number {
+  return Math.min(1, Math.max(0, n));
+}
+
 /**
  * Re-encodes one image XObject in place (mutates `stream`'s dict and
  * contents via `updateContents` — never replaces the indirect object
- * itself), downscaling to `preset.maxDim` on the long side and re-encoding
- * as JPEG at `preset.quality`. Only commits the swap when the result is
- * actually smaller than what was there — this is the same "never make a
+ * itself) with **mozjpeg** (ADR-0017 — `OffscreenCanvas.convertToBlob`'s
+ * built-in JPEG encoder no longer runs at all in `compress-pdf`), sized by
+ * `target`'s drawn size and `dpi` ceiling via the shared
+ * `targetDimensionsForImage` (effective-DPI downsampling — never upsamples
+ * an image already at or under `dpi`). Only commits the swap when the
+ * result is actually smaller than what was there — the same "never make a
  * file bigger" rule `runCompress` applies to the whole document, applied
  * per image so a handful of already-tiny icons can't get bloated by a
  * re-encode while the big photos next to them shrink.
@@ -878,7 +1058,13 @@ async function decodeImageStream(
 async function compressImageStream(
   mod: PdfLibModule,
   stream: RawStream,
-  preset: { maxDim: number; quality: number },
+  target: {
+    drawnWidthPt: number;
+    drawnHeightPt: number;
+    dpi: number;
+    quality: number;
+  },
+  ensureMozjpegEncodeReady: () => Promise<void>,
 ): Promise<boolean> {
   const dict = stream.dict;
   const widthObj = dict.lookupMaybe(mod.PDFName.of("Width"), mod.PDFNumber);
@@ -892,10 +1078,13 @@ async function compressImageStream(
   if (!bitmap) return false;
 
   try {
-    const longSide = Math.max(bitmap.width, bitmap.height);
-    const scale = longSide > preset.maxDim ? preset.maxDim / longSide : 1;
-    const outWidth = Math.max(1, Math.round(bitmap.width * scale));
-    const outHeight = Math.max(1, Math.round(bitmap.height * scale));
+    const { width: outWidth, height: outHeight } = targetDimensionsForImage({
+      pixelWidth: bitmap.width,
+      pixelHeight: bitmap.height,
+      drawnWidthPt: target.drawnWidthPt,
+      drawnHeightPt: target.drawnHeightPt,
+      targetDpi: target.dpi,
+    });
 
     const canvas = new OffscreenCanvas(outWidth, outHeight);
     const ctx = canvas.getContext("2d");
@@ -903,12 +1092,21 @@ async function compressImageStream(
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(bitmap, 0, 0, outWidth, outHeight);
+    const imageData = ctx.getImageData(0, 0, outWidth, outHeight);
 
-    const encoded = await canvas.convertToBlob({
-      type: "image/jpeg",
-      quality: preset.quality,
-    });
-    const newBytes = new Uint8Array(await encoded.arrayBuffer());
+    await ensureMozjpegEncodeReady();
+    let encoded: ArrayBuffer;
+    try {
+      encoded = await encodeJpeg(imageData, {
+        quality: Math.round(clamp01(target.quality) * 100),
+      });
+    } catch (e) {
+      throw new EngineError("encode-failed", "failed to encode jpeg", {
+        engine: metadata.id,
+        cause: e,
+      });
+    }
+    const newBytes = new Uint8Array(encoded);
 
     if (newBytes.length >= stream.getContentsSize()) return false;
 
@@ -926,18 +1124,83 @@ async function compressImageStream(
 }
 
 /**
- * compress (pdf -> pdf, ADR-0013): `mode: "lossless"` (the tool's default)
- * does no image recompression at all — only `pruneUnreferencedObjects` plus
- * `useObjectStreams: true`, both purely structural. `"balanced"`/`"strong"`
- * additionally re-encode every embedded raster image this adapter knows how
- * to decode (see `decodeImageStream`). Every mode goes through the shared
- * `neverLarger` (ADR-0013) against the exact original input bytes — a
- * text-only PDF (no images to shrink, nothing to prune) can come back a few
- * bytes larger after a round trip through `PDFDocument.save`, lossless mode
- * included. An encrypted input is `"unsupported"` via the shared `loadPdf`
- * helper, same as merge/split/rotate/extract — unlocking is its own tool.
+ * Re-encodes every image XObject `doc` has, at one fixed `(dpi, quality)`
+ * preset — the one loop body shared by `"balanced"`/`"strong"` (a single
+ * pass) and each rung of the `"target-size"`/`"percent"` ladder (one pass
+ * per rung, on a freshly-reloaded `doc` each time — see `runCompress`).
+ * Computes `collectImagePlacements` once per call and looks up each image's
+ * own largest on-page placement (`largestPlacement`) by its ref, falling
+ * back to `largestPageSize` when no placement was found at all (ADR-0017's
+ * documented fallback for an image this scan couldn't place).
  */
-async function runCompress(task: EngineTask): Promise<EngineResult> {
+async function compressAllImages(
+  mod: PdfLibModule,
+  doc: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>,
+  preset: { dpi: number; quality: number },
+  ensureMozjpegEncodeReady: () => Promise<void>,
+  signal: AbortSignal,
+  onProgress?: (fraction: number) => void,
+): Promise<void> {
+  const images = findImageStreams(mod, doc);
+  if (images.length === 0) {
+    onProgress?.(1);
+    return;
+  }
+
+  const placementsByRef = collectImagePlacements(mod, doc);
+  const fallback = largestPageSize(doc);
+
+  for (let i = 0; i < images.length; i++) {
+    signal.throwIfAborted();
+    const entry = images[i];
+    if (!entry) continue; // unreachable: guarded by `i < images.length`
+    const { ref, stream } = entry;
+    const placements = placementsByRef.get(ref.toString());
+    const drawn = (placements && largestPlacement(placements)) ?? fallback;
+    await compressImageStream(
+      mod,
+      stream,
+      {
+        drawnWidthPt: drawn.widthPt,
+        drawnHeightPt: drawn.heightPt,
+        dpi: preset.dpi,
+        quality: preset.quality,
+      },
+      ensureMozjpegEncodeReady,
+    );
+    onProgress?.((i + 1) / images.length);
+  }
+}
+
+/** Total raw content-stream bytes of every image XObject `doc` has —
+ * `runCompress`'s target-size/percent modes subtract this from the whole
+ * file's size to estimate "everything that isn't an image" (ADR-0017:
+ * "subtract non-image bytes first"). An approximation (structural overhead
+ * like the xref table isn't attributed to either side), same spirit as
+ * every other estimate in this ADR. */
+function totalImageBytes(images: readonly ImageStreamEntry[]): number {
+  return images.reduce((sum, { stream }) => sum + stream.getContentsSize(), 0);
+}
+
+/**
+ * compress (pdf -> pdf, ADR-0013 + ADR-0017): `mode: "lossless"` (the tool's
+ * default) does no image recompression at all — only `pruneUnreferencedObjects`
+ * plus `useObjectStreams: true`, both purely structural. `"balanced"`/
+ * `"strong"` re-encode every embedded raster image at one fixed DPI/quality
+ * preset (`compressAllImages`). `"target-size"`/`"percent"` walk
+ * ADR-0017's ladder (`PDF_COMPRESS_LADDER`), reloading the document fresh
+ * for each rung — every rung has to start from the original pixels, since
+ * `compressImageStream` mutates its stream in place and an already-JPEG-
+ * compressed image re-encoded again would lose quality twice over — and
+ * stopping at the first rung whose real `doc.save()` size fits the target.
+ * Every mode goes through the shared `neverLarger` (ADR-0013) against the
+ * exact original input bytes. An encrypted input is `"unsupported"` via the
+ * shared `loadPdf` helper, same as merge/split/rotate/extract.
+ */
+async function runCompress(
+  task: EngineTask,
+  ensureMozjpegEncodeReady: () => Promise<void>,
+): Promise<EngineResult> {
   const { input, options, signal, onProgress } = task;
   signal.throwIfAborted();
 
@@ -945,12 +1208,28 @@ async function runCompress(task: EngineTask): Promise<EngineResult> {
   signal.throwIfAborted();
 
   const mod = await import("@cantoo/pdf-lib");
-  const doc = await loadPdf(mod, bytes);
 
   const mode: CompressMode =
-    options.mode === "balanced" || options.mode === "strong"
+    options.mode === "balanced" ||
+    options.mode === "strong" ||
+    options.mode === "target-size" ||
+    options.mode === "percent"
       ? options.mode
       : "lossless";
+
+  if (mode === "target-size" || mode === "percent") {
+    return runCompressToTarget(
+      mod,
+      bytes,
+      mode,
+      options,
+      signal,
+      onProgress,
+      ensureMozjpegEncodeReady,
+    );
+  }
+
+  const doc = await loadPdf(mod, bytes);
 
   if (mode === "lossless") {
     try {
@@ -961,19 +1240,14 @@ async function runCompress(task: EngineTask): Promise<EngineResult> {
     }
     onProgress?.(0.8);
   } else {
-    const preset = COMPRESS_PRESETS[mode];
-    const images = findImageStreams(mod, doc);
-    if (images.length === 0) {
-      onProgress?.(0.8);
-    } else {
-      for (let i = 0; i < images.length; i++) {
-        signal.throwIfAborted();
-        const stream = images[i];
-        if (!stream) continue; // unreachable: guarded by `i < images.length`
-        await compressImageStream(mod, stream, preset);
-        onProgress?.(0.8 * ((i + 1) / images.length));
-      }
-    }
+    await compressAllImages(
+      mod,
+      doc,
+      COMPRESS_PRESETS[mode],
+      ensureMozjpegEncodeReady,
+      signal,
+      (fraction) => onProgress?.(0.8 * fraction),
+    );
   }
 
   const outBytes = await doc.save({ useObjectStreams: true });
@@ -985,6 +1259,116 @@ async function runCompress(task: EngineTask): Promise<EngineResult> {
     bytes: picked.bytes,
     mime: FORMATS.pdf.mime,
     ...(picked.note ? { note: picked.note } : {}),
+  };
+}
+
+function targetSizeMBOf(options: Readonly<Record<string, unknown>>): number {
+  const value = options.targetSizeMB;
+  return typeof value === "number" && value > 0 ? value : 10;
+}
+
+function percentOf(options: Readonly<Record<string, unknown>>): number {
+  const value = options.percent;
+  return typeof value === "number" && value > 0 && value < 100 ? value : 50;
+}
+
+/**
+ * `"target-size"`/`"percent"` (ADR-0017): both reduce to the same byte
+ * budget (percent maps to `target = source * (1 - p)`, exactly like the
+ * audio side's `targetBytesForPercent`). Subtracts the estimated non-image
+ * bytes first — if those alone exceed the target, there's no ladder rung
+ * that can help, and the note says so outright. Otherwise walks
+ * `PDF_COMPRESS_LADDER` via `runCompressLadder`, reloading the document
+ * fresh for each rung (see `runCompress`'s doc comment for why), and always
+ * finishes through `neverLarger` against the exact original bytes — a
+ * ladder rung is only ever a real, measured `doc.save()` output, so the
+ * final never-larger check is the same safety net every other mode gets,
+ * not a special case.
+ */
+async function runCompressToTarget(
+  mod: PdfLibModule,
+  bytes: ArrayBuffer,
+  mode: "target-size" | "percent",
+  options: Readonly<Record<string, unknown>>,
+  signal: AbortSignal,
+  onProgress: ((fraction: number) => void) | undefined,
+  ensureMozjpegEncodeReady: () => Promise<void>,
+): Promise<EngineResult> {
+  const baselineDoc = await loadPdf(mod, bytes);
+  const nonImageBytes =
+    bytes.byteLength - totalImageBytes(findImageStreams(mod, baselineDoc));
+
+  const targetBytes =
+    mode === "target-size"
+      ? targetSizeMBOf(options) * 1024 * 1024
+      : bytes.byteLength * (1 - percentOf(options) / 100);
+
+  if (nonImageBytes > targetBytes) {
+    // Still worth the free, purely-structural lossless prune — it just
+    // can't be expected to close a gap this large on its own.
+    try {
+      pruneUnreferencedObjects(mod, baselineDoc);
+    } catch {
+      // Best-effort — see the identical catch in `runCompress`.
+    }
+    const outBytes = await baselineDoc.save({ useObjectStreams: true });
+    onProgress?.(1);
+    const picked = neverLarger(bytes, outBytes.slice().buffer as ArrayBuffer);
+    return {
+      kind: "bytes",
+      bytes: picked.bytes,
+      mime: FORMATS.pdf.mime,
+      note: pdfTargetNote({ targetBytes, nonImageBytes }),
+    };
+  }
+
+  // `runCompressLadder` only reports which step won and its byte count, not
+  // the bytes themselves (it's a pure module — see its own doc comment) —
+  // this keeps each rung's actual output keyed by the step object identity
+  // (every entry in `PDF_COMPRESS_LADDER` is distinct), so the winning
+  // rung's real bytes can be recovered after the loop, whether it "hit" or
+  // was merely the smallest of an all-overshooting ladder.
+  const bytesByStep = new Map<
+    (typeof PDF_COMPRESS_LADDER)[number],
+    ArrayBuffer
+  >();
+  let stepIndex = 0;
+  const ladderResult = await runCompressLadder(
+    PDF_COMPRESS_LADDER,
+    targetBytes,
+    async (step) => {
+      signal.throwIfAborted();
+      const doc = await loadPdf(mod, bytes);
+      try {
+        pruneUnreferencedObjects(mod, doc);
+      } catch {
+        // Best-effort — see the identical catch in `runCompress`.
+      }
+      await compressAllImages(
+        mod,
+        doc,
+        step,
+        ensureMozjpegEncodeReady,
+        signal,
+        undefined,
+      );
+      const outBytes = await doc.save({ useObjectStreams: true });
+      bytesByStep.set(step, outBytes.slice().buffer as ArrayBuffer);
+      stepIndex++;
+      onProgress?.(stepIndex / PDF_COMPRESS_LADDER.length);
+      return outBytes.byteLength;
+    },
+  );
+
+  const winningBytes = bytesByStep.get(ladderResult.step) ?? bytes;
+  const picked = neverLarger(bytes, winningBytes);
+  return {
+    kind: "bytes",
+    bytes: picked.bytes,
+    mime: FORMATS.pdf.mime,
+    note:
+      picked.note ??
+      pdfTargetNote({ targetBytes, nonImageBytes, result: ladderResult }),
   };
 }
 

@@ -2,21 +2,24 @@ import { z } from "zod";
 import { defineTool } from "@/lib/registry";
 
 /**
- * ADR-0013: `mode` drives the pdf-lib engine's `runCompress` — `lossless`
- * (the default) re-saves with object streams and drops unreferenced objects,
- * no image recompression at all; `balanced`/`strong` additionally re-encode
- * embedded raster images per `COMPRESS_PRESETS` (downscale ceiling + JPEG
- * quality). `describeFields`'s `control: "select"` always renders an enum
- * value as its own label (there's no separate label map — see
- * `src/lib/options/fields.ts`'s `describeField`), so the values themselves
- * are the words a user sees.
+ * ADR-0013 + ADR-0017: `mode` drives the pdf-lib engine's `runCompress` —
+ * `lossless` (the default) re-saves with object streams and drops
+ * unreferenced objects, no image recompression at all; `balanced`/`strong`
+ * additionally re-encode embedded raster images with mozjpeg, downsampled by
+ * effective DPI (`COMPRESS_PRESETS` in the adapter). `target-size`/`percent`
+ * (ADR-0017) walk a DPI/quality ladder and stop at the first result that
+ * fits a byte budget — a direct MB figure, or a fraction of the source size.
+ * `describeFields`'s `control: "select"` always renders an enum value as its
+ * own label (there's no separate label map — see `src/lib/options/
+ * fields.ts`'s `describeField`), so the values themselves are the words a
+ * user sees; `optionLabels` overrides that for `mode` below.
  */
 export default defineTool({
   slug: "compress-pdf",
   category: "pdf",
   title: "Compress PDF",
   description:
-    "Shrink a PDF. The default is lossless, and stronger modes also shrink the images inside. Never makes the file bigger.",
+    "Shrink a PDF. Pick a target size or percentage, or a fixed compression level. Never makes the file bigger.",
 
   accepts: ["pdf"],
   produces: "pdf",
@@ -24,20 +27,45 @@ export default defineTool({
 
   options: z.object({
     mode: z
-      .enum(["lossless", "balanced", "strong"])
+      .enum(["lossless", "balanced", "strong", "target-size", "percent"])
       .meta({
         label: "Compression",
         control: "select",
-        help: '"Lossless" only restructures the file; "strong" also shrinks images the most.',
+        help: '"Lossless" only restructures the file; the other modes also shrink the images inside.',
         optionLabels: {
           lossless: "Lossless (no quality loss)",
           balanced: "Balanced",
           strong: "Strong (smallest)",
+          "target-size": "Target file size",
+          percent: "Reduce by percentage",
         },
       })
       .default("lossless"),
+    targetSizeMB: z
+      .number()
+      .min(0.1)
+      .max(2000)
+      .meta({
+        label: "Target size",
+        control: "number",
+        unit: "MB",
+        showWhen: { field: "mode", equals: "target-size" },
+      })
+      .default(10),
+    percent: z
+      .number()
+      .int()
+      .min(10)
+      .max(90)
+      .meta({
+        label: "Reduce by",
+        control: "slider",
+        unit: "%",
+        showWhen: { field: "mode", equals: "percent" },
+      })
+      .default(50),
   }),
-  defaults: { mode: "lossless" },
+  defaults: { mode: "lossless", targetSizeMB: 10, percent: 50 },
 
   pipeline: [
     {

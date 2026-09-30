@@ -110,7 +110,7 @@ them, so that column reads their own **Arity** instead.
 | `add-page-numbers` | PDF | PDF | pdf-lib | one-to-one (batch) | Draws a page number label per selected page; six corner/edge positions, 4 formats, `startAt`; numbering counts every page even when only some are labeled |
 | `protect-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Adds a password, AES-256; printing/copying permissions |
 | `unlock-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Removes a password you already have |
-| `compress-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | `mode`: lossless (default, object streams + unreferenced-object pruning, no image recompression), balanced, or strong (re-encodes embedded images smaller); never bigger than the input |
+| `compress-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | `mode`: lossless (default, object streams + unreferenced-object pruning, no image recompression), balanced/strong (mozjpeg re-encode, downsampled by effective DPI — 150 dpi/q0.75 and 96 dpi/q0.5), target size (MB) or reduce-by-% (walks a DPI/quality ladder, stops at the first result that fits); result note says what was reached; never bigger than the input |
 | `flatten-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Bakes form field values into the page, removes the fields; no-op on a PDF with no form |
 | `sanitize-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Strips metadata/JavaScript/attachments (default on), web links (default off) |
 | `pdf-to-jpg` | PDF | JPEG | pdfjs | one-to-many | One JPG per selected page (`pages`, `dpi`, `quality`); white background |
@@ -145,7 +145,7 @@ them, so that column reads their own **Arity** instead.
 
 | Slug | From | To | Engine | Batch | Notes |
 |---|---|---|---|---|---|
-| `compress-audio` | MP3, M4A, Ogg, Opus | same format | mediabunny | Yes | Lossy: re-encodes at a lower bitrate (64/96/128 kbps, default 96) with an optional mono downmix. Never bigger than the input |
+| `compress-audio` | MP3, M4A, Ogg, Opus | same format | mediabunny | Yes | Lossy: best quality (default, a bitrate below the source's own), target size (MB), reduce by %, or a custom bitrate (64/96/128 kbps); target/percent modes snap to a rate the codec accepts and downmix to mono below the stereo floor. Result note says what was reached. Never bigger than the input |
 | `extract-audio` | MP4, MOV, WebM | MP3 (default), M4A, WAV, Ogg or Opus | mediabunny | Yes | Discards the video track; output format selectable; bitrate/sample rate/channels configurable for lossy targets |
 | `wav-to-mp3` | WAV | MP3 | mediabunny | Yes | Bitrate/sample rate/channels; MP3 uses the LAME wasm encoder (`@mediabunny/mp3-encoder`), no browser encodes MP3 natively |
 | `mp3-to-wav` | MP3 | WAV | mediabunny | Yes | Sample rate/channels only — PCM has no bitrate knob |

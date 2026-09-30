@@ -9,6 +9,7 @@ import {
 } from "@cantoo/pdf-lib";
 import { describe, expect, it } from "vitest";
 import { isEngineError } from "../errors";
+import { targetDimensionsForImage } from "../shared/pdf-image-dpi";
 import type { EngineInput, EngineTask } from "../types";
 import adapter from "./adapter";
 
@@ -111,23 +112,45 @@ async function noisyJpegBytes(
   return blob.arrayBuffer();
 }
 
+/** Both big noisy JPEGs' drawn size on their page (ADR-0017 fixture note
+ * below) — exported so every test that needs to know "what DPI-based
+ * downsampling should produce here" computes it from the real shared math
+ * instead of a hand-picked magic number. */
+const HEAVY_JPEG_DRAWN_PT = { width: 600, height: 400 };
+
 /** Two big noisy JPEGs (the bulk of the file) plus one small PNG, each its
  * own page — the compression fixture `runCompress`'s browser tests measure
- * against. */
+ * against. Each JPEG is drawn at `HEAVY_JPEG_DRAWN_PT` (roughly 8.3x5.6in),
+ * not 1:1 pixel-to-point — ADR-0017's compress modes downsample by
+ * *effective DPI* (pixels ÷ the size actually drawn on the page), and a 1:1
+ * drawing is already exactly 72 DPI, at or below every ladder/preset target,
+ * so it would never trigger any downsampling at all. This fixture's ~360
+ * DPI (3000px / 8.3in) is representative of a real "photo dropped into a
+ * document" PDF instead. */
 async function buildImageHeavyPdf(): Promise<ArrayBuffer> {
   const doc = await PDFDocument.create();
   const jpg1 = await doc.embedJpg(await noisyJpegBytes(3000, 2000, 0.95));
   const jpg2 = await doc.embedJpg(await noisyJpegBytes(3000, 2000, 0.95));
   const png = await doc.embedPng(await imageBytes(200, 150, "image/png"));
-  for (const image of [jpg1, jpg2, png]) {
-    const page = doc.addPage([image.width, image.height]);
+  for (const image of [jpg1, jpg2]) {
+    const page = doc.addPage([
+      HEAVY_JPEG_DRAWN_PT.width,
+      HEAVY_JPEG_DRAWN_PT.height,
+    ]);
     page.drawImage(image, {
       x: 0,
       y: 0,
-      width: image.width,
-      height: image.height,
+      width: HEAVY_JPEG_DRAWN_PT.width,
+      height: HEAVY_JPEG_DRAWN_PT.height,
     });
   }
+  const pngPage = doc.addPage([png.width, png.height]);
+  pngPage.drawImage(png, {
+    x: 0,
+    y: 0,
+    width: png.width,
+    height: png.height,
+  });
   const bytes = await doc.save();
   return bytes.slice().buffer;
 }
@@ -1048,10 +1071,21 @@ describe("pdf-lib adapter", () => {
       const reopened = await PDFDocument.load(result.bytes);
       expect(reopened.getPageCount()).toBe(3);
 
+      // ADR-0017: balanced targets 150 DPI — the two big JPEGs (3000x2000,
+      // drawn at HEAVY_JPEG_DRAWN_PT) should downsample to what that implies,
+      // computed via the same shared math `compressImageStream` itself uses.
+      const expectedMax = targetDimensionsForImage({
+        pixelWidth: 3000,
+        pixelHeight: 2000,
+        drawnWidthPt: HEAVY_JPEG_DRAWN_PT.width,
+        drawnHeightPt: HEAVY_JPEG_DRAWN_PT.height,
+        targetDpi: 150,
+      }).width;
+
       const widths = await imageWidths(result.bytes);
       expect(widths.length).toBeGreaterThan(0);
       for (const width of widths) {
-        expect(width).toBeLessThanOrEqual(1600);
+        expect(width).toBeLessThanOrEqual(expectedMax);
       }
     }, 30000);
 
@@ -1092,14 +1126,21 @@ describe("pdf-lib adapter", () => {
       );
       if (result.kind !== "bytes") throw new Error("expected bytes result");
 
-      // No downscaling to COMPRESS_PRESETS.balanced's 1600px ceiling — the
-      // fixture's own embedded images are bigger than that (see
-      // buildImageHeavyPdf), so a mode that recompressed them would shrink
-      // every width to <= 1600, exactly what "run: compress"'s balanced-mode
-      // test above asserts.
+      // No downscaling to balanced mode's 150 DPI ceiling — the fixture's
+      // own embedded images are bigger than what that implies (see
+      // buildImageHeavyPdf/HEAVY_JPEG_DRAWN_PT), so a mode that recompressed
+      // them would shrink every width to at or below it, exactly what
+      // "run: compress"'s balanced-mode test above asserts.
+      const expectedMaxIfCompressed = targetDimensionsForImage({
+        pixelWidth: 3000,
+        pixelHeight: 2000,
+        drawnWidthPt: HEAVY_JPEG_DRAWN_PT.width,
+        drawnHeightPt: HEAVY_JPEG_DRAWN_PT.height,
+        targetDpi: 150,
+      }).width;
       const widths = await imageWidths(result.bytes);
       expect(widths.length).toBeGreaterThan(0);
-      expect(widths.some((w) => w > 1600)).toBe(true);
+      expect(widths.some((w) => w > expectedMaxIfCompressed)).toBe(true);
 
       const reopened = await PDFDocument.load(result.bytes);
       expect(reopened.getPageCount()).toBe(3);
@@ -1153,6 +1194,77 @@ describe("pdf-lib adapter", () => {
       if (result.kind !== "bytes") throw new Error("expected bytes result");
       expect(result.bytes.byteLength).toBeLessThanOrEqual(doc.byteLength);
     });
+
+    // ADR-0017: target-size/percent walk PDF_COMPRESS_LADDER and stop at the
+    // first rung that fits, always reporting the result via `note`. Uses the
+    // same synthetic image-heavy fixture as the balanced/strong tests above
+    // (this suite builds every fixture in-test rather than reading a file —
+    // e2e/fixtures/photos.pdf, the brief's suggested fixture, is a similar
+    // one-page noisy-JPEG PDF but isn't read here for that reason).
+    it("mode target-size lands at or under the target and says so", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildImageHeavyPdf();
+      // Comfortably reachable — balanced mode alone gets >=40% off (see the
+      // test above), so 60% of the original is well within the ladder's
+      // range without needing every rung.
+      const targetBytes = doc.byteLength * 0.6;
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: bytesInput(doc),
+          options: {
+            mode: "target-size",
+            targetSizeMB: targetBytes / (1024 * 1024),
+          },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+
+      expect(result.bytes.byteLength).toBeLessThanOrEqual(targetBytes);
+      expect(result.note).toMatch(/MB.*target/);
+    }, 30000);
+
+    it("mode target-size reports an unreachable target honestly", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildImageHeavyPdf();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: bytesInput(doc),
+          // 1 KB is far below anything this fixture's ladder can reach.
+          options: { mode: "target-size", targetSizeMB: 1 / 1024 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(result.note).toMatch(/smallest we could make it|isn't possible/);
+    }, 30000);
+
+    it("mode percent reduces by roughly the requested fraction", async () => {
+      const instance = await adapter.load({
+        baseUrl: "",
+        capabilities: {} as never,
+      });
+      const doc = await buildImageHeavyPdf();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: bytesInput(doc),
+          options: { mode: "percent", percent: 50 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected bytes result");
+      expect(result.bytes.byteLength).toBeLessThanOrEqual(doc.byteLength * 0.5);
+      expect(result.note).toBeDefined();
+    }, 30000);
 
     it("throws EngineError('unsupported') for a password-protected PDF", async () => {
       const instance = await adapter.load({
