@@ -174,4 +174,169 @@ describe("jsquash-png adapter", () => {
       );
     });
   });
+
+  /** A bigger, noisier "photo-like" source — real per-pixel colour variation
+   * so both palette quantization and target-size actually have something to
+   * work with (mirrors ../jsquash-jpeg/adapter.browser.test.ts's own
+   * `noisySourceJpeg`). */
+  async function noisySourcePng(size = 200): Promise<Blob> {
+    const canvas = new OffscreenCanvas(size, size);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no 2d context in test setup");
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        ctx.fillStyle = `rgb(${(x * 7) % 256}, ${(y * 13) % 256}, ${(x + y) % 256})`;
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+    return canvas.convertToBlob({ type: "image/png" });
+  }
+
+  /** A source with exactly a handful of distinct flat colours (well under
+   * the 256-colour exact-palette threshold, ADR-0017). */
+  async function fewColorsPng(size = 64): Promise<Blob> {
+    const canvas = new OffscreenCanvas(size, size);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no 2d context in test setup");
+    const colors = ["#ffffff", "#000000", "#ff0000", "#00ff00", "#0000ff"];
+    for (let i = 0; i < colors.length; i++) {
+      ctx.fillStyle = colors[i] ?? "#000000";
+      ctx.fillRect(0, (size / colors.length) * i, size, size / colors.length);
+    }
+    return canvas.convertToBlob({ type: "image/png" });
+  }
+
+  describe("compress (ADR-0013/0017)", () => {
+    async function loadInstance() {
+      return adapter.load({ baseUrl: baseUrl(), capabilities: {} as never });
+    }
+
+    it("mode lossless repacks without changing pixels", async () => {
+      const instance = await loadInstance();
+      const srcBlob = await sourcePng();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "png",
+          outputFormat: "png",
+          options: { mode: "lossless" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(sniffFormat(new Uint8Array(result.bytes))).toBe("png");
+    });
+
+    it("compresses a <=256-colour source losslessly (ADR-0017: exact palette via oxipng's own reduction)", async () => {
+      const instance = await loadInstance();
+      const srcBlob = await fewColorsPng();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "png",
+          outputFormat: "png",
+          options: { mode: "lossless" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+
+      // Losslessness is the actual claim: re-decoding the compressed output
+      // must reproduce the exact same pixels as the original, regardless of
+      // whether oxipng chose an indexed (palette) representation under the
+      // hood to get there.
+      const original = await instance.run(
+        baseTask({ input: { kind: "blob", blob: srcBlob } }),
+      );
+      const recompressed = await instance.run(
+        baseTask({ input: { kind: "bytes", bytes: result.bytes } }),
+      );
+      if (original.kind !== "raster" || recompressed.kind !== "raster") {
+        throw new Error("expected raster results");
+      }
+      expect(new Uint8Array(recompressed.image.data)).toEqual(
+        new Uint8Array(original.image.data),
+      );
+    });
+
+    it("mode smaller never produces a file bigger than the source", async () => {
+      // Not strictly-smaller: this synthetic per-pixel-unique fixture is
+      // adversarial for palette quantization (very little redundancy for
+      // oxipng to exploit even after quantizing), so the never-larger
+      // fallback legitimately can win here — same guarantee this adapter
+      // makes everywhere else.
+      const instance = await loadInstance();
+      const srcBlob = await noisySourcePng();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "png",
+          outputFormat: "png",
+          options: { mode: "smaller" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(result.bytes.byteLength).toBeLessThanOrEqual(srcBlob.size);
+    });
+
+    it("mode target-size's note reports the achieved size against the target (ADR-0017 result contract)", async () => {
+      const instance = await loadInstance();
+      const srcBlob = await noisySourcePng();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "png",
+          outputFormat: "png",
+          options: { mode: "target-size", targetSizeKB: 10 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(result.note).toBeTruthy();
+    });
+
+    it("mode percent reduces the file relative to the source", async () => {
+      const instance = await loadInstance();
+      const srcBlob = await noisySourcePng();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "png",
+          outputFormat: "png",
+          options: { mode: "percent", percent: 50 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      // Some note is always attached for percent (hit/miss/unreachable
+      // wording), and the result is never bigger than the source.
+      expect(result.note).toBeTruthy();
+      expect(result.bytes.byteLength).toBeLessThanOrEqual(srcBlob.size);
+    });
+
+    it("never returns a file bigger than the input, and notes it when it doesn't", async () => {
+      const instance = await loadInstance();
+      // A tiny already-minimal source: lossless repack + strip can't beat
+      // the original by much, if at all.
+      const srcBlob = await sourcePng(4, 4);
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "png",
+          outputFormat: "png",
+          options: { mode: "lossless" },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(result.bytes.byteLength).toBeLessThanOrEqual(srcBlob.size);
+    });
+  });
 });

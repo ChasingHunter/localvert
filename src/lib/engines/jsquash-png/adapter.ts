@@ -19,6 +19,10 @@ import { stripPng } from "../exif/strip";
 import { ENGINE_MANIFEST } from "../manifest";
 import { neverLarger } from "../shared/never-larger";
 import { quantizeToPalette } from "../shared/palette-quantize";
+import { PALETTE_STEPS, searchPngTargetSize } from "../shared/png-target-size";
+import { percentToTargetBytes } from "../shared/reduce-percent";
+import { ssim } from "../shared/ssim";
+import { formatTargetSizeNote } from "../shared/target-size-note";
 import type {
   EngineAdapter,
   EngineInput,
@@ -193,8 +197,57 @@ async function runEncode(
 const OXIPNG_LEVEL = 2;
 
 /**
- * compress (png -> png, ADR-0013): decode -> optional palette quantization
- * (`mode: "smaller"`) -> re-encode -> oxipng repack, all in one call so the
+ * Encodes `raster` to PNG bytes and runs it through the oxipng repack —
+ * shared by every mode below (`lossless`/`smaller` always did this; `target-
+ * size`/`percent` need the same encode+optimise pipeline per palette-size
+ * candidate, via `png-target-size.ts`'s `searchPngTargetSize`).
+ *
+ * ADR-0017's "an exact palette whenever there are 256 colours or fewer" is
+ * *not* extra code here — oxipng's own default optimisation already reduces
+ * PNG colour type (truecolor -> palette, when the source has few enough
+ * distinct colours to fit one) and bit depth as part of its normal repack,
+ * so a `lossless`-mode source with <=256 colours already comes out as an
+ * indexed PNG through this same path with no quality loss and no special
+ * case needed.
+ */
+async function encodeAndOptimize(
+  raster: ImageData,
+  ensureOxipngReady: () => Promise<void>,
+): Promise<ArrayBuffer> {
+  let encoded: ArrayBuffer;
+  try {
+    encoded = await encodePng(raster);
+  } catch (e) {
+    throw new EngineError("encode-failed", "failed to encode png", {
+      engine: metadata.id,
+      cause: e,
+    });
+  }
+
+  await ensureOxipngReady();
+
+  try {
+    const out = oxipngOptimiseSync(
+      new Uint8Array(encoded),
+      OXIPNG_LEVEL,
+      false, // interlace
+      false, // optimiseAlpha
+    );
+    return out.buffer.slice(
+      out.byteOffset,
+      out.byteOffset + out.byteLength,
+    ) as ArrayBuffer;
+  } catch (e) {
+    throw new EngineError("encode-failed", "failed to optimise png", {
+      engine: metadata.id,
+      cause: e,
+    });
+  }
+}
+
+/**
+ * compress (png -> png, ADR-0013/0017): decode -> mode-specific
+ * encode/quantize -> re-encode -> oxipng repack, all in one call so the
  * never-larger check at the end can compare against the *original* input
  * bytes directly — a two-step decode/encode pipeline (ADR-0007) never hands
  * the encode step the original bytes, only the decoded raster. Falls back to
@@ -202,6 +255,13 @@ const OXIPNG_LEVEL = 2;
  * engine's byte-level `stripPng`, rather than the encoded attempt whenever
  * that attempt isn't actually smaller — `stripPng` only drops chunks, so it
  * is itself always the same size or smaller than the input.
+ *
+ * `target-size`/`percent` (ADR-0017) step the palette down
+ * (`PALETTE_STEPS`, 256 -> 16) via `searchPngTargetSize`, stopping at the
+ * first step that both fits the budget and clears the 0.998 lossy-palette
+ * SSIM floor. When even the least-aggressive step fails that floor (a
+ * photo-like PNG that can't be usefully palette-reduced), the note steers
+ * the user to JPG/WebP instead of reporting a ruined "success".
  */
 async function runCompress(
   task: EngineTask,
@@ -230,51 +290,90 @@ async function runCompress(
   signal.throwIfAborted();
   onProgress?.(0.35);
 
-  const mode = options.mode === "smaller" ? "smaller" : "lossless";
-  let toEncode = decoded;
-  if (mode === "smaller") {
-    const dither = options.dither !== false;
-    const quantized = quantizeToPalette(
-      { width: decoded.width, height: decoded.height, data: decoded.data },
-      { dither },
-    );
-    toEncode = new ImageData(quantized.data, quantized.width, quantized.height);
-  }
-  onProgress?.(0.5);
+  const original = {
+    width: decoded.width,
+    height: decoded.height,
+    data: decoded.data,
+  };
+
+  const mode =
+    options.mode === "smaller" ||
+    options.mode === "target-size" ||
+    options.mode === "percent"
+      ? options.mode
+      : "lossless";
 
   let encoded: ArrayBuffer;
-  try {
-    encoded = await encodePng(toEncode);
-  } catch (e) {
-    throw new EngineError("encode-failed", "failed to encode png", {
-      engine: metadata.id,
-      cause: e,
-    });
-  }
-  signal.throwIfAborted();
-  onProgress?.(0.7);
+  let resultNote: string | undefined;
 
-  await ensureOxipngReady();
-  signal.throwIfAborted();
+  if (mode === "target-size" || mode === "percent") {
+    const targetSizeKB = options.targetSizeKB;
+    const targetBytes =
+      mode === "percent"
+        ? percentToTargetBytes(
+            originalBytes.byteLength,
+            typeof options.percent === "number" ? options.percent : 50,
+          )
+        : typeof targetSizeKB === "number" && targetSizeKB > 0
+          ? targetSizeKB * 1024
+          : undefined;
 
-  let optimized: ArrayBuffer;
-  try {
-    const out = oxipngOptimiseSync(
-      new Uint8Array(encoded),
-      OXIPNG_LEVEL,
-      false, // interlace
-      false, // optimiseAlpha
+    if (targetBytes === undefined) {
+      throw new EngineError(
+        "internal",
+        "target-size mode requires a positive targetSizeKB",
+        { engine: metadata.id },
+      );
+    }
+
+    const dither = options.dither !== false;
+    let iteration = 0;
+    const searchResult = await searchPngTargetSize(
+      original,
+      async (colors) => {
+        if (colors >= (PALETTE_STEPS[0] ?? 256)) return original;
+        return quantizeToPalette(original, { colors, dither });
+      },
+      async (raster) => {
+        const out = await encodeAndOptimize(
+          new ImageData(raster.data, raster.width, raster.height),
+          ensureOxipngReady,
+        );
+        iteration += 1;
+        onProgress?.(
+          0.35 + 0.55 * Math.min(iteration / PALETTE_STEPS.length, 1),
+        );
+        return out;
+      },
+      (a, b) => ssim(a, b),
+      targetBytes,
+      signal,
     );
-    optimized = out.buffer.slice(
-      out.byteOffset,
-      out.byteOffset + out.byteLength,
-    ) as ArrayBuffer;
-  } catch (e) {
-    throw new EngineError("encode-failed", "failed to optimise png", {
-      engine: metadata.id,
-      cause: e,
-    });
+
+    encoded = searchResult.bytes;
+    resultNote = searchResult.unreachableQuality
+      ? "This PNG can't get that small without ruining it. Try JPG or WebP " +
+        "instead for a photo like this."
+      : formatTargetSizeNote({
+          achievedBytes: encoded.byteLength,
+          targetBytes,
+          hitTarget: searchResult.hitTarget,
+        });
+  } else {
+    let toEncode = decoded;
+    if (mode === "smaller") {
+      const dither = options.dither !== false;
+      const quantized = quantizeToPalette(original, { dither });
+      toEncode = new ImageData(
+        quantized.data,
+        quantized.width,
+        quantized.height,
+      );
+    }
+    onProgress?.(0.5);
+    encoded = await encodeAndOptimize(toEncode, ensureOxipngReady);
   }
+  signal.throwIfAborted();
   onProgress?.(0.95);
 
   let strippedOriginal: ArrayBuffer;
@@ -290,7 +389,7 @@ async function runCompress(
 
   const picked = neverLarger(
     strippedOriginal,
-    optimized,
+    encoded,
     "This PNG was already about as small as it gets — kept the original " +
       "(with metadata removed).",
   );
@@ -300,7 +399,11 @@ async function runCompress(
     kind: "bytes",
     bytes: picked.bytes,
     mime: FORMATS.png.mime,
-    ...(picked.note ? { note: picked.note } : {}),
+    ...(picked.note
+      ? { note: picked.note }
+      : resultNote
+        ? { note: resultNote }
+        : {}),
   };
 }
 
