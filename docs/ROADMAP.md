@@ -245,12 +245,12 @@ one repo, one engine; make PDF a front door, not a separate product):
 
 - [x] Own domain: https://localvert.dpdns.org (2026-09-30). The workers.dev address keeps serving
       too (owner's choice); absolute canonicals, sitemap and robots point at the domain
-- [ ] PDF hub at /pdf: its own hero ("Every PDF tool you need. Your file never leaves your
+- [x] (2026-09-30) PDF hub at /pdf: its own hero ("Every PDF tool you need. Your file never leaves your
       device."), editor up front, tools grouped Organize / Optimize / Convert / Edit / Security
-- [ ] Home page leads with the promise ("Convert, compress and edit files without uploading
+- [x] (2026-09-30) Home page leads with the promise ("Convert, compress and edit files without uploading
       them. Everything runs in your browser, even video."), then the picker, then categories
-- [ ] "Make a file smaller": /compress hub + an option in the universal picker
-- [ ] Trust and comparison pages: "check for yourself that nothing uploads", /vs/ilovepdf,
+- [x] (2026-09-30) "Make a file smaller": /compress hub (picker already offers Compress as an action)
+- [x] (2026-09-30) Trust and comparison pages (/privacy, /vs/ilovepdf, /vs/smallpdf, /vs/vert): "check for yourself that nothing uploads", /vs/ilovepdf,
       /vs/smallpdf, /vs/vert
 - [ ] Further UX changes the owner will specify
 
