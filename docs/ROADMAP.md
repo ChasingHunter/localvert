@@ -252,12 +252,16 @@ one repo, one engine; make PDF a front door, not a separate product):
 - [x] (2026-09-30) "Make a file smaller": /compress hub (picker already offers Compress as an action)
 - [x] (2026-09-30) Trust and comparison pages (/privacy, /vs/ilovepdf, /vs/smallpdf, /vs/vert): "check for yourself that nothing uploads", /vs/ilovepdf,
       /vs/smallpdf, /vs/vert
-- [ ] Further UX changes the owner will specify. So far (2026-09-30): a /vs comparison index,
-      Popular tools on every category page, a Compress menu and a search box in the header
-- [ ] UX audit of every tool: simplify or add options only where it genuinely helps (owner,
-      2026-09-30); audit first, then build the "Do" items
-- [ ] AEO and SEO: structured data and a short FAQ on tool pages, llms.txt, and a few format
-      explainer pages if they earn their place
+- [x] (2026-09-30) Further UX changes: a /vs comparison index, Popular tools on every category
+      page, a Compress menu and a search box in the header
+- [x] (2026-09-30) UX audit of every tool, then its "Do" items: plain option labels and errors, quality
+      as a percent, the saving on compress results, "Run again with new settings", resize by percentage,
+      a trim preview for video tools, image thumbnails in the PDF order list, and Recommended as the
+      Compress PDF default (ADR-0017 addendum)
+- [x] (2026-10-01) AEO and SEO: structured data and a short FAQ on tool pages, llms.txt. Format
+      explainer pages deferred until one has a real search question behind it
+- [x] (2026-10-01) HEIC and RAW fixed in production (engine code called `new Function`, blocked by
+      the CSP); the build now fails if any shipped script does that
 
 - [ ] i18n
 - [ ] `file_handlers` and `share_target` in the manifest (open files from the OS)
