@@ -114,6 +114,59 @@ wasm build was already in `package.json`, and licence review + size budgeting
 for a new engine is its own decision under `add-engine`, not something to
 fold into a compression-modes slice.
 
+## Addendum (2026-09-30): video brought under never-larger, source-aware bitrate cap
+
+**The bug.** `compress-video` was never actually brought under this ADR's
+"never return a file bigger than the input" rule — only `compress-audio` had
+`neverLarger: true` wired up. Worse, its quality presets (`low`/`medium`/
+`high`) mapped straight to mediabunny's own `Quality` constants
+(`QUALITY_LOW`/`MEDIUM`/`HIGH`), which resolve to either a fixed quantizer
+or a bitrate computed purely from the *output* resolution — with zero
+awareness of how efficiently the source was already encoded. A 37 MB video
+that had already been compressed by another tool came out of
+`compress-video` as 64 MB: re-encoding at "medium" quality targeted a higher
+bitrate than the source already used, because nothing in the preset ever
+looked at the source at all.
+
+**The fix, two layers.**
+
+1. **Source-aware bitrate cap** (`src/lib/engines/mediabunny/bitrate.ts`).
+   Every mediabunny video tool now targets an explicit numeric bitrate —
+   passed as `ConversionVideoOptions`/`ConversionAudioOptions`'s raw-number
+   `bitrate` field, which bypasses `Quality` (and its quantizer path)
+   entirely — instead of a `Quality` preset object. The target is
+   `min(preset's own ceiling for the output resolution, source bitrate ×
+   factor)`, where `factor < 1` is per preset: `high` 0.85 (still a real
+   ~15% cut — a straight remux with no size change is what a plain
+   container-conversion tool is for), `medium` 0.65 (the default — a third
+   smaller, the cut someone reaching for "compress" without picking a mode
+   actually expects), `low` 0.45 (more than half, for an explicit "make it
+   as small as reasonable" ask). Audio gets the same treatment with no
+   shrink factor (`min(preset's own ceiling, source's own audio bitrate)`)
+   — there's no size-budget reason to also ratchet audio down, only to
+   never grow it. The source's own bitrate comes from
+   `video.ts`'s `sourceBitrates()`: each track's container-metadata bitrate
+   (`InputTrack.getAverageBitrate`/`getBitrate`) when present, falling back
+   to `fileBytes*8 - audioBps*duration) / duration` when the container
+   carries no video bitrate metadata at all (common for mp4/webm produced by
+   another tool). Applies to every mediabunny video tool, not just
+   `compress-video` — `resize-video`/`rotate-video`/`trim-video`/
+   `mute-video` (no `quality` option, previously always re-encoded at a
+   fixed "medium" `Quality`) and the container-conversion tools
+   (`mkv-to-mp4`, `mov-to-mp4`, `mov-to-webm`, `mp4-to-mov`, `webm-to-mp4`)
+   all get the same source-aware cap now, at whatever preset they default to
+   or expose.
+
+2. **`neverLarger: true` on `compress-video`.** The bitrate cap above is a
+   good-faith estimate, not a guarantee — an odd container, missing bitrate
+   metadata and a bad file-size/duration estimate can still miss. `job-engine.ts`'s
+   existing OPFS-kind never-larger branch (added for `compress-audio`, whose
+   engine also streams large outputs straight to OPFS rather than holding
+   them in memory, ADR-0010) needed no changes to cover this — it already
+   compares any OPFS-kind result's declared size against the input and
+   swaps in the original file when the result isn't smaller, which is
+   exactly the path a large video job takes in a real browser.
+
 **Enforce "never bigger than the input" centrally, in `engine-host.ts`,
 instead of per-adapter.** Rejected: `engine-host.ts` runs every tool's
 pipeline, including plain format conversions (jpg→png) where the output being
