@@ -114,4 +114,9 @@ export default defineTool({
 
   batch: true,
   neverLarger: true,
+  // ADR-0017's "Estimates" addendum (2026-09-30): `target-size`/
+  // `reduce-percent` stage a dropped file (live size estimate + an explicit
+  // Convert button) instead of submitting on drop — see `ToolRunner`'s
+  // `shouldStageForEstimate`. `best-quality`/`custom` are unaffected.
+  estimateKind: "video",
 });

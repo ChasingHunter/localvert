@@ -22,6 +22,7 @@ import {
 } from "@/lib/engines/consent";
 import { engineDisplayName } from "@/lib/engines/display-names";
 import { ENGINE_MANIFEST } from "@/lib/engines/manifest";
+import { shouldStageForEstimate } from "@/lib/estimate";
 import { jobStore, selectOrderedJobs } from "@/lib/jobs/store";
 import { FORMATS, formatFromFilename } from "@/lib/registry/formats";
 import type { EngineId, ToolDefinition } from "@/lib/registry/types";
@@ -79,6 +80,16 @@ const OptionsForm = dynamic(
  */
 const CropEditor = dynamic(
   () => import("@/components/crop-editor").then((mod) => mod.CropEditor),
+  { ssr: false },
+);
+
+/**
+ * Same code-splitting reasoning as `OptionsForm`/`CropEditor` above: only the
+ * three ADR-0017 compress tools (`estimateKind` set) ever stage a file for
+ * this, so no other tool page should download it.
+ */
+const SizeEstimate = dynamic(
+  () => import("@/components/size-estimate").then((mod) => mod.SizeEstimate),
   { ssr: false },
 );
 
@@ -185,6 +196,19 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
     AcceptedFile[]
   >([]);
   const [canSubmit, setCanSubmit] = useState(true);
+  // ADR-0017's "Estimates" addendum (2026-09-30): a file dropped on one of
+  // the three compress tools (`tool.estimateKind`) while its `mode` is a
+  // target-size/percent mode (`shouldStageForEstimate`) — held back the same
+  // way `pendingRequiredFiles` is, but for a different reason: the job might
+  // be unreachable, so running it immediately (every mode's behaviour before
+  // this slice) would spend a real encode before the user has any idea
+  // whether the number they typed is realistic. "Best quality" and every
+  // fixed-preset mode (custom/lossless/balanced/strong) are unaffected —
+  // they keep submitting on drop, since there's no target to show an
+  // estimate against and no staging pause to show one in anyway.
+  const [estimateStagedFiles, setEstimateStagedFiles] = useState<
+    AcceptedFile[]
+  >([]);
   // ADR-0008, arity "many-to-one" (e.g. merge-pdf): files accumulate here
   // across drops instead of submitting immediately, in the order the user
   // arranges them via `FileOrderList` — submission is the explicit
@@ -347,6 +371,12 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         setPendingRequiredFiles((prev) => [...prev, ...accepted]);
         return;
       }
+      if (shouldStageForEstimate(tool.estimateKind, options)) {
+        // Staged, not submitted — see `handleSubmitEstimateStaged` and
+        // `estimateStagedFiles`'s own doc comment above.
+        setEstimateStagedFiles((prev) => [...prev, ...accepted]);
+        return;
+      }
       ensureConsent(async () => {
         const engine = await jobEngine();
         engine.submit(
@@ -400,6 +430,20 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
       setPendingRequiredFiles([]);
     });
   }, [tool, pendingRequiredFiles, options, canSubmit, ensureConsent]);
+
+  const handleSubmitEstimateStaged = useCallback(() => {
+    if (!tool || estimateStagedFiles.length === 0) return;
+    const files = estimateStagedFiles;
+    ensureConsent(async () => {
+      const engine = await jobEngine();
+      engine.submit(
+        tool,
+        files.map((a) => ({ file: a.file, format: a.format })),
+        options,
+      );
+      setEstimateStagedFiles([]);
+    });
+  }, [tool, estimateStagedFiles, options, ensureConsent]);
 
   const handleSubmitOrdered = useCallback(() => {
     if (!tool || orderedFiles.length < 2) return;
@@ -602,6 +646,27 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
               onClick={handleSubmitPending}
               disabled={!canSubmit}
             >
+              {tool.actionLabel ?? "Convert"}
+            </Button>
+          </div>
+        )}
+
+        {tool.estimateKind && estimateStagedFiles.length > 0 && (
+          <div className="flex flex-col gap-3">
+            <ul className="flex flex-col gap-2 text-sm text-ink-muted">
+              {estimateStagedFiles.map((f) => (
+                <li key={`${f.file.name}-${f.file.size}`}>
+                  <span>{f.file.name}</span>
+                  <SizeEstimate
+                    tool={tool}
+                    file={f.file}
+                    sourceFormat={f.format}
+                    options={options}
+                  />
+                </li>
+              ))}
+            </ul>
+            <Button type="button" onClick={handleSubmitEstimateStaged}>
               {tool.actionLabel ?? "Convert"}
             </Button>
           </div>

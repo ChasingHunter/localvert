@@ -23,13 +23,13 @@ import { audioChannelsSelect } from "../_shared-options";
  * `bitrateForTargetSize`), so a visible `channels` control there would just
  * be overridden and confuse what actually happened.
  *
- * No pre-run size estimate in this options form: reading a dropped file's
- * duration before the job starts would need `OptionsForm` to read the file
- * itself (it doesn't today — see `src/components/options-form.tsx`), which
- * is a bigger change than this slice's budget covers. The estimate instead
- * lands in the *result* note (ADR-0017's "Result contract"), which the
- * engine already computes from the real encode. Documented as a deliberate
- * scope cut, not an oversight — see docs/adr/0017-smart-compression.md.
+ * ADR-0017's "Estimates" addendum (2026-09-30): `target-size`/`percent`
+ * stage a dropped file (live size estimate + an explicit Convert button)
+ * instead of submitting on drop — see `ToolRunner`'s
+ * `shouldStageForEstimate` and `src/lib/estimate/audio-estimate.ts`, which
+ * computes the estimate from the same `bitrateForTargetSize`/
+ * `bestQualityBitrate` this file's own engine (`audio.ts`) uses for the real
+ * encode. `"best"`/`"custom"` are unaffected — they keep submitting on drop.
  */
 export default defineTool({
   slug: "compress-audio",
@@ -104,4 +104,5 @@ export default defineTool({
 
   batch: true,
   neverLarger: true,
+  estimateKind: "audio",
 });
