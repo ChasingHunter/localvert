@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CATEGORY_TINT_BG } from "@/components/category-tint";
 import { PageShell } from "@/components/page-shell";
+import { orderedCompressors } from "@/lib/compress-tools";
 import { openGraph } from "@/lib/site";
 import { TOOLS } from "@/tools";
 
@@ -10,20 +11,9 @@ import { TOOLS } from "@/tools";
  * positioning research 2026-09-28: people search for compression by
  * format, so each compress tool lives under its own format page — this is
  * the one cross-cutting page that lists all of them together). The slug
- * list below is hand-written rather than derived from a naming convention
- * (a `compress-*` prefix would also be a reasonable filter, but an explicit
- * list is clearer about what belongs here and doesn't silently pick up an
- * unrelated tool that happens to start with "compress").
+ * list, and its order (shared with the header's Compress menu), lives in
+ * `@/lib/compress-tools`.
  */
-
-const COMPRESS_SLUGS = [
-  "compress-jpg",
-  "compress-png",
-  "compress-webp",
-  "compress-pdf",
-  "compress-video",
-  "compress-audio",
-] as const;
 
 export const metadata: Metadata = {
   title: "Make a file smaller",
@@ -34,9 +24,7 @@ export const metadata: Metadata = {
 };
 
 export default function CompressPage() {
-  const tools = COMPRESS_SLUGS.map((slug) =>
-    TOOLS.find((tool) => tool.slug === slug),
-  ).filter((tool) => tool !== undefined);
+  const tools = orderedCompressors(TOOLS);
 
   return (
     <PageShell>

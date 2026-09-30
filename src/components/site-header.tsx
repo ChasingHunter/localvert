@@ -6,6 +6,7 @@ import {
   categoriesWithTools,
   groupToolsByCategory,
 } from "@/components/tool-groups";
+import { orderedCompressors } from "@/lib/compress-tools";
 import { CATEGORIES, CATEGORY_META } from "@/lib/registry";
 import { TOOLS } from "@/tools";
 
@@ -22,9 +23,10 @@ const NAV_LINK =
 export function SiteHeader() {
   const byCategory = groupToolsByCategory(TOOLS);
   const navCategories = categoriesWithTools(CATEGORIES, byCategory);
-  const compressors = TOOLS.filter((tool) =>
-    tool.slug.startsWith("compress-"),
-  ).map(({ slug, title }) => ({ slug, title }));
+  const compressors = orderedCompressors(TOOLS).map(({ slug, title }) => ({
+    slug,
+    title,
+  }));
 
   return (
     <header className="border-b border-border">
