@@ -17,6 +17,7 @@ import { EngineError, toEngineError } from "../errors";
 import { ENGINE_MANIFEST } from "../manifest";
 import { neverLarger } from "../shared/never-larger";
 import {
+  alreadyUnderTargetNote,
   PDF_COMPRESS_LADDER,
   pdfTargetNote,
   runCompressLadder,
@@ -1317,14 +1318,33 @@ async function runCompressToTarget(
   onProgress: ((fraction: number) => void) | undefined,
   ensureMozjpegEncodeReady: () => Promise<void>,
 ): Promise<EngineResult> {
-  const baselineDoc = await loadPdf(mod, bytes);
-  const nonImageBytes =
-    bytes.byteLength - totalImageBytes(findImageStreams(mod, baselineDoc));
-
   const targetBytes =
     mode === "target-size"
       ? targetSizeMBOf(options) * 1024 * 1024
       : bytes.byteLength * (1 - percentOf(options) / 100);
+
+  // ADR-0017 addendum (2026-09-30): a target-size the source already meets
+  // has nothing to squeeze — `"percent"` mode can never reach here (its
+  // target is always source * (1 - p), strictly smaller), but a typed-in
+  // target-size can be anything. Skip the (pointless) ladder entirely
+  // rather than running a real mozjpeg re-encode just to have `neverLarger`
+  // discard it a moment later.
+  if (bytes.byteLength <= targetBytes) {
+    onProgress?.(1);
+    return {
+      kind: "bytes",
+      bytes,
+      mime: FORMATS.pdf.mime,
+      note: alreadyUnderTargetNote({
+        sourceBytes: bytes.byteLength,
+        targetBytes,
+      }),
+    };
+  }
+
+  const baselineDoc = await loadPdf(mod, bytes);
+  const nonImageBytes =
+    bytes.byteLength - totalImageBytes(findImageStreams(mod, baselineDoc));
 
   if (nonImageBytes > targetBytes) {
     // Still worth the free, purely-structural lossless prune — it just

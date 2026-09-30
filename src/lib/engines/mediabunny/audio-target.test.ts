@@ -1,10 +1,33 @@
 import { describe, expect, it } from "vitest";
 import {
+  alreadyUnderTargetNote,
   bestQualityBitrate,
   bitrateForTargetSize,
   stepDown,
   targetBytesForPercent,
 } from "./audio-target";
+
+describe("alreadyUnderTargetNote", () => {
+  it("shows the target in MB and the source in KB when it's small", () => {
+    const note = alreadyUnderTargetNote({
+      sourceBytes: 30 * 1024,
+      targetBytes: 1 * 1024 * 1024,
+    });
+    expect(note).toBe(
+      "Already under your 1 MB target (30 KB). You got the original file back.",
+    );
+  });
+
+  it("shows the source in MB too once it's over 1 MB", () => {
+    const note = alreadyUnderTargetNote({
+      sourceBytes: 3 * 1024 * 1024,
+      targetBytes: 20 * 1024 * 1024,
+    });
+    expect(note).toBe(
+      "Already under your 20 MB target (3 MB). You got the original file back.",
+    );
+  });
+});
 
 describe("bitrateForTargetSize", () => {
   it("picks a stereo bitrate when the raw rate clears the stereo floor", () => {

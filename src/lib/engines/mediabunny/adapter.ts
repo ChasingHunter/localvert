@@ -52,6 +52,7 @@ import {
   validateTrim,
 } from "./video";
 import {
+  alreadyUnderTargetNote,
   bestQualityVideoBitrateBps,
   bppFloor,
   planTargetSizeBudget,
@@ -389,6 +390,22 @@ async function runVideoTargetSize(args: {
     mode === "target-size"
       ? (targetSizeMB ?? 20) * 1024 * 1024
       : targetBytesFromPercent(blob.size, reducePercent ?? 50);
+
+  // ADR-0017 addendum (2026-09-30): a target the source already meets has
+  // nothing to squeeze — see `alreadyUnderTargetNote`'s doc comment for the
+  // `no_encodable_target_codec` bug this specifically closes.
+  // `"reduce-percent"` can never trip this (its target is always strictly
+  // smaller than the source), but a typed-in `"target-size"` MB value can be
+  // anything.
+  if (blob.size <= targetBytes) {
+    onProgress?.(1);
+    return {
+      kind: "bytes",
+      bytes: await blob.arrayBuffer(),
+      mime,
+      note: alreadyUnderTargetNote({ sourceBytes: blob.size, targetBytes }),
+    };
+  }
 
   const budget = planTargetSizeBudget({
     targetBytes,

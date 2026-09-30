@@ -357,7 +357,13 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
             mime: file.type || result.mime,
             size: file.size,
             url,
-            note: NEVER_LARGER_JOB_NOTE,
+            // ADR-0017 addendum (2026-09-30): an adapter that deliberately
+            // returned the original bytes (a target-size mode whose target
+            // was already met — see `alreadyUnderTargetNote` in each
+            // mediabunny/pdf-lib planner) already knows *why*, in a way
+            // this generic fallback doesn't — its own `note` says more than
+            // "already about as small as it gets" and is preferred here.
+            note: result.note ?? NEVER_LARGER_JOB_NOTE,
           },
         });
         return;
@@ -450,7 +456,12 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
           mime: file.type || result.mime,
           size: file.size,
           url,
-          note: NEVER_LARGER_JOB_NOTE,
+          // See the identical comment on the "opfs"-kind branch above: an
+          // adapter's own note (e.g. a target-size mode already met by the
+          // source) is preferred over the generic fallback when it set one.
+          note:
+            (result.kind === "bytes" ? result.note : undefined) ??
+            NEVER_LARGER_JOB_NOTE,
         },
       });
       return;

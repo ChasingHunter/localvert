@@ -171,6 +171,32 @@ export function formatMB(bytes: number): string {
   return `${text} MB`;
 }
 
+/** Bytes -> "1 MB" / "30 KB" — only `alreadyUnderTargetNote` below needs the
+ * KB fallback (every other note here is MB-sized). Duplicated rather than
+ * shared with `formatMB`'s own sibling in `pdf-compress-target.ts` — see
+ * that function's doc comment on why. */
+function formatAchieved(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return formatMB(bytes);
+}
+
+/**
+ * ADR-0017 addendum (2026-09-30, `no_encodable_target_codec` investigation):
+ * a target-size/percent the source already meets has nothing to squeeze —
+ * encoding anyway can ask `bitrateForTargetSize` for an arbitrarily high
+ * bitrate (no ceiling there, only the stereo/mono floors), which a real
+ * codec can reject outright. `"percent"` mode can never trip this
+ * (`targetBytesForPercent`'s result is always strictly smaller than the
+ * source), but a typed-in `"target-size"` MB value can be anything — this is
+ * the caller's guard, checked before any bitrate math runs.
+ */
+export function alreadyUnderTargetNote(args: {
+  sourceBytes: number;
+  targetBytes: number;
+}): string {
+  return `Already under your ${formatMB(args.targetBytes)} target (${formatAchieved(args.sourceBytes)}). You got the original file back.`;
+}
+
 /**
  * ADR-0017's "Result contract" for the target-size/percent modes: a hit
  * ("19.4 MB, 97% of your 20 MB target."), a hit with a compromise

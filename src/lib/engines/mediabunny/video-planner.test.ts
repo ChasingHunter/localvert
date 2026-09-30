@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  alreadyUnderTargetNote,
   audioReserveBps,
   bestQualityVideoBitrateBps,
   bppCeiling,
@@ -13,6 +14,30 @@ import {
   targetBytesFromPercent,
   targetSizeResultNote,
 } from "./video-planner";
+
+describe("alreadyUnderTargetNote", () => {
+  it("shows the target in MB and the source in KB when it's small (the reported bug's repro)", () => {
+    // A 30 KB, 2-second clip with a 1 MB target-size — the exact repro that
+    // threw `no_encodable_target_codec` before the adapter-level guard.
+    const note = alreadyUnderTargetNote({
+      sourceBytes: 30 * 1024,
+      targetBytes: 1 * 1024 * 1024,
+    });
+    expect(note).toBe(
+      "Already under your 1 MB target (30 KB). You got the original file back.",
+    );
+  });
+
+  it("shows the source in MB too once it's over 1 MB", () => {
+    const note = alreadyUnderTargetNote({
+      sourceBytes: 3 * 1024 * 1024,
+      targetBytes: 20 * 1024 * 1024,
+    });
+    expect(note).toBe(
+      "Already under your 20 MB target (3 MB). You got the original file back.",
+    );
+  });
+});
 
 describe("bestQualityVideoBitrateBps", () => {
   it("caps at 0.7x source when the source is already efficient", () => {

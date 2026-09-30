@@ -297,4 +297,48 @@ test.describe("compress-video", () => {
     const original = readFileSync(fixturePath("sample-large.mp4")).length;
     expect(bytes.length).toBeLessThanOrEqual(original);
   });
+
+  // ADR-0017 addendum (2026-09-30): the "target bigger than source" edge
+  // case the test above explicitly routes around — `sample.mp4` (~30 KB)
+  // with a 1 MB target used to throw `no_encodable_target_codec` (the
+  // budget math had no ceiling on the video bitrate it asked WebCodecs for,
+  // which no browser encoder accepts). The fix is an adapter-level guard
+  // (`alreadyUnderTargetNote` in `video-planner.ts`) that skips the encode
+  // entirely whenever the target already exceeds the source, so this proves
+  // the whole flow — stage, estimate, Convert, download — now completes
+  // instead of erroring, and the downloaded bytes are byte-for-byte the
+  // original file.
+  test("target-size mode bigger than the source skips the encode and returns the original file", async ({
+    page,
+  }) => {
+    await page.goto("/tools/compress-video");
+
+    await page.getByLabel("Mode", { exact: true }).click();
+    await page.getByRole("option", { name: /target file size/i }).click();
+    await page.getByLabel("Target size").fill("1");
+
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles(fixturePath("sample.mp4"));
+
+    const convertButton = page.getByRole("button", { name: "Convert" });
+    await expect(convertButton).toBeVisible();
+    await convertButton.click();
+
+    const downloadLink = page.getByRole("link", { name: "Download" });
+    await expect(downloadLink).toBeVisible({ timeout: 30_000 });
+    await expect(
+      page.getByText(/already under your 1 MB target/i),
+    ).toBeVisible();
+
+    const downloadPromise = page.waitForEvent("download");
+    await downloadLink.click();
+    const download = await downloadPromise;
+    const path = await download.path();
+    if (!path) throw new Error("download produced no local path");
+    const bytes = readFileSync(path);
+
+    const original = readFileSync(fixturePath("sample.mp4"));
+    expect(bytes.equals(original)).toBe(true);
+  });
 });

@@ -339,6 +339,37 @@ function formatMB(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1).replace(/\.0$/, "");
 }
 
+/** Bytes -> "1 MB" / "30 KB" — only `alreadyUnderTargetNote` below needs the
+ * KB fallback (every other note in this file is always MB-sized, per
+ * ADR-0017's own examples), kept as a tiny local helper rather than a shared
+ * import — this engine ships as its own lazily-loaded worker chunk, same
+ * reasoning as `audio-target.ts`'s duplicated `formatMB`. */
+function formatSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${formatMB(bytes)} MB`;
+}
+
+/**
+ * ADR-0017 addendum (2026-09-30, `no_encodable_target_codec` investigation):
+ * a target-size the source file already meets or beats has nothing to
+ * squeeze — encoding anyway can ask for an arbitrarily high video bitrate
+ * (no ceiling exists in this file's target-size budget math, only a floor
+ * via `stepDownForBpp`), which is exactly what made a 30 KB, 2-second clip
+ * with a 1 MB target throw `no_encodable_target_codec`: the budget math
+ * computed a ~3.7 Mbps bitrate for a 320x240/15fps source, a config no
+ * browser encoder accepts. `"reduce-percent"` mode can never reach this
+ * (`targetBytesFromPercent`'s target is always strictly smaller than the
+ * source), but a typed-in `"target-size"` MB value can be anything — this
+ * is the caller's guard, checked before any budget math runs at all.
+ */
+export function alreadyUnderTargetNote(params: {
+  sourceBytes: number;
+  targetBytes: number;
+}): string {
+  const { sourceBytes, targetBytes } = params;
+  return `Already under your ${formatMB(targetBytes)} MB target (${formatSize(sourceBytes)}). You got the original file back.`;
+}
+
 export type TargetSizeOutcome =
   | { kind: "hit"; actualBytes: number; targetBytes: number }
   | {

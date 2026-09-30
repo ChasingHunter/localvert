@@ -34,6 +34,7 @@ import { EngineError } from "../errors";
 import type { EngineInput, EngineResult, EngineTask } from "../types";
 import {
   type AudioTargetCodec,
+  alreadyUnderTargetNote,
   bestQualityBitrate,
   bitrateForTargetSize,
   resultNote,
@@ -291,24 +292,22 @@ function isTargetCodec(codec: AudioCodec): codec is AudioTargetCodec {
  * yet — bitrate has to be picked *before* the `Conversion` is built), so a
  * small header-parse cost is paid twice; still far cheaper than a decode.
  */
+function blobFrom(input: EngineInput): Blob {
+  if (input.kind === "blob") return input.blob;
+  if (input.kind === "bytes") return new Blob([input.bytes]);
+  throw new EngineError(
+    "internal",
+    "mediabunny audio expected a blob/bytes input",
+    { engine: ENGINE_ID },
+  );
+}
+
 async function probeSourceAudio(input: EngineInput): Promise<{
   durationSec: number;
   sizeBytes: number;
   channels: number;
 }> {
-  const blob =
-    input.kind === "blob"
-      ? input.blob
-      : input.kind === "bytes"
-        ? new Blob([input.bytes])
-        : null;
-  if (!blob) {
-    throw new EngineError(
-      "internal",
-      "mediabunny audio expected a blob/bytes input to probe",
-      { engine: ENGINE_ID },
-    );
-  }
+  const blob = blobFrom(input);
 
   const probe = new Input({
     source: new BlobSource(blob),
@@ -429,6 +428,24 @@ export async function runAudioTranscode(
     mode === "target-size"
       ? targetSizeMBOf(task.options) * 1024 * 1024
       : targetBytesForPercent(probe.sizeBytes, percentOf(task.options));
+
+  // ADR-0017 addendum (2026-09-30): a target the source already meets has
+  // nothing to squeeze — see `alreadyUnderTargetNote`'s doc comment for the
+  // `no_encodable_target_codec` bug this closes on the audio side.
+  // `"percent"` can never trip this (its target is always strictly smaller
+  // than the source), but a typed-in `"target-size"` MB value can be
+  // anything.
+  if (probe.sizeBytes <= targetBytes) {
+    return {
+      kind: "bytes",
+      bytes: await blobFrom(task.input).arrayBuffer(),
+      mime,
+      note: alreadyUnderTargetNote({
+        sourceBytes: probe.sizeBytes,
+        targetBytes,
+      }),
+    };
+  }
 
   const picked = bitrateForTargetSize({
     codec,

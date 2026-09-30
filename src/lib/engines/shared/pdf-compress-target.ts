@@ -89,6 +89,27 @@ export function formatMB(bytes: number): string {
 }
 
 /**
+ * A target that's already met by the source file itself — no ladder rung
+ * even needs to run (found 2026-09-30, `no_encodable_target_codec`
+ * investigation: `compress-pdf` is the one of the three target-size tools
+ * that can't crash on an over-generous target, since a mozjpeg re-encode at
+ * a fixed dpi/quality has no unbounded parameter the way an uncapped video/
+ * audio bitrate does — but it still ran a full, pointless re-encode pass
+ * before `neverLarger` discarded it. Same wording shape as the video/audio
+ * adapters' own `alreadyUnderTargetNote` (each duplicated locally rather
+ * than shared — see `formatMB`'s doc comment above on why).
+ */
+export function alreadyUnderTargetNote(args: {
+  sourceBytes: number;
+  targetBytes: number;
+}): string {
+  return (
+    `Already under your ${formatMB(args.targetBytes)} target ` +
+    `(${formatAchieved(args.sourceBytes)}). You got the original file back.`
+  );
+}
+
+/**
  * ADR-0017's PDF "Result contract": non-image bytes alone over target
  * ("The text and fonts alone are 3.1 MB, so 2 MB isn't possible."), a hit
  * ("19.4 MB, 97% of your 20 MB target."), already under target at the

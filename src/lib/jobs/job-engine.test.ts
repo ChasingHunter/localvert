@@ -870,4 +870,74 @@ describe("createJobEngine / ADR-0013 neverLarger", () => {
     expect(job?.output?.size).toBe(20);
     expect(job?.output?.note).toBe("19.4 MB, 97% of your 20 MB target.");
   });
+
+  // ADR-0017 addendum (2026-09-30): a target-size mode whose target the
+  // source already met (compress-video/audio/pdf's `alreadyUnderTargetNote`)
+  // deliberately returns the original bytes back — an exact size tie with
+  // the input, which trips this same never-larger fallback. Its own note
+  // ("Already under your 1 MB target...") is more specific than the generic
+  // fallback message and must win, for both `EngineResult` kinds.
+  it("prefers the adapter's own note over the generic message on a bytes-kind tie", async () => {
+    const { engine, calls, store } = setup();
+    const tool = makeTool({ slug: "compress-video", neverLarger: true });
+    const file = new File(["a".repeat(30)], "clip.mp4", {
+      type: "video/mp4",
+    });
+
+    engine.submit(tool, [{ file, format: "mp4" }], {});
+    calls[0]?.deferred.resolve({
+      kind: "bytes",
+      bytes: new TextEncoder().encode("a".repeat(30)).buffer, // same size as the input
+      mime: "video/mp4",
+      note: "Already under your 1 MB target (30 KB). You got the original file back.",
+    });
+    await flush();
+
+    const job = store.getState().jobs[0];
+    expect(job).toMatchObject({ status: "done" });
+    expect(job?.output?.size).toBe(30);
+    expect(job?.output?.note).toBe(
+      "Already under your 1 MB target (30 KB). You got the original file back.",
+    );
+  });
+
+  it("prefers the adapter's own note over the generic message on an opfs-kind tie", async () => {
+    const { engine, calls, store } = setup();
+    const tool = makeTool({ slug: "compress-video", neverLarger: true });
+    const file = new File(["a".repeat(30)], "clip.mp4", {
+      type: "video/mp4",
+    });
+
+    engine.submit(tool, [{ file, format: "mp4" }], {});
+    calls[0]?.deferred.resolve({
+      kind: "opfs",
+      path: "localvert-tmp/fake.mp4",
+      mime: "video/mp4",
+      size: 30, // same size as the input
+      note: "Already under your 1 MB target (30 KB). You got the original file back.",
+    });
+    await flush();
+
+    const job = store.getState().jobs[0];
+    expect(job).toMatchObject({ status: "done" });
+    expect(job?.output?.size).toBe(30);
+    expect(job?.output?.note).toBe(
+      "Already under your 1 MB target (30 KB). You got the original file back.",
+    );
+  });
+
+  it("falls back to the generic message on a tie when the adapter set no note", async () => {
+    const { engine, calls, store } = setup();
+    const tool = makeTool({ neverLarger: true });
+    const file = new File(["hello"], "a.mp3", { type: "audio/mpeg" }); // 5 bytes
+
+    engine.submit(tool, [{ file, format: "jpg" }], {});
+    calls[0]?.deferred.resolve(bytesResult("world", "audio/mpeg")); // also 5 bytes, no note
+    await flush();
+
+    const job = store.getState().jobs[0];
+    expect(job?.output?.note).toBe(
+      "Already about as small as it gets. You got the original file back.",
+    );
+  });
 });
