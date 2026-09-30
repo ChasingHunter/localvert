@@ -27,11 +27,16 @@ function isCategory(value: string): value is Category {
   return (CATEGORIES as readonly string[]).includes(value);
 }
 
-/** One static page per category that has a tool. No other slug resolves — see `dynamicParams`. */
+/**
+ * One static page per category that has a tool. No other slug resolves —
+ * see `dynamicParams`. "pdf" is excluded: it has its own hand-built hub at
+ * `src/app/pdf/page.tsx` (docs/ROADMAP.md's "Before cutting v0.4.0", the
+ * 2026-09-28 positioning research) instead of this generic layout.
+ */
 export function generateStaticParams(): { category: string }[] {
-  return CATEGORIES.filter((category) => byCategory.has(category)).map(
-    (category) => ({ category }),
-  );
+  return CATEGORIES.filter(
+    (category) => category !== "pdf" && byCategory.has(category),
+  ).map((category) => ({ category }));
 }
 
 export const dynamicParams = false;

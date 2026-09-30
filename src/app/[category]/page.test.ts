@@ -24,6 +24,14 @@ describe("[category] static params", () => {
       expect(CATEGORIES).toContain(category);
     }
   });
+
+  it("excludes pdf — it has its own hub route, not this generic layout", () => {
+    const byCategory = groupToolsByCategory(TOOLS);
+    const params = CATEGORIES.filter(
+      (category) => category !== "pdf" && byCategory.has(category),
+    );
+    expect(params).not.toContain("pdf");
+  });
 });
 
 /**
@@ -34,7 +42,7 @@ describe("[category] static params", () => {
  * segments straight off `src/app/` so it stays true if a route is renamed.
  */
 describe("route collisions", () => {
-  it("no category slug collides with a top-level app route segment", () => {
+  it("no category slug (other than pdf's own hub) collides with a top-level app route segment", () => {
     const appDir = fileURLToPath(new URL("..", import.meta.url));
     const segments = readdirSync(appDir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && !entry.name.startsWith("["))
@@ -44,7 +52,11 @@ describe("route collisions", () => {
     // ever comes back empty (e.g. this file moved) instead of passing vacuously.
     expect(segments.length).toBeGreaterThan(0);
 
+    // "pdf" is a deliberate, intentional collision: `src/app/pdf/page.tsx`
+    // is the hand-built PDF hub, and `[category]/generateStaticParams`
+    // excludes "pdf" above so it never competes with that literal route.
     for (const category of CATEGORIES) {
+      if (category === "pdf") continue;
       expect(segments).not.toContain(category);
     }
   });
