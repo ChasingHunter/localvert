@@ -90,7 +90,7 @@ export interface SourceFile {
   gzip?: boolean;
   /** Apply `patchTypstGlue`/`patchLibreOfficeGlue` while copying — see
    * `EngineSourceFile.patch`'s doc comment. */
-  patch?: "typst-glue" | "libreoffice-glue";
+  patch?: "typst-glue" | "libreoffice-glue" | "libraw-glue";
 }
 
 // ---------------------------------------------------------------------------
@@ -441,13 +441,116 @@ export function patchLibreOfficeGlue(source: string): string {
   return patchLibreOfficePthreadPool(patchLibreOfficeEmbind(source));
 }
 
+// ---------------------------------------------------------------------------
+// libraw embind CSP patch: same two eval sites as libreoffice, minified names
+// ---------------------------------------------------------------------------
+
+/**
+ * `libraw-wasm`'s `dist/libraw.js` is an Emscripten embind build that was not
+ * compiled with `-sDYNAMIC_EXECUTION=0`, so it has the same two
+ * `new Function(...)` sites as `soffice.js` (see `patchLibreOfficeEmbind`):
+ * the invoker factory behind every bound class method (minified `ni`, called
+ * by `dt`) and the emval method caller (minified `xi`). The production CSP
+ * has no `unsafe-eval`, so the first `new LibRaw()` throws "Evaluating a
+ * string as JavaScript violates ... 'unsafe-eval'" and the engine reports
+ * "failed to load" (traced 2026-09-30 from a same-origin module worker
+ * against the built `out/`; Vitest browser mode has no CSP, which is why the
+ * adapter tests never saw it).
+ *
+ * This build is minified, so both sites are matched on their exact literal
+ * source (once each) and replaced by closures that do what the generated
+ * bodies did. A `libraw-wasm` upgrade that reshapes either fails
+ * `pnpm sync-engines` loudly instead of shipping CSP-blocked code.
+ */
+const OLD_LIBRAW_INVOKER_FACTORY =
+  'function ni(e,r,t,n){var i=ft(e),o=e.length-2,s=[],l=["fn"];r&&l.push("thisWired");for(var u=0;u<o;++u)s.push(`arg${u}`),l.push(`arg${u}Wired`);s=s.join(","),l=l.join(",");var d=`return function (${s}) {\n`;i&&(d+=`var destructors = [];\n`);var v=i?"destructors":"null",_=["humanName","throwBindingError","invoker","fn","runDestructors","fromRetWire","toClassParamWire"];r&&(d+=`var thisWired = toClassParamWire(${v}, this);\n`);for(var u=0;u<o;++u){var p=`toArg${u}Wire`;d+=`var arg${u}Wired = ${p}(${v}, arg${u});\n`,_.push(p)}if(d+=(t||n?"var rv = ":"")+`invoker(${l});\n`,i)d+=`runDestructors(destructors);\n`;else for(var u=r?1:2;u<e.length;++u){var h=u===1?"thisWired":"arg"+(u-2)+"Wired";e[u].destructorFunction!==null&&(d+=`${h}_dtor(${h});\n`,_.push(`${h}_dtor`))}return t&&(d+=`var ret = fromRetWire(rv);\nreturn ret;\n`),d+=`}\n`,new Function(_,d)}';
+
+/**
+ * Eval-free `ni`. Same contract as before: returns a function that takes the
+ * closure arguments `dt` builds (humanName, throwBindingError, invoker, fn,
+ * runDestructors, fromRetWire, toClassParamWire, one toWire per argument,
+ * then one destructor per wired value that has one, used only when no shared
+ * destructor stack is needed) and returns the invoker.
+ */
+const NEW_LIBRAW_INVOKER_FACTORY = `function ni(e,r,t,n){
+var needsStack=ft(e),argc=e.length-2;
+return function(humanName,throwBindingError,invoker,fn,runDestructors,fromRetWire,toClassParamWire,...rest){
+var toArgWires=rest.slice(0,argc),dtors=rest.slice(argc);
+return function(...callArgs){
+var destructors=needsStack?[]:null;
+var thisWired;
+if(r){thisWired=toClassParamWire(destructors,this)}
+var argsWired=[];
+for(var u=0;u<argc;++u){argsWired.push(toArgWires[u](destructors,callArgs[u]))}
+var rv=r?invoker(fn,thisWired,...argsWired):invoker(fn,...argsWired);
+if(needsStack){runDestructors(destructors)}
+else{
+var d=0;
+for(var u=r?1:2;u<e.length;++u){
+if(e[u].destructorFunction!==null){dtors[d++](u===1?thisWired:argsWired[u-2])}
+}
+}
+if(t){return fromRetWire(rv)}
+}
+}
+}`;
+
+const OLD_LIBRAW_METHOD_CALLER =
+  'xi=(e,r,t)=>{var n=8,[i,...o]=Wi(e,r),s=i.toWireType.bind(i),l=o.map(h=>h.readValueFromPointer.bind(h));e--;var u={toValue:P.toValue},d=l.map((h,w)=>{var $=`argFromPtr${w}`;return u[$]=h,`${$}(args${w?"+"+w*n:""})`}),v;switch(t){case 0:v="toValue(handle)";break;case 2:v="new (toValue(handle))";break;case 3:v="";break;case 1:u.getStringOrSymbol=dr,v="toValue(handle)[getStringOrSymbol(methodName)]";break}v+=`(${d})`,i.isVoid||(u.toReturnWire=s,u.emval_returnValue=Ui,v=`return emval_returnValue(toReturnWire, destructorsRef, ${v})`),v=`return function (handle, methodName, destructorsRef, args) {\n${v}\n}`;var _=new Function(Object.keys(u),v)(...Object.values(u)),p=`methodCaller<(${o.map(h=>h.name)}) => ${i.name}>`;return Mi(tr(p,_))}';
+
+/**
+ * Eval-free `xi`. The generated function read each argument off the `args`
+ * packet (8 bytes apart), then, by call kind, called the handle (0), the
+ * named method on it (1), constructed it (2), or evaluated a bare argument
+ * list (3, a comma expression: the last value wins), and converted the
+ * result through `emval_returnValue` unless the return type is void.
+ */
+const NEW_LIBRAW_METHOD_CALLER = `xi=(e,r,t)=>{var n=8,[i,...o]=Wi(e,r),s=i.toWireType.bind(i),l=o.map(h=>h.readValueFromPointer.bind(h));e--;
+function _(handle,methodName,destructorsRef,args){
+var a=l.map((h,w)=>h(w?args+w*n:args)),v;
+switch(t){
+case 0:v=P.toValue(handle)(...a);break;
+case 2:v=new(P.toValue(handle))(...a);break;
+case 3:v=a[a.length-1];break;
+case 1:v=P.toValue(handle)[dr(methodName)](...a);break;
+}
+if(!i.isVoid){return Ui(s,destructorsRef,v)}
+}
+var p="methodCaller<("+o.map(h=>h.name)+") => "+i.name+">";return Mi(tr(p,_))}`;
+
+/** Applies both libraw replacements; fails closed like the libreoffice one. */
+export function patchLibrawGlue(source: string): string {
+  const fail = (message: string): never => {
+    throw new Error(`[sync-engines] patchLibrawGlue: ${message}`);
+  };
+  for (const [name, literal] of [
+    ["invoker factory", OLD_LIBRAW_INVOKER_FACTORY],
+    ["method caller", OLD_LIBRAW_METHOD_CALLER],
+  ] as const) {
+    const count = source.split(literal).length - 1;
+    if (count !== 1) {
+      fail(
+        `expected exactly one ${name}, found ${count} — libraw-wasm's embind glue shape changed, patch needs updating`,
+      );
+    }
+  }
+  const patched = source
+    .replace(OLD_LIBRAW_INVOKER_FACTORY, () => NEW_LIBRAW_INVOKER_FACTORY)
+    .replace(OLD_LIBRAW_METHOD_CALLER, () => NEW_LIBRAW_METHOD_CALLER);
+  if (patched.includes("new Function(")) {
+    fail('patched output still contains "new Function(" — patch is incomplete');
+  }
+  return patched;
+}
+
 /** Dispatch table for `SourceFile.patch`. */
 const PATCHES: Record<
-  "typst-glue" | "libreoffice-glue",
+  "typst-glue" | "libreoffice-glue" | "libraw-glue",
   (source: string) => string
 > = {
   "typst-glue": patchTypstGlue,
   "libreoffice-glue": patchLibreOfficeGlue,
+  "libraw-glue": patchLibrawGlue,
 };
 
 /**
@@ -543,10 +646,11 @@ function readEngineSource(dir: string, id: string): EngineSource {
     if (
       file.patch !== undefined &&
       file.patch !== "typst-glue" &&
-      file.patch !== "libreoffice-glue"
+      file.patch !== "libreoffice-glue" &&
+      file.patch !== "libraw-glue"
     ) {
       fail(
-        `"files[${i}].patch" must be "typst-glue" or "libreoffice-glue" if present`,
+        `"files[${i}].patch" must be "typst-glue", "libreoffice-glue" or "libraw-glue" if present`,
       );
     }
     return {
@@ -557,7 +661,12 @@ function readEngineSource(dir: string, id: string): EngineSource {
         : {}),
       ...(file.gzip !== undefined ? { gzip: file.gzip as boolean } : {}),
       ...(file.patch !== undefined
-        ? { patch: file.patch as "typst-glue" | "libreoffice-glue" }
+        ? {
+            patch: file.patch as
+              | "typst-glue"
+              | "libreoffice-glue"
+              | "libraw-glue",
+          }
         : {}),
     };
   });

@@ -78,8 +78,11 @@ export interface EngineSourceFile {
    * bound-class methods run under this app's CSP too; (2) raises the
    * prespawned pthread pool so Calc's import doesn't deadlock waiting on a
    * Worker that can't start. See those functions' doc comments and ADR-0012.
+   *
+   * `"libraw-glue"` — `patchLibrawGlue` in `scripts/sync-engines.ts` — the
+   * same embind code-generation replacement for libraw-wasm's minified glue.
    */
-  patch?: "typst-glue" | "libreoffice-glue";
+  patch?: "typst-glue" | "libreoffice-glue" | "libraw-glue";
 }
 
 /**

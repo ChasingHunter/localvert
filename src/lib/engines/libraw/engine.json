@@ -12,7 +12,8 @@
     },
     {
       "from": "dist/libraw.js",
-      "to": "libraw.js"
+      "to": "libraw.js",
+      "patch": "libraw-glue"
     }
   ]
 }
