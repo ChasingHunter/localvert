@@ -198,7 +198,7 @@ they typed makes sense.** Concretely:
   cached probe as the user edits the target/percent field; the file is never
   re-probed for that.
 - Every other mode of those same three tools — best quality, custom quality,
-  and PDF's lossless/balanced/strong — is **unaffected**: it still submits
+  and PDF's recommended/lossless/strong — is **unaffected**: it still submits
   immediately on drop, exactly as before this addendum. Two reasons: there's
   no target to show an estimate against, and (per the "no
   decode/encode/zip on the main thread" invariant) a submit-on-drop mode
@@ -217,3 +217,34 @@ See `src/lib/estimate/` for the estimate functions and
 list per tool, and `ToolRunner`'s own doc comments in
 `src/components/tool-runner.tsx` for how staging plugs into the existing
 drop-to-submit flow.
+
+## Addendum: Compress PDF defaults to "Recommended" (2026-09-30)
+
+The UX audit found that Compress PDF's default (`lossless`) handed back the
+original for a photo PDF: "Already about as small as it gets." Lossless only
+restructures the file, so any PDF whose weight is images barely changes, and
+images are the reason most people open the tool. The default is now
+`recommended`, which re-encodes images at a 150 dpi ceiling and mozjpeg
+quality 0.65. `lossless` stays as an option, and `balanced` is gone: it was
+the same idea as `recommended` with a milder quality (0.75), and one mode
+beats two. The engine still accepts a saved `balanced` value and treats it as
+`recommended`. Options are not persisted anywhere (no localStorage or URL
+state), so nothing else needed migrating. Never-larger still applies.
+
+**Root cause of `balanced` doing nothing.** `e2e/fixtures/photos.pdf` is one
+2000x1500 JPEG on a 2000x1500 pt page, so the image is already only 72 dpi
+effective. The 150 dpi ceiling never downsamples it, which left only the
+quality drop, and re-encoding at quality 0.75 wasn't smaller than the source
+JPEG (per-image guard in `compressImageStream` kept the original, then
+`neverLarger` kept the whole file). The target ladder only shrank it because
+its lower rungs (0.65 and below, and 96/72 dpi) go further. Measured on the
+fixture (1,247,946 bytes): lossless 1,247,946; old balanced 1,247,946;
+recommended 1,081,421 (87%); strong 787,163 (63%); target 0.6 MB 570,325.
+
+The same finding drove a fix to the estimate (audit B8): the PDF estimator
+assumed the strongest rung keeps 12% of image bytes, which is true for a
+300 dpi scan and wrong for an image with nothing to downsample (45% here). It
+now assumes 45% and only says "looks reachable" when the likely floor is at
+least 20% under the target; closer than that it says the result might land a
+little over.
+
