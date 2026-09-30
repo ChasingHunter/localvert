@@ -6,8 +6,15 @@ import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
 import { stripWebp } from "../exif/strip";
 import { ENGINE_MANIFEST } from "../manifest";
+import { searchBestQuality } from "../shared/best-quality-search";
+import { computeDownscaleDims } from "../shared/downscale-for-target";
+import { downscaleRasterAreaAverage } from "../shared/downscale-raster";
 import { neverLarger } from "../shared/never-larger";
+import { classifyImageKind } from "../shared/photo-or-graphic";
+import { percentToTargetBytes } from "../shared/reduce-percent";
+import { ssim } from "../shared/ssim";
 import { encodeToTargetSize } from "../shared/target-size";
+import { formatTargetSizeNote } from "../shared/target-size-note";
 import type {
   EngineAdapter,
   EngineInput,
@@ -276,7 +283,7 @@ function clamp01(n: number): number {
  * options (the option-form convention); jSquash's own scale is 0..100.
  *
  * `options.targetSizeKB` (a positive number) switches to
- * `encodeToTargetSize`, bisecting `quality` until the output fits that byte
+ * `encodeToTargetSize`, searching `quality` until the output fits that byte
  * budget — skipped when `lossless` is set, since quality has no effect on a
  * lossless encode's size. Without `targetSizeKB`, behaviour is unchanged.
  */
@@ -340,26 +347,61 @@ type CompressMode =
   | "visually-lossless"
   | "strong"
   | "custom"
-  | "target-size";
+  | "target-size"
+  | "percent";
 
-/** Same fixed-quality-per-mode reasoning as jsquash-jpeg's own
- * `QUALITY_BY_MODE` — one predictable number (0.85) shared across jpg/webp
- * so "visually lossless" means the same thing regardless of format. */
-const QUALITY_BY_MODE: Record<"visually-lossless" | "strong", number> = {
-  "visually-lossless": 0.85,
-  strong: 0.6,
+/** ADR-0017: SSIM thresholds for the two perceptual-search modes — see the
+ * identical constant on `jsquash-jpeg`'s own adapter. */
+const SSIM_THRESHOLD_BY_MODE: Record<"visually-lossless" | "strong", number> = {
+  "visually-lossless": 0.9999,
+  strong: 0.999,
 };
 
+/** ADR-0017: integer quality search floor. WebP has no equivalent of
+ * `estimateJpegQuality` (no standard quantization-table read for VP8's own
+ * encode), so the ceiling is always 95, unlike jsquash-jpeg's
+ * source-quality-capped ceiling. */
+const BEST_QUALITY_SEARCH_MIN = 40;
+const BEST_QUALITY_SEARCH_MAX = 95;
+
+/** ADR-0017: target-size/percent search floor (as a 0..1 fraction — WebP
+ * quality 30 out of 100). Below this, a downscale round runs instead of
+ * pushing quality any lower. */
+const TARGET_SIZE_QUALITY_FLOOR = 0.3;
+
+/** At least how many resize rounds ADR-0017 allows when quality alone can't
+ * reach a target size. */
+const MAX_DOWNSCALE_ROUNDS = 2;
+
 /**
- * compress (webp -> webp, ADR-0013): a single byte-to-byte step, not the
- * generic ADR-0007 raster pipeline — `mode: "lossless"` is a metadata strip
- * only (the `exif` engine's `stripWebp`), *not* this adapter's own
+ * ADR-0017's WebP encoder settings: `method: 6` (libwebp's slowest,
+ * best-compression search — jSquash's own default is 4) always, and
+ * `use_sharp_yuv` for graphics/text (sharper chroma upsampling matters most
+ * on hard edges; a photo's soft gradients don't show the difference enough
+ * to pay the extra encode cost for).
+ */
+function webpOptionsFor(kind: "photo" | "graphic") {
+  return { method: 6, use_sharp_yuv: kind === "graphic" ? 1 : 0 };
+}
+
+/**
+ * compress (webp -> webp, ADR-0013/0017): a single byte-to-byte step, not
+ * the generic ADR-0007 raster pipeline — `mode: "lossless"` is a metadata
+ * strip only (the `exif` engine's `stripWebp`), *not* this adapter's own
  * `encode`-level `lossless: true` flag — re-encoding an already-lossy WebP
  * losslessly re-derives every pixel exactly, which produces a *bigger* file
  * than the lossy source on the common case (a photo), the opposite of what
- * a compress tool promises. Every mode's never-larger check needs the exact
- * original input bytes alongside its own final result, which a two-step
- * decode/encode handoff can't give it.
+ * a compress tool promises.
+ *
+ * `visually-lossless`/`strong` run `searchBestQuality` (SSIM-thresholded,
+ * ADR-0017) instead of a fixed quality number. `target-size`/`percent` run
+ * `encodeToTargetSize` (log-size interpolation) with the same downscale
+ * fallback as jsquash-jpeg's own adapter — see that file's identical logic
+ * and `downscale-raster.ts`'s doc comment for why it's an area-average
+ * resize rather than libwebp's own `target_size` option (ADR-0017 allows
+ * trying libwebp's native target size first if a browser test shows it's
+ * accurate; that verification wasn't done in this slice, so the shared
+ * search is used unconditionally here — see the implementer's report).
  */
 async function runCompress(
   task: EngineTask,
@@ -377,7 +419,8 @@ async function runCompress(
     options.mode === "visually-lossless" ||
     options.mode === "strong" ||
     options.mode === "custom" ||
-    options.mode === "target-size"
+    options.mode === "target-size" ||
+    options.mode === "percent"
       ? options.mode
       : "lossless";
 
@@ -417,15 +460,30 @@ async function runCompress(
   signal.throwIfAborted();
   onProgress?.(0.4);
 
+  const original: RasterImage = {
+    width: decoded.width,
+    height: decoded.height,
+    data: decoded.data,
+  };
+
   await ensureEncodeReady();
   signal.throwIfAborted();
   onProgress?.(0.5);
 
-  const encodeAtQuality = async (quality: number): Promise<ArrayBuffer> => {
+  const imageKind = classifyImageKind(original);
+
+  /** Encodes `raster` at fractional quality `quality` (0..1), with the
+   * ADR-0017 encoder settings applied. */
+  const encodeRasterAtQuality = async (
+    raster: RasterImage,
+    quality: number,
+  ): Promise<ArrayBuffer> => {
     try {
-      return await encode(decoded, {
+      const imageData = new ImageData(raster.data, raster.width, raster.height);
+      return await encode(imageData, {
         quality: Math.round(clamp01(quality) * 100),
         lossless: 0,
+        ...webpOptionsFor(imageKind),
       });
     } catch (e) {
       throw new EngineError("encode-failed", "failed to encode webp", {
@@ -436,35 +494,107 @@ async function runCompress(
   };
 
   let encoded: ArrayBuffer;
-  if (mode === "target-size") {
+  let resultNote: string | undefined;
+
+  if (mode === "target-size" || mode === "percent") {
     const targetSizeKB = options.targetSizeKB;
-    if (typeof targetSizeKB !== "number" || targetSizeKB <= 0) {
+    const targetBytes =
+      mode === "percent"
+        ? percentToTargetBytes(
+            originalBytes.byteLength,
+            typeof options.percent === "number" ? options.percent : 50,
+          )
+        : typeof targetSizeKB === "number" && targetSizeKB > 0
+          ? targetSizeKB * 1024
+          : undefined;
+
+    if (targetBytes === undefined) {
       throw new EngineError(
         "internal",
         "target-size mode requires a positive targetSizeKB",
         { engine: metadata.id },
       );
     }
+
+    let raster = original;
+    let resizedTo: { width: number; height: number } | undefined;
     let iteration = 0;
-    const result = await encodeToTargetSize(
-      async (quality) => {
-        const out = await encodeAtQuality(quality);
+    let searchResult = await encodeToTargetSize(
+      async (q) => {
+        const out = await encodeRasterAtQuality(raster, q);
         iteration += 1;
         onProgress?.(0.5 + 0.4 * Math.min(iteration / 8, 1));
         return out;
       },
-      targetSizeKB * 1024,
-      { signal },
+      targetBytes,
+      { min: TARGET_SIZE_QUALITY_FLOOR, max: 0.95, signal },
     );
-    encoded = result.bytes;
+
+    for (
+      let round = 0;
+      round < MAX_DOWNSCALE_ROUNDS &&
+      !searchResult.hitTarget &&
+      searchResult.quality <= TARGET_SIZE_QUALITY_FLOOR + 1e-9;
+      round++
+    ) {
+      const dims = computeDownscaleDims(
+        raster.width,
+        raster.height,
+        searchResult.bytes.byteLength,
+        targetBytes,
+      );
+      if (dims.width >= raster.width && dims.height >= raster.height) break;
+
+      raster = downscaleRasterAreaAverage(raster, dims.width, dims.height);
+      resizedTo = { width: raster.width, height: raster.height };
+
+      searchResult = await encodeToTargetSize(
+        async (q) => {
+          const out = await encodeRasterAtQuality(raster, q);
+          iteration += 1;
+          onProgress?.(0.5 + 0.4 * Math.min(iteration / 8, 1));
+          return out;
+        },
+        targetBytes,
+        { min: TARGET_SIZE_QUALITY_FLOOR, max: 0.95, signal },
+      );
+    }
+
+    encoded = searchResult.bytes;
+    resultNote = formatTargetSizeNote({
+      achievedBytes: encoded.byteLength,
+      targetBytes,
+      hitTarget: searchResult.hitTarget,
+      resizedTo,
+    });
+  } else if (mode === "visually-lossless" || mode === "strong") {
+    let iteration = 0;
+    const searchResult = await searchBestQuality(
+      original,
+      async (qualityInt) => {
+        const out = await encodeRasterAtQuality(original, qualityInt / 100);
+        iteration += 1;
+        onProgress?.(0.5 + 0.4 * Math.min(iteration / 6, 1));
+        return out;
+      },
+      async (bytes) => {
+        const id = await decode(bytes);
+        return { width: id.width, height: id.height, data: id.data };
+      },
+      (a, b) => ssim(a, b),
+      {
+        min: BEST_QUALITY_SEARCH_MIN,
+        max: BEST_QUALITY_SEARCH_MAX,
+        threshold: SSIM_THRESHOLD_BY_MODE[mode],
+        signal,
+      },
+    );
+    encoded = searchResult.bytes;
   } else {
+    // custom
     const quality =
-      mode === "custom"
-        ? typeof options.quality === "number"
-          ? options.quality
-          : 0.75
-        : QUALITY_BY_MODE[mode];
-    encoded = await encodeAtQuality(quality);
+      typeof options.quality === "number" ? options.quality : 0.75;
+    encoded = await encodeRasterAtQuality(original, quality);
   }
   onProgress?.(0.9);
 
@@ -489,7 +619,11 @@ async function runCompress(
     kind: "bytes",
     bytes: picked.bytes,
     mime: FORMATS.webp.mime,
-    ...(picked.note ? { note: picked.note } : {}),
+    ...(picked.note
+      ? { note: picked.note }
+      : resultNote
+        ? { note: resultNote }
+        : {}),
   };
 }
 

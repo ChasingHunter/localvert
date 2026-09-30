@@ -336,7 +336,14 @@ describe("jsquash-webp adapter", () => {
       outBitmap.close();
     });
 
-    it("mode strong produces a smaller file than mode visually-lossless", async () => {
+    it("mode strong never produces a larger file than mode visually-lossless (ADR-0017 perceptual search)", async () => {
+      // ADR-0017: both modes now run an SSIM-thresholded search
+      // (searchBestQuality) rather than a fixed quality number — "strong"'s
+      // looser threshold (0.999 vs 0.9999) means its required quality is
+      // always <= "visually-lossless"'s, so its output is never bigger,
+      // though on a fixture harsh enough that even max quality (95) misses
+      // both thresholds, they can tie (both fall back to the same quality
+      // 95 encode) rather than "strong" strictly winning.
       const instance = await adapter.load({
         baseUrl: BASE_URL,
         capabilities: {} as never,
@@ -364,7 +371,7 @@ describe("jsquash-webp adapter", () => {
       if (visuallyLossless.kind !== "bytes" || strong.kind !== "bytes") {
         throw new Error("expected bytes results");
       }
-      expect(strong.bytes.byteLength).toBeLessThan(
+      expect(strong.bytes.byteLength).toBeLessThanOrEqual(
         visuallyLossless.bytes.byteLength,
       );
     });
@@ -418,6 +425,67 @@ describe("jsquash-webp adapter", () => {
       );
       if (result.kind !== "bytes") throw new Error("expected a bytes result");
       expect(result.bytes.byteLength).toBeLessThanOrEqual(5 * 1024 * 1.2);
+    });
+
+    it("mode target-size's note reports the achieved size against the target (ADR-0017 result contract)", async () => {
+      const instance = await adapter.load({
+        baseUrl: BASE_URL,
+        capabilities: {} as never,
+      });
+      const srcBlob = await noisySourceWebpBlob();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "webp",
+          outputFormat: "webp",
+          options: { mode: "target-size", targetSizeKB: 5 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(result.note).toBeTruthy();
+    });
+
+    it("mode percent reduces the file relative to the source, and behaves like target-size", async () => {
+      const instance = await adapter.load({
+        baseUrl: BASE_URL,
+        capabilities: {} as never,
+      });
+      const srcBlob = await noisySourceWebpBlob();
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "webp",
+          outputFormat: "webp",
+          options: { mode: "percent", percent: 50 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(result.bytes.byteLength).toBeLessThan(srcBlob.size * 0.7);
+    });
+
+    it("mode target-size falls back to a downscale when quality alone can't reach an aggressive target, and notes the new dimensions", async () => {
+      const instance = await adapter.load({
+        baseUrl: BASE_URL,
+        capabilities: {} as never,
+      });
+      const srcBlob = await noisySourceWebpBlob(400);
+
+      const result = await instance.run(
+        baseTask({
+          op: "compress",
+          input: { kind: "blob", blob: srcBlob },
+          inputFormat: "webp",
+          outputFormat: "webp",
+          options: { mode: "target-size", targetSizeKB: 2 },
+        }),
+      );
+      if (result.kind !== "bytes") throw new Error("expected a bytes result");
+      expect(result.bytes.byteLength).toBeLessThan(srcBlob.size);
+      expect(result.note).toBeTruthy();
     });
 
     it("never returns a file bigger than the input, and notes it when it doesn't", async () => {

@@ -3,20 +3,22 @@ import { defineTool } from "@/lib/registry";
 
 /**
  * Same mode set as `compress-jpg.ts` — see that file's doc comment for the
- * ADR-0013 reasoning behind visually-lossless-as-default. `lossless` here is
- * metadata-strip only too, and for the same underlying reason as jpg: WebP's
- * own *encoder*-level lossless mode re-encodes every pixel losslessly, which
- * on an already-lossy source (the common case — a photo saved as WebP)
- * produces a *bigger* file than the lossy original, not a smaller one. A
- * byte-level metadata strip (the `exif` engine's `stripWebp`) is the only
- * thing that's actually lossless *and* smaller-or-equal here.
+ * ADR-0013/0017 reasoning behind visually-lossless-as-default and the
+ * perceptual-search behaviour behind "High quality"/"Smallest file".
+ * `lossless` here is metadata-strip only too, and for the same underlying
+ * reason as jpg: WebP's own *encoder*-level lossless mode re-encodes every
+ * pixel losslessly, which on an already-lossy source (the common case — a
+ * photo saved as WebP) produces a *bigger* file than the lossy original, not
+ * a smaller one. A byte-level metadata strip (the `exif` engine's
+ * `stripWebp`) is the only thing that's actually lossless *and*
+ * smaller-or-equal here.
  */
 export default defineTool({
   slug: "compress-webp",
   category: "image",
   title: "Compress WebP",
   description:
-    "Shrink a WebP. Keep high quality (the default), go smaller, set the quality yourself, or aim for a size like under 200 KB. Never makes the file bigger.",
+    "Shrink a WebP. Keep high quality (the default), go smaller, set the quality yourself, aim for a size like under 200 KB, or cut it by a percentage. Never makes the file bigger.",
 
   accepts: ["webp"],
   produces: "webp",
@@ -29,6 +31,7 @@ export default defineTool({
         "strong",
         "custom",
         "target-size",
+        "percent",
       ])
       .meta({
         label: "Mode",
@@ -40,6 +43,7 @@ export default defineTool({
           strong: "Smallest file",
           custom: "Custom quality",
           "target-size": "Target file size",
+          percent: "Reduce by percentage",
         },
       })
       .default("visually-lossless"),
@@ -67,8 +71,25 @@ export default defineTool({
       // A real default, not `required: true` — see compress-jpg.ts's
       // identical field for why `required` + `showWhen` don't mix here.
       .default(200),
+    percent: z
+      .number()
+      .int()
+      .min(10)
+      .max(90)
+      .meta({
+        label: "Reduce by",
+        control: "slider",
+        unit: "%",
+        showWhen: { field: "mode", equals: "percent" },
+      })
+      .default(50),
   }),
-  defaults: { mode: "visually-lossless", quality: 0.75, targetSizeKB: 200 },
+  defaults: {
+    mode: "visually-lossless",
+    quality: 0.75,
+    targetSizeKB: 200,
+    percent: 50,
+  },
 
   pipeline: [
     {
