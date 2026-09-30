@@ -114,7 +114,7 @@ test.describe("mp4-to-mov", () => {
 });
 
 test.describe("trim-video", () => {
-  test("trimming sample.mp4 to 0-1s produces a smaller file", async ({
+  test("staging shows the player, and Set end here trims sample.mp4 to 0-1s", async ({
     page,
   }) => {
     await page.goto("/tools/trim-video");
@@ -122,11 +122,23 @@ test.describe("trim-video", () => {
       .locator('input[type="file"]')
       .setInputFiles(fixturePath("sample.mp4"));
 
-    // `end` defaults to 10s (longer than the 2s fixture); set it to 1s so
-    // the trim is real. Exact option-form selector depends on the
-    // generated form (`src/lib/options/fields.ts`) — a number input
-    // labelled "End".
-    await page.getByLabel("End").fill("1");
+    // Staged with a preview: nothing has run yet, and the length shows.
+    const video = page.locator("video[controls]");
+    await expect(video).toBeVisible();
+    await expect(page.getByText("Length:")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("link", { name: "Download" })).toHaveCount(0);
+
+    // Seek the player to 1 s, then copy that time into the End option.
+    await video.evaluate((el: HTMLVideoElement) => {
+      el.currentTime = 1;
+    });
+    await page.getByRole("button", { name: "Set end here" }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "End set to 1" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("End")).toHaveValue("1");
+
+    await page.getByRole("button", { name: "Trim video" }).click();
 
     const downloadLink = page.getByRole("link", { name: "Download" });
     await expect(downloadLink).toBeVisible({ timeout: 30_000 });

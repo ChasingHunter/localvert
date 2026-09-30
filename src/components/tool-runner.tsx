@@ -67,6 +67,18 @@ const CropEditor = dynamic(
 );
 
 /**
+ * Same code-splitting reasoning as `CropEditor` above: only the two
+ * `rangeStage` video tools (trim, video to GIF) ever show this.
+ */
+const VideoRangeEditor = dynamic(
+  () =>
+    import("@/components/video-range-editor").then(
+      (mod) => mod.VideoRangeEditor,
+    ),
+  { ssr: false },
+);
+
+/**
  * Same code-splitting reasoning as `OptionsForm`/`CropEditor` above: only the
  * three ADR-0017 compress tools (`estimateKind` set) ever stage a file for
  * this, so no other tool page should download it.
@@ -165,6 +177,9 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   const [zipping, setZipping] = useState(false);
   const [zipError, setZipError] = useState<string | null>(null);
   const [cropTarget, setCropTarget] = useState<AcceptedFile | null>(null);
+  // The video staged for a `rangeStage` tool (trim / video to GIF): shown in
+  // `VideoRangeEditor` until its run button is pressed, like `cropTarget`.
+  const [rangeTarget, setRangeTarget] = useState<AcceptedFile | null>(null);
   // Files staged for a tool with at least one `required` option (e.g.
   // `protect-pdf`'s `password`) whose value wasn't filled in yet at drop
   // time — held back instead of submitted, since submitting would either
@@ -274,6 +289,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   // (`TOOL_LOADERS[slug]()` above).
   const hasCropField = tool ? "crop" in tool.options.shape : false;
   const isManyToOne = tool?.arity === "many-to-one";
+  const rangeStage = tool?.rangeStage;
   // Plain string array on the tool definition itself (see its doc comment
   // in `src/lib/registry/types.ts`) — read structurally, same as
   // `hasCropField` above, so this file never imports zod just to check it.
@@ -408,6 +424,13 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         if (first) setCropTarget(first);
         return;
       }
+      if (rangeStage) {
+        // One video at a time, previewed before running — see
+        // `handleRangeSubmit`.
+        const [first] = accepted;
+        if (first) setRangeTarget(first);
+        return;
+      }
       if (isManyToOne) {
         // Accumulate across drops instead of submitting — see
         // `handleSubmitOrdered` for the explicit submit this arity uses.
@@ -416,7 +439,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
       }
       submitOrStage(accepted);
     },
-    [tool, hasCropField, isManyToOne, submitOrStage],
+    [tool, hasCropField, rangeStage, isManyToOne, submitOrStage],
   );
 
   // ADR-0015: the Converter island hands files over in-memory rather than
@@ -509,6 +532,26 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
 
   const handleCropCancel = useCallback(() => {
     setCropTarget(null);
+  }, []);
+
+  const handleRangeSubmit = useCallback(() => {
+    if (!tool || !rangeTarget) return;
+    const target = rangeTarget;
+    const used = options;
+    void ensureConsent(async () => {
+      const engine = await jobEngine();
+      engine.submit(tool, [{ file: target.file, format: target.format }], used);
+      rememberRun([target], used);
+      setRangeTarget(null);
+    });
+  }, [tool, rangeTarget, options, ensureConsent, rememberRun]);
+
+  const handleRangeOptions = useCallback((patch: Record<string, number>) => {
+    setOptions((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const handleRangeCancel = useCallback(() => {
+    setRangeTarget(null);
   }, []);
 
   const handleCancel = useCallback(async (id: string) => {
@@ -655,6 +698,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
     currentOptions: options,
     jobStatuses: jobs.map((j) => j.status),
     hasStagedFiles:
+      rangeTarget !== null ||
       orderedFiles.length > 0 ||
       pendingRequiredFiles.length > 0 ||
       estimateStagedFiles.length > 0,
@@ -682,12 +726,12 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
         {/* Hidden mid-crop: a second drop would orphan the file already being
             cropped, and `cropTarget` is the only file this tool page can edit
             at once (crop tools are never batch). */}
-        {!(hasCropField && cropTarget) && (
+        {!(hasCropField && cropTarget) && !(rangeStage && rangeTarget) && (
           <>
             <PrivacyNote size="sm" />
             <Dropzone
               accepts={tool.accepts}
-              multiple={tool.batch || isManyToOne}
+              multiple={(tool.batch || isManyToOne) && !rangeStage}
               onFiles={handleFiles}
               hideFooterNote
             />
@@ -767,6 +811,18 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
             file={cropTarget.file}
             onSubmit={handleCropSubmit}
             onCancel={handleCropCancel}
+          />
+        )}
+
+        {rangeStage && rangeTarget && (
+          <VideoRangeEditor
+            file={rangeTarget.file}
+            kind={rangeStage}
+            options={options}
+            onOptionsChange={handleRangeOptions}
+            onSubmit={handleRangeSubmit}
+            onCancel={handleRangeCancel}
+            submitLabel={tool.actionLabel ?? "Run"}
           />
         )}
 

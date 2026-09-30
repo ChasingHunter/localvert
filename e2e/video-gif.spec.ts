@@ -81,6 +81,10 @@ test.describe("video-to-gif", () => {
       .locator('input[type="file"]')
       .setInputFiles(fixturePath("sample.mp4"));
 
+    // The clip is staged with a preview first; nothing runs until the button.
+    await expect(page.locator("video[controls]")).toBeVisible();
+    await page.getByRole("button", { name: "Make GIF" }).click();
+
     const downloadLink = page.getByRole("link", { name: "Download" });
     // Frame-by-frame decode + per-frame quantize is slower than a straight
     // transcode — generous but still well under the suite's patience for a

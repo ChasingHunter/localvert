@@ -424,6 +424,13 @@ for (const tool of TOOLS) {
         await confirmCropIfShown(page);
       }
 
+      if (tool.rangeStage) {
+        // Video trim / GIF stage the clip with a preview first.
+        await page
+          .getByRole("button", { name: tool.actionLabel ?? "Convert" })
+          .click();
+      }
+
       if (requiredKeys.length > 0 && requiredValues) {
         for (const key of requiredKeys) {
           const label = REQUIRED_FIELD_LABELS[key] ?? key;

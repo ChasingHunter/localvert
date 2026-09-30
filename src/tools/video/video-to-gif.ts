@@ -63,6 +63,9 @@ export default defineTool({
     loop: true,
   },
 
+  rangeStage: "gif",
+  actionLabel: "Make GIF",
+
   pipeline: [
     {
       op: "toGif",

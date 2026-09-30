@@ -33,6 +33,8 @@ export default defineTool({
       .meta({ label: "End", control: "number", unit: "s" }),
   }),
   defaults: { start: 0, end: 10 },
+  rangeStage: "trim",
+  actionLabel: "Trim video",
 
   pipeline: [{ op: "transcode", candidates: [{ engine: "mediabunny" }] }],
 

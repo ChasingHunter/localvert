@@ -340,6 +340,14 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
    */
   actionLabel?: string;
   /**
+   * Stage a dropped video for a preview with "Set start here" / "Set end
+   * here" buttons instead of running on drop (`VideoRangeEditor`). `"trim"`
+   * tools store `start` + `end`; `"gif"` tools store `start` + `duration`.
+   * `actionLabel` is the run button's text. Read structurally by
+   * `ToolRunner`, same as the crop field.
+   */
+  rangeStage?: "trim" | "gif";
+  /**
    * Every option key whose `.meta({ required: true })` marks it as required
    * to run, in schema declaration order. Computed by `defineTool` itself
    * from `options`'s meta — never set this by hand in a tool file. Kept as
