@@ -181,3 +181,39 @@ show an estimate before running. Examples: "About 19 MB at 1080p",
   same interface.
 - **True two-pass video encoding:** WebCodecs has no two-pass API. Measure
   and re-encode is the practical equivalent.
+
+## Addendum: estimates, and which modes stage a drop (2026-09-30)
+
+The "Estimates" deliverable above landed with a UX decision the original text
+left open: **a target/percent compress job might be unreachable, so it must
+never spend a real encode before the user has any idea whether the number
+they typed makes sense.** Concretely:
+
+- `compress-video`'s `target-size`/`reduce-percent` modes, `compress-audio`'s
+  `target-size`/`percent` modes, and `compress-pdf`'s `target-size`/`percent`
+  modes now **stage** a dropped file instead of submitting on drop: the file
+  is probed off the main thread (`src/lib/workers/probe.worker.ts`), a live
+  estimate is shown next to the options, and an explicit "Convert" button —
+  not the drop itself — starts the job. The estimate recomputes from the
+  cached probe as the user edits the target/percent field; the file is never
+  re-probed for that.
+- Every other mode of those same three tools — best quality, custom quality,
+  and PDF's lossless/balanced/strong — is **unaffected**: it still submits
+  immediately on drop, exactly as before this addendum. Two reasons: there's
+  no target to show an estimate against, and (per the "no
+  decode/encode/zip on the main thread" invariant) a submit-on-drop mode
+  gives the estimate nowhere to pause and be seen even if one were computed.
+- The estimate is never claimed as the exact result. Video/audio reuse the
+  same planner functions (`video-planner.ts`, `audio-target.ts`) the real
+  encode calls, so the *reachability* and *resolution/bitrate choice* always
+  agree — only a real encode's measured byte count (VBR variance,
+  measure-and-retry passes) can differ from the shown target figure. PDF's
+  estimate is explicitly a rule of thumb (see `pdf-estimate.ts`'s own doc
+  comment): there's no closed form for how much a given image shrinks at a
+  given DPI/quality without actually re-encoding it.
+
+See `src/lib/estimate/` for the estimate functions and
+`shouldStageForEstimate` (`src/lib/estimate/index.ts`) for the exact mode
+list per tool, and `ToolRunner`'s own doc comments in
+`src/components/tool-runner.tsx` for how staging plugs into the existing
+drop-to-submit flow.
