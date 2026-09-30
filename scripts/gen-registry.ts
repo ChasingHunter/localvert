@@ -881,6 +881,16 @@ function engineBaseUrl(
   version: string,
   location: EngineLocationLike,
 ): string {
+  // Tried percent-encoding the literal "@" here once (Cloudflare's Workers
+  // Static Assets 307-redirects an unencoded "@" to its encoded form, so
+  // every engine asset pays one avoidable extra round trip in production)
+  // — reverted: Vite's dev server (vitest.browser.config.ts's browser-mode
+  // tests) and Next's own dev server resolve `public/`'s literal, unencoded
+  // "pdfjs@6.3.289" directory name and 404 on the encoded form instead of
+  // decoding it, so encoding here traded a small prod-only round trip for a
+  // broken local dev/test story across every static/r2 engine. Left as the
+  // literal, filesystem-matching form; see docs/adr/ or a future slice if
+  // this round trip turns out to matter in practice.
   switch (location) {
     case "native":
     case "bundled":

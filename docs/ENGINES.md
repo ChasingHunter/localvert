@@ -163,7 +163,19 @@ first". Its cmaps and standard fonts (for non-embedded-font PDFs, and CJK
 text via predefined Adobe CMaps) ship as real per-file assets under
 `ctx.baseUrl` — `scripts/sync-engines.ts` gained directory-entry support
 (`{from: "cmaps/", to: "cmaps/"}`) to copy pdf.js's own directory trees of
-them one file at a time, same as every other engine's fixed file list.
+them one file at a time, same as every other engine's fixed file list. Both
+are fetched lazily, only when a document actually needs a given cmap or
+substitute font — never eagerly, and never the whole directory (`cMapUrl`/
+`standardFontDataUrl` just point at where they live; pdf.js requests one
+file at a time as it discovers it needs one). `getDocument()` also sets
+`useWorkerFetch: true` — the seemingly-opposite-sounding `false` routes
+those fetches through pdf.js's own main-thread `DOMBinaryDataFactory`,
+which reads `document.baseURI`; since this adapter's "main thread" is our
+own conversion Worker (no `document`), that threw and was silently
+swallowed by pdf.js's own error handling, surfacing only as an "Unable to
+load font/CMap data" console warning with no network request ever made.
+`true` fetches directly from the worker side instead, the same plain
+`fetch()` this adapter's own dynamic imports already rely on.
 Its `extractLayout` op (`pdf-to-word`'s first step, ADR-0014) reconstructs
 paragraphs/headings from `getTextContent()` into JSON rather than
 rasterising anything; the `docx` engine (pure JS, `bundled`, `fflate`'s

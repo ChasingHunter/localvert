@@ -329,7 +329,21 @@ async function runRender(
     isOffscreenCanvasSupported: true,
     disableFontFace: true,
     useSystemFonts: false,
-    useWorkerFetch: false,
+    // `false` (pdf.js's own default auto-detects `true`/`false` from
+    // whether `document` exists) would route every cmap/standard-font fetch
+    // through `PDFDocumentProxy`'s main-thread `DOMBinaryDataFactory`, which
+    // reads `document.baseURI` — undefined here, since "main thread" for
+    // this adapter *is* our own conversion Worker (see `load`'s doc
+    // comment). That threw a `ReferenceError`, caught and swallowed by
+    // pdf.js's own `BaseBinaryDataFactory#fetch`, surfacing only as an
+    // "Unable to load font/CMap data at: ..." warning — the fetch was never
+    // actually attempted (confirmed by reading `fetchData` in the published
+    // `pdf.mjs`, which unconditionally reads `document.baseURI`). `true`
+    // fetches straight from the worker side instead (`fetchBinaryData`, a
+    // plain `fetch(url)` — the same primitive `load`'s own dynamic imports
+    // already prove works here), which is also one fewer message round trip
+    // per file.
+    useWorkerFetch: true,
     cMapUrl: `${baseUrl}cmaps/`,
     cMapPacked: true,
     standardFontDataUrl: `${baseUrl}standard_fonts/`,
@@ -554,7 +568,8 @@ async function runExtractText(
     data: bytes,
     disableFontFace: true,
     useSystemFonts: false,
-    useWorkerFetch: false,
+    // See runRender's useWorkerFetch: true above for why.
+    useWorkerFetch: true,
     cMapUrl: `${baseUrl}cmaps/`,
     cMapPacked: true,
     standardFontDataUrl: `${baseUrl}standard_fonts/`,
@@ -718,7 +733,8 @@ async function runExtractLayout(
     data: bytes,
     disableFontFace: true,
     useSystemFonts: false,
-    useWorkerFetch: false,
+    // See runRender's useWorkerFetch: true above for why.
+    useWorkerFetch: true,
     cMapUrl: `${baseUrl}cmaps/`,
     cMapPacked: true,
     standardFontDataUrl: `${baseUrl}standard_fonts/`,
