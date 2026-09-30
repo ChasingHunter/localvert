@@ -22,7 +22,7 @@ import {
 } from "@/lib/engines/consent";
 import { engineDisplayName } from "@/lib/engines/display-names";
 import { ENGINE_MANIFEST } from "@/lib/engines/manifest";
-import { shouldStageForEstimate } from "@/lib/estimate";
+import { shouldStageForEstimate } from "@/lib/estimate/stage";
 import { jobStore, selectOrderedJobs } from "@/lib/jobs/store";
 import { FORMATS, formatFromFilename } from "@/lib/registry/formats";
 import type { EngineId, ToolDefinition } from "@/lib/registry/types";
