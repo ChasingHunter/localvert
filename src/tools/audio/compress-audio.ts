@@ -36,7 +36,7 @@ export default defineTool({
   category: "audio",
   title: "Compress Audio",
   description:
-    "Shrink an MP3, M4A, Ogg or Opus file. Pick a target size or percentage, or just let us choose a lower bitrate. Never makes the file bigger.",
+    "Shrink an MP3, M4A, Ogg or Opus file. Pick a target size or percentage, or let us pick a lower bitrate for you. Never makes the file bigger.",
 
   accepts: ["mp3", "m4a", "ogg", "opus"],
   produces: "same",

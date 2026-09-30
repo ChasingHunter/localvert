@@ -158,14 +158,17 @@ export function bestQualityBitrate(
   return chosen ?? fallbackBps;
 }
 
-/** "19.4 MB" / "3.1 MB" / "112 MB" — more decimals for a small number, none
- * once it's triple digits, matching every other size the app shows on a
- * job row (`job-card.tsx`'s own `formatBytes`, KB/GB granularity; this is
- * MB-only since target-size mode's own field is MB, per ADR-0017). */
+/** "19.4 MB" / "3.1 MB" / "20 MB" — one decimal, trailing ".0" dropped so a
+ * round number reads as "20 MB" rather than "20.0 MB", matching every
+ * example in ADR-0017's own "Result contract". Same rule (deliberately
+ * duplicated, not imported — see that file's own doc comment on why) as
+ * `shared/pdf-compress-target.ts`'s `formatMB` for `compress-pdf`. */
 export function formatMB(bytes: number): string {
-  const mb = bytes / (1024 * 1024);
-  const digits = mb >= 100 ? 0 : mb >= 10 ? 1 : 2;
-  return `${mb.toFixed(digits)} MB`;
+  const rounded = Math.round((bytes / (1024 * 1024)) * 10) / 10;
+  const text = Number.isInteger(rounded)
+    ? rounded.toFixed(0)
+    : rounded.toFixed(1);
+  return `${text} MB`;
 }
 
 /**
