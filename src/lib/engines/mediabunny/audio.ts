@@ -16,9 +16,12 @@
 import { registerFlacEncoder } from "@mediabunny/flac-encoder";
 import { registerMp3Encoder } from "@mediabunny/mp3-encoder";
 import {
+  ALL_FORMATS,
   type AudioCodec,
+  BlobSource,
   canEncodeAudio,
   FlacOutputFormat,
+  Input,
   Mp3OutputFormat,
   Mp4OutputFormat,
   OggOutputFormat,
@@ -28,7 +31,15 @@ import {
 import type { Operation, StepFormat } from "@/lib/registry";
 import { FORMATS } from "@/lib/registry";
 import { EngineError } from "../errors";
-import type { EngineResult, EngineTask } from "../types";
+import type { EngineInput, EngineResult, EngineTask } from "../types";
+import {
+  type AudioTargetCodec,
+  bestQualityBitrate,
+  bitrateForTargetSize,
+  resultNote,
+  stepDown,
+  targetBytesForPercent,
+} from "./audio-target";
 import { runConversion } from "./output";
 
 const ENGINE_ID = "mediabunny";
@@ -233,6 +244,109 @@ export function chosenOutputFormat(task: EngineTask): StepFormat {
     : task.outputFormat;
 }
 
+type CompressAudioMode = "best" | "target-size" | "percent" | "custom";
+
+/** `compress-audio`'s own `mode` option (ADR-0017) — every other audio tool
+ * (`extract-audio`, any future re-encode tool) never sets this option, so
+ * this reads `undefined` there and `runAudioTranscode` falls through to the
+ * original fixed-bitrate-select behaviour unchanged. */
+function modeOf(
+  options: Readonly<Record<string, unknown>>,
+): CompressAudioMode | undefined {
+  const mode = options.mode;
+  return mode === "best" ||
+    mode === "target-size" ||
+    mode === "percent" ||
+    mode === "custom"
+    ? mode
+    : undefined;
+}
+
+function targetSizeMBOf(options: Readonly<Record<string, unknown>>): number {
+  const value = options.targetSizeMB;
+  return typeof value === "number" && value > 0 ? value : 10;
+}
+
+function percentOf(options: Readonly<Record<string, unknown>>): number {
+  const value = options.percent;
+  return typeof value === "number" && value > 0 && value < 100 ? value : 50;
+}
+
+/** `audio-target.ts`'s target-size math only covers the three codecs
+ * `compress-audio` can ever pick (its `accepts`/`produces` never reach wav/
+ * flac/pcm/vorbis) — narrows `pickAudioCodec`'s wider `AudioCodec` return
+ * type down to the one this module's bitrate math actually handles. */
+function isTargetCodec(codec: AudioCodec): codec is AudioTargetCodec {
+  return codec === "mp3" || codec === "aac" || codec === "opus";
+}
+
+/** Cheap-as-possible probe of the source file for `"best"`/`"target-size"`/
+ * `"percent"` mode's own math: file size (free — `Blob.size`), channel count
+ * (from the primary audio track's own metadata) and duration. Tries
+ * `getDurationFromMetadata` first (reads the container's own duration field,
+ * no packet scan) and only falls back to the expensive `computeDuration`
+ * (walks every packet) when the container doesn't carry one — some ogg/webm
+ * files don't. This is a second, separate `Input` from the one
+ * `runConversion` builds for the actual encode (that one isn't available
+ * yet — bitrate has to be picked *before* the `Conversion` is built), so a
+ * small header-parse cost is paid twice; still far cheaper than a decode.
+ */
+async function probeSourceAudio(input: EngineInput): Promise<{
+  durationSec: number;
+  sizeBytes: number;
+  channels: number;
+}> {
+  const blob =
+    input.kind === "blob"
+      ? input.blob
+      : input.kind === "bytes"
+        ? new Blob([input.bytes])
+        : null;
+  if (!blob) {
+    throw new EngineError(
+      "internal",
+      "mediabunny audio expected a blob/bytes input to probe",
+      { engine: ENGINE_ID },
+    );
+  }
+
+  const probe = new Input({
+    source: new BlobSource(blob),
+    formats: ALL_FORMATS,
+  });
+  try {
+    const track = await probe.getPrimaryAudioTrack();
+    const channels = track ? await track.getNumberOfChannels() : 2;
+    const fromMetadata = await probe.getDurationFromMetadata();
+    const durationSec = fromMetadata ?? (await probe.computeDuration());
+    return { durationSec, sizeBytes: blob.size, channels };
+  } finally {
+    probe.dispose();
+  }
+}
+
+/** The byte size of a `runConversion` result — always `"bytes"` or `"opfs"`
+ * (the only two kinds it ever returns, see `output.ts`). */
+function resultByteSize(result: EngineResult): number {
+  if (result.kind === "bytes") return result.bytes.byteLength;
+  if (result.kind === "opfs") return result.size;
+  throw new EngineError(
+    "internal",
+    `mediabunny audio target-size measurement got an unexpected result kind "${result.kind}"`,
+    { engine: ENGINE_ID },
+  );
+}
+
+/** Attaches ADR-0017's result-contract `note` to whichever result kind
+ * `runConversion` actually produced — both kinds carry `note` today (see
+ * `EngineResult`'s "opfs" doc comment for why that field was added there). */
+function withNote(result: EngineResult, note: string): EngineResult {
+  if (result.kind === "bytes" || result.kind === "opfs") {
+    return { ...result, note };
+  }
+  return result;
+}
+
 export async function runAudioTranscode(
   task: EngineTask,
 ): Promise<EngineResult> {
@@ -251,21 +365,86 @@ export async function runAudioTranscode(
   }
   signal.throwIfAborted();
 
-  return runConversion({
-    task,
-    engineId: ENGINE_ID,
-    format,
-    // `runConversion`'s `ext` is a bare extension (no dot) — mediabunny's
-    // own `fileExtension` getter always includes the leading dot.
-    ext: format.fileExtension.slice(1),
-    mime,
-    ...(majorBrand !== undefined && { majorBrand }),
-    video: { discard: true },
-    audio: {
-      codec,
-      bitrate: bitrateOf(task.options),
-      sampleRate: sampleRateOf(task.options),
-      numberOfChannels: numberOfChannelsOf(task.options),
-    },
+  const mode = modeOf(task.options);
+  const runOnce = (
+    bitrate: number | undefined,
+    numberOfChannels: number | undefined,
+  ): Promise<EngineResult> =>
+    runConversion({
+      task,
+      engineId: ENGINE_ID,
+      format,
+      // `runConversion`'s `ext` is a bare extension (no dot) — mediabunny's
+      // own `fileExtension` getter always includes the leading dot.
+      ext: format.fileExtension.slice(1),
+      mime,
+      ...(majorBrand !== undefined && { majorBrand }),
+      video: { discard: true },
+      audio: {
+        codec,
+        bitrate,
+        sampleRate: sampleRateOf(task.options),
+        numberOfChannels,
+      },
+    });
+
+  if (!mode || mode === "custom" || !isTargetCodec(codec)) {
+    return runOnce(bitrateOf(task.options), numberOfChannelsOf(task.options));
+  }
+
+  const probe = await probeSourceAudio(task.input);
+  signal.throwIfAborted();
+
+  if (mode === "best") {
+    const sourceBitrateBps =
+      probe.durationSec > 0
+        ? (probe.sizeBytes * 8) / probe.durationSec
+        : undefined;
+    const bitrate = bestQualityBitrate(codec, sourceBitrateBps);
+    // Keep the source's own channel count — "best quality" never downmixes.
+    return runOnce(bitrate, undefined);
+  }
+
+  // mode is "target-size" or "percent" from here — both reduce to the same
+  // byte-budget math (ADR-0017: "percent maps to target = source * (1 -
+  // p), then behaves exactly like target size").
+  const targetBytes =
+    mode === "target-size"
+      ? targetSizeMBOf(task.options) * 1024 * 1024
+      : targetBytesForPercent(probe.sizeBytes, percentOf(task.options));
+
+  const picked = bitrateForTargetSize({
+    codec,
+    targetBytes,
+    durationSec: probe.durationSec,
+    sourceChannels: probe.channels,
   });
+  signal.throwIfAborted();
+
+  let result = await runOnce(picked.bitrateBps, picked.channels);
+  signal.throwIfAborted();
+  let actualBytes = resultByteSize(result);
+
+  // "Measure the real output. If it's over the target, step down one rate
+  // and retry once" (ADR-0017) — only worth trying when the pre-encode
+  // estimate thought the target was reachable at all; an already-unreachable
+  // pick has nowhere lower to usefully step to.
+  if (picked.reachable && actualBytes > targetBytes) {
+    const lower = stepDown(codec, picked.bitrateBps);
+    if (lower !== null) {
+      const retry = await runOnce(lower, picked.channels);
+      signal.throwIfAborted();
+      result = retry;
+      actualBytes = resultByteSize(retry);
+    }
+  }
+
+  const note = resultNote({
+    targetBytes,
+    actualBytes,
+    reachable: actualBytes <= targetBytes,
+    downmixedToMono: picked.channels === 1,
+  });
+
+  return withNote(result, note);
 }

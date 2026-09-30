@@ -50,8 +50,8 @@ function isMp3(bytes: Uint8Array): boolean {
  * adapters (see adapter.browser.test.ts's `buildTestMp4` for the same
  * "build the test input in-test" approach on the video side).
  */
-function buildSineWav(): Blob {
-  const numSamples = SAMPLE_RATE * DURATION_SECONDS;
+function buildSineWav(durationSeconds: number = DURATION_SECONDS): Blob {
+  const numSamples = SAMPLE_RATE * durationSeconds;
   const dataSize = numSamples * 2; // 16-bit mono
   const buffer = new ArrayBuffer(44 + dataSize);
   const view = new DataView(buffer);
@@ -224,6 +224,81 @@ describe("mediabunny audio", () => {
         const { bytes, mime } = await bytesAndMimeOf(result);
         expect(mime).toBe("audio/ogg");
         expect(hasMagic(bytes.slice(0, 4), OGG_MAGIC)).toBe(true);
+      } finally {
+        pool.destroy();
+      }
+    });
+  });
+
+  describe("compress-audio target-size mode (ADR-0017)", () => {
+    it("lands at or under the target size for a mono source", async () => {
+      // 20s mono sine WAV — long enough that the target-size math (which
+      // needs a real duration, not just a 1s clip) has room to pick a
+      // meaningfully different bitrate than the tool's old fixed default.
+      const durationSeconds = 20;
+      const blob = buildSineWav(durationSeconds);
+      const targetBytes = 300 * 1024; // 300 KB
+      const pool = createWorkerPool({
+        size: 1,
+        spawn: spawnEngineWorker,
+        isHeavy: (engine) => ENGINE_MANIFEST[engine].heavy,
+      });
+
+      try {
+        const result = await pool.run({
+          jobId: "compress-audio-target-size-job",
+          input: { kind: "blob", blob },
+          steps: [mediabunnyStep("mp3")],
+          options: {
+            mode: "target-size",
+            targetSizeMB: targetBytes / (1024 * 1024),
+          },
+        });
+
+        const size =
+          result.kind === "bytes"
+            ? result.bytes.byteLength
+            : result.kind === "opfs"
+              ? result.size
+              : (() => {
+                  throw new Error(`unexpected result kind "${result.kind}"`);
+                })();
+        expect(size).toBeLessThanOrEqual(targetBytes);
+        expect(result.kind === "bytes" || result.kind === "opfs").toBe(true);
+        if (result.kind === "bytes" || result.kind === "opfs") {
+          expect(result.note).toMatch(/MB.*target/);
+        }
+      } finally {
+        pool.destroy();
+      }
+    });
+
+    it("reports an unreachable target honestly rather than silently overshooting", async () => {
+      const durationSeconds = 20;
+      const blob = buildSineWav(durationSeconds);
+      const pool = createWorkerPool({
+        size: 1,
+        spawn: spawnEngineWorker,
+        isHeavy: (engine) => ENGINE_MANIFEST[engine].heavy,
+      });
+
+      try {
+        const result = await pool.run({
+          jobId: "compress-audio-target-size-unreachable-job",
+          input: { kind: "blob", blob },
+          steps: [mediabunnyStep("mp3")],
+          options: {
+            mode: "target-size",
+            // 1 KB over 20s is far below even the mono floor (32 kbps).
+            targetSizeMB: 1 / 1024,
+          },
+        });
+
+        if (result.kind === "bytes" || result.kind === "opfs") {
+          expect(result.note).toMatch(/smallest we could make it/);
+        } else {
+          throw new Error(`unexpected result kind "${result.kind}"`);
+        }
       } finally {
         pool.destroy();
       }

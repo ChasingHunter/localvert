@@ -165,10 +165,14 @@ export type EngineResult =
       path: string;
       mime: string;
       size: number;
-      /** Same idea as the `bytes` kind's `note` above — ADR-0017's
-       * target-size/percent video modes stream their result to OPFS
-       * (ADR-0010), so their own result-contract note ("19.4 MB, 97% of
-       * your 20 MB target.") has to travel on this variant instead. */
+      /**
+       * ADR-0017: a target-size/percent compress mode's own result-contract
+       * note ("19.4 MB, 97% of your 20 MB target.", "The smallest we could
+       * make it is 23 MB.") — set the same way the `"bytes"` kind's `note`
+       * above is, just on the OPFS path a large audio/video output takes
+       * instead (ADR-0010). `job-engine.ts`'s `applyResult` surfaces it the
+       * same way for both kinds.
+       */
       note?: string;
     }
   | { kind: "raster"; image: RasterImage }
