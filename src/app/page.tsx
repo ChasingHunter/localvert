@@ -36,12 +36,32 @@ export default function HomePage() {
     <PageShell>
       <div className="mx-auto flex max-w-6xl flex-col gap-16 px-6 py-16 lg:px-12">
         <section className="flex flex-col gap-6">
-          <h1 className="sr-only">
-            Convert a file without uploading it. Choose a format to convert from
-            and a format to convert to, then convert.
-          </h1>
+          <div className="flex flex-col gap-2">
+            <h1 className="font-display text-3xl font-medium text-ink sm:text-4xl">
+              Convert, compress and edit files without uploading them.
+            </h1>
+            <p className="max-w-2xl text-ink-muted">
+              Everything runs in your browser, even video.
+            </p>
+          </div>
 
           <Converter variant="hero" />
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-ink-muted">
+            <Link
+              href="/compress"
+              className="rounded-sm font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+            >
+              Make a file smaller
+            </Link>
+            <span aria-hidden="true">&middot;</span>
+            <Link
+              href="/privacy"
+              className="rounded-sm font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+            >
+              How we know your files stay put
+            </Link>
+          </div>
         </section>
 
         {populatedCategories.map((category) => {
@@ -97,6 +117,12 @@ export default function HomePage() {
             carrying your file leaves the page. It even keeps working with your
             network turned off, once you've loaded it once.
           </p>
+          <Link
+            href="/privacy"
+            className="w-fit rounded-sm font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+          >
+            Read the full explanation
+          </Link>
         </section>
       </div>
     </PageShell>

@@ -11,7 +11,9 @@ interface PrivacyNoteProps {
  * review: the same fact was showing up three or four times on a single tool
  * page). Used by the home hero's `Converter` and by `ToolRunner`'s own drop
  * area — every other privacy mention (the site footer, the home page's "How
- * we know" section) says something different and stays as is.
+ * we know" section) says something different and stays as is. "How we know"
+ * links to `/privacy`, the full explanation (docs/ROADMAP.md's "Before
+ * cutting v0.4.0" trust page).
  *
  * Deliberately not `cn()` (clsx + tailwind-merge) — this renders on the home
  * page's first load, which `combobox.tsx` already documents as too tight a
@@ -24,7 +26,7 @@ export function PrivacyNote({ size = "base" }: PrivacyNoteProps) {
     >
       Your files stay on this device. Nothing is uploaded.{" "}
       <Link
-        href="/#how-we-know"
+        href="/privacy"
         className="rounded-sm font-medium text-accent outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
       >
         How we know
