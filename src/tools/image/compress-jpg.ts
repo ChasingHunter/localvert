@@ -73,14 +73,8 @@ export default defineTool({
         unit: "KB",
         showWhen: { field: "mode", equals: "target-size" },
       })
-      // A real default (not `.optional()`, unlike the old standalone
-      // targetSizeKB field) rather than `required: true` — combining
-      // `required` with `showWhen` would make `requiredOptionKeys` (which
-      // has no notion of visibility) treat this as always-required, which
-      // both `OptionsForm`'s and `ToolRunner`'s required-field gates would
-      // then block on even in every OTHER mode, where this field isn't even
-      // shown. No precedent in the registry combines the two for that
-      // reason; see docs/adr/0013-compression-modes.md.
+      // A real default rather than `required: true`: dropping a file in
+      // target-size mode should just run at 200 KB, not wait for input.
       .default(200),
     percent: z
       .number()

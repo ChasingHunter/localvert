@@ -2,20 +2,6 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { TOOLS } from "./index";
 
-/**
- * Tool files still being labelled in a parallel slice (resize, trim,
- * video-to-gif, compress-pdf). Labelled in the parallel slice: the planner
- * removes this list after the merge.
- */
-const LABELLED_IN_PARALLEL_SLICE = new Set<string>([
-  "resize-image-jpg",
-  "resize-image-png",
-  "resize-image-webp",
-  "trim-video",
-  "video-to-gif",
-  "compress-pdf",
-]);
-
 type Core = z.core.$ZodType;
 
 function unwrap(field: Core): Core {
@@ -29,7 +15,6 @@ describe("option labels", () => {
   it("every select-rendered enum value has an optionLabels entry", () => {
     const missing: string[] = [];
     for (const tool of TOOLS) {
-      if (LABELLED_IN_PARALLEL_SLICE.has(tool.slug)) continue;
       for (const [key, raw] of Object.entries(tool.options.shape)) {
         const field = unwrap(raw as Core);
         const meta = z.globalRegistry.get(field);

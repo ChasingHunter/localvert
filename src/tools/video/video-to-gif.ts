@@ -39,15 +39,37 @@ export default defineTool({
       .default(5),
     fps: z
       .enum(["5", "10", "15", "20"])
-      .meta({ label: "Frame rate", control: "select", unit: "fps" })
+      .meta({
+        label: "Frame rate",
+        control: "select",
+        optionLabels: {
+          "5": "5 fps",
+          "10": "10 fps",
+          "15": "15 fps",
+          "20": "20 fps",
+        },
+      })
       .default("10"),
     width: z
       .enum(["240", "320", "480", "640"])
-      .meta({ label: "Width", control: "select", unit: "px" })
+      .meta({
+        label: "Width",
+        control: "select",
+        optionLabels: {
+          "240": "240 px",
+          "320": "320 px",
+          "480": "480 px",
+          "640": "640 px",
+        },
+      })
       .default("480"),
     colors: z
       .enum(["64", "128", "256"])
-      .meta({ label: "Colors", control: "select" })
+      .meta({
+        label: "Colors",
+        control: "select",
+        optionLabels: { "64": "64", "128": "128", "256": "256 (best)" },
+      })
       .default("256"),
     loop: z
       .boolean()
