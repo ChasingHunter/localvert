@@ -382,6 +382,10 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
           size: result.size,
           url,
           opfsPath: result.path,
+          // ADR-0017: compress-video's target-size/percent modes set this
+          // to their own result-contract note ("19.4 MB, 97% of your 20 MB
+          // target.") — see `EngineResult`'s `opfs` variant.
+          ...(result.note ? { note: result.note } : {}),
         },
       });
       return;

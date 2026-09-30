@@ -12,6 +12,12 @@
  * needs the exact same plumbing, container conversion or in-place edit
  * alike). See ADR-0010 for the full output-target design.
  */
+import {
+  type AudioCodec,
+  type OutputFormat,
+  Quality,
+  type VideoCodec,
+} from "mediabunny";
 import type { Operation, StepFormat } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
 import { EngineError, toEngineError } from "../errors";
@@ -27,8 +33,9 @@ import { runAudioTranscode, supportsAudioTranscode } from "./audio";
 import { chooseAudioBitrateBps, chooseVideoBitrateBps } from "./bitrate";
 import meta from "./engine.json";
 import { runToGif } from "./gif";
-import { inputToBlob, runConversion } from "./output";
+import { deleteConversionOutput, inputToBlob, runConversion } from "./output";
 import {
+  codecFamilyFor,
   dimensionsForPreset,
   isVideoContainer,
   outputFormatFor,
@@ -39,9 +46,20 @@ import {
   type ResizePreset,
   resizeToVideoOptions,
   rotationFor,
+  type SourceBitrates,
   sourceBitrates,
+  type VideoContainer,
   validateTrim,
 } from "./video";
+import {
+  bestQualityVideoBitrateBps,
+  bppFloor,
+  planTargetSizeBudget,
+  runWithSizeRetries,
+  stepDownForBpp,
+  targetBytesFromPercent,
+  targetSizeResultNote,
+} from "./video-planner";
 
 const metadata = {
   ...(meta as Pick<
@@ -147,6 +165,12 @@ async function runVideo(task: EngineTask): Promise<EngineResult> {
     rotate?: "90" | "180" | "270";
     start?: number;
     end?: number;
+    // ADR-0017: compress-video only. `mode` is absent (`undefined`) on
+    // every other video tool's options, which is exactly what routes them
+    // through the pre-existing "custom" branch below, unchanged.
+    mode?: "best-quality" | "custom" | "target-size" | "reduce-percent";
+    targetSizeMB?: number;
+    reducePercent?: number;
   };
 
   const videoCodec = await pickVideoCodec(container);
@@ -186,36 +210,8 @@ async function runVideo(task: EngineTask): Promise<EngineResult> {
   // to "medium" for every tool here, including the ones with no `quality`
   // option at all (resize/rotate/trim/mute-video) — the same default
   // mediabunny itself falls back to when no quality/bitrate is given.
-  const preset = opts.quality ?? "medium";
   const source = await sourceBitrates(inputToBlob(task.input, metadata.id));
   signal.throwIfAborted();
-  const targetHeight =
-    resize?.preset !== undefined
-      ? dimensionsForPreset(resize.preset).height
-      : (resize?.height ?? source.height ?? 1080);
-  const videoBitrate = chooseVideoBitrateBps(
-    preset,
-    targetHeight,
-    source.video,
-  );
-
-  const video = {
-    codec: videoCodec,
-    ...(resize ? resizeToVideoOptions(resize) : {}),
-    bitrate: videoBitrate,
-    ...(opts.rotate
-      ? { rotate: rotationFor(Number(opts.rotate) as 90 | 180 | 270) }
-      : {}),
-  };
-
-  const audio = opts.mute
-    ? { discard: true as const }
-    : audioCodec
-      ? {
-          codec: audioCodec,
-          bitrate: chooseAudioBitrateBps(preset, source.audio),
-        }
-      : { discard: true as const };
 
   let trim: { start?: number; end?: number } | undefined;
   if (opts.start !== undefined || opts.end !== undefined) {
@@ -231,6 +227,100 @@ async function runVideo(task: EngineTask): Promise<EngineResult> {
     trim = { start, end: opts.end };
   }
 
+  // ADR-0017 (2026-09-30): compress-video's target-size and reduce-by-%
+  // modes need a whole different shape — a byte budget split across
+  // audio/overhead/video, a resolution/fps ladder, and a measure-and-retry
+  // loop — so they're handled entirely by `runVideoTargetSize` rather than
+  // bending the single-pass shape below to fit. Every other mode (and
+  // every other video tool, which has no `mode` option at all) keeps the
+  // single-pass shape.
+  if (opts.mode === "target-size" || opts.mode === "reduce-percent") {
+    return runVideoTargetSize({
+      task,
+      mode: opts.mode,
+      targetSizeMB: opts.targetSizeMB,
+      reducePercent: opts.reducePercent,
+      mute: opts.mute,
+      maxHeight: opts.maxHeight,
+      container,
+      videoCodec,
+      audioCodec,
+      format,
+      ext,
+      mime,
+      source,
+      trim,
+    });
+  }
+
+  const targetHeight =
+    resize?.preset !== undefined
+      ? dimensionsForPreset(resize.preset).height
+      : (resize?.height ?? source.height ?? 1080);
+
+  let videoBitrate: number;
+  let audio: { discard: true } | { codec: AudioCodec; bitrate?: number };
+
+  if (opts.mode === "best-quality") {
+    // ADR-0017's default mode: ceiling = min(0.7x source, a bits-per-pixel
+    // ceiling at the output's own resolution/fps) — see
+    // `video-planner.ts`'s `bestQualityVideoBitrateBps` doc comment for why
+    // this alone is the entire "never bigger" rule for this mode (no
+    // quantizer path at all).
+    const targetWidth =
+      source.width && source.height
+        ? Math.round((targetHeight * source.width) / source.height)
+        : Math.round((targetHeight * 16) / 9);
+    videoBitrate = bestQualityVideoBitrateBps({
+      sourceBps: source.video,
+      width: targetWidth,
+      height: targetHeight,
+      fps: source.fps ?? 30,
+      codec: codecFamilyFor(videoCodec),
+    });
+
+    // Audio: passed through untouched when the source's own codec already
+    // matches the output's — mediabunny copies the encoded packets as-is
+    // whenever a track's options carry no `codec`/`bitrate` at all and the
+    // codec is already supported by the output container (verified in
+    // `mediabunny/dist/modules/src/conversion.js`'s `_processAudioTrack`:
+    // any explicit `codec`/`bitrate` forces a transcode). Otherwise capped
+    // at the source's own audio bitrate via the existing `high`-preset
+    // ceiling (160 kbps), same as every other mode here.
+    audio = opts.mute
+      ? { discard: true }
+      : !audioCodec
+        ? { discard: true }
+        : source.audioCodec === audioCodec
+          ? { codec: audioCodec }
+          : {
+              codec: audioCodec,
+              bitrate: chooseAudioBitrateBps("high", source.audio),
+            };
+  } else {
+    // "custom" (or no mode at all, for every other video tool) — the
+    // pre-existing ADR-0013-addendum behaviour, unchanged.
+    const preset = opts.quality ?? "medium";
+    videoBitrate = chooseVideoBitrateBps(preset, targetHeight, source.video);
+    audio = opts.mute
+      ? { discard: true }
+      : audioCodec
+        ? {
+            codec: audioCodec,
+            bitrate: chooseAudioBitrateBps(preset, source.audio),
+          }
+        : { discard: true };
+  }
+
+  const video = {
+    codec: videoCodec,
+    ...(resize ? resizeToVideoOptions(resize) : {}),
+    bitrate: videoBitrate,
+    ...(opts.rotate
+      ? { rotate: rotationFor(Number(opts.rotate) as 90 | 180 | 270) }
+      : {}),
+  };
+
   return runConversion({
     task,
     engineId: metadata.id,
@@ -241,6 +331,205 @@ async function runVideo(task: EngineTask): Promise<EngineResult> {
     audio,
     trim,
   });
+}
+
+/**
+ * ADR-0017's target-size/percent modes: split the byte budget
+ * (`planTargetSizeBudget`), pick a resolution/fps rung whose bpp clears the
+ * codec's floor (`stepDownForBpp`), then measure-and-retry
+ * (`runWithSizeRetries`) until the result lands inside the target window —
+ * or, when the budget can't clear even the floor at 360p/24fps, encode once
+ * at that floor and report the result honestly as "unreachable" (ADR-0017's
+ * result contract never silently returns something over target).
+ */
+async function runVideoTargetSize(args: {
+  task: EngineTask;
+  mode: "target-size" | "reduce-percent";
+  targetSizeMB?: number;
+  reducePercent?: number;
+  mute?: boolean;
+  maxHeight?: ResizePreset | "none";
+  container: VideoContainer;
+  videoCodec: VideoCodec;
+  audioCodec: AudioCodec | null;
+  format: OutputFormat;
+  ext: string;
+  mime: string;
+  source: SourceBitrates;
+  trim?: { start?: number; end?: number };
+}): Promise<EngineResult> {
+  const {
+    task,
+    mode,
+    targetSizeMB,
+    reducePercent,
+    mute,
+    maxHeight,
+    videoCodec,
+    audioCodec,
+    format,
+    ext,
+    mime,
+    source,
+    trim,
+  } = args;
+  const { signal, onProgress } = task;
+
+  const blob = inputToBlob(task.input, metadata.id);
+  const duration = source.duration;
+  if (duration === undefined || !(duration > 0)) {
+    throw new EngineError(
+      "unsupported",
+      "can't determine this video's duration, so a target size can't be planned for it",
+      { engine: metadata.id },
+    );
+  }
+
+  const targetBytes =
+    mode === "target-size"
+      ? (targetSizeMB ?? 20) * 1024 * 1024
+      : targetBytesFromPercent(blob.size, reducePercent ?? 50);
+
+  const budget = planTargetSizeBudget({
+    targetBytes,
+    durationSeconds: duration,
+    sourceAudioBps: source.audio,
+  });
+
+  const codec = codecFamilyFor(videoCodec);
+  const sourceWidth = source.width ?? 1920;
+  const sourceHeight = source.height ?? 1080;
+  const sourceFps = source.fps ?? 30;
+  const maxHeightCap =
+    maxHeight && maxHeight !== "none"
+      ? dimensionsForPreset(maxHeight).height
+      : undefined;
+  const startingHeight =
+    maxHeightCap !== undefined
+      ? Math.min(sourceHeight, maxHeightCap)
+      : sourceHeight;
+
+  const audio: { discard: true } | { codec: AudioCodec; bitrate: number } =
+    mute || !audioCodec
+      ? { discard: true }
+      : { codec: audioCodec, bitrate: budget.audioBps };
+
+  // `budget.videoBps` is `undefined` when audio + overhead alone already
+  // exhaust the target — forcing a tiny positive placeholder here routes
+  // that case through the exact same "unreachable" branch as a budget
+  // that's merely too low for the floor at every rung, since 1 bps is
+  // below every codec's floor at any resolution.
+  const step = stepDownForBpp({
+    videoBps: budget.videoBps ?? 1,
+    sourceWidth,
+    sourceHeight,
+    sourceFps,
+    codec,
+    maxHeight: maxHeightCap,
+  });
+
+  let passIndex = 0;
+  // ADR-0017 shows "Pass N of 3" progress during retries; the job store's
+  // `progress` field is a bare 0..1 fraction with no text channel (adding
+  // one would mean widening `Job`/the job-row UI well beyond this engine
+  // slice — left as a follow-up, noted in this slice's report). This scales
+  // each pass's own 0..1 progress into its slice of an assumed 3-pass
+  // budget instead, so the bar at least advances monotonically across
+  // retries rather than restarting at 0 on every pass.
+  const PASSES_ESTIMATE = 3;
+  async function encode(
+    bitrateBps: number,
+    dims: { width: number; height: number; fps: number },
+  ): Promise<{ sizeBytes: number; result: EngineResult }> {
+    passIndex++;
+    signal.throwIfAborted();
+    const scopedTask: EngineTask = {
+      ...task,
+      onProgress: (fraction) => {
+        const overall = (passIndex - 1 + fraction) / PASSES_ESTIMATE;
+        onProgress?.(Math.min(overall, 0.99));
+      },
+    };
+    const video = {
+      codec: videoCodec,
+      width: dims.width,
+      height: dims.height,
+      fit: "contain" as const,
+      frameRate: dims.fps,
+      bitrate: new Quality({
+        bitrate: Math.max(1, Math.round(bitrateBps)),
+        bitrateMode: "variable",
+      }),
+    };
+    const result = await runConversion({
+      task: scopedTask,
+      engineId: metadata.id,
+      format,
+      ext,
+      mime,
+      video,
+      audio,
+      trim,
+    });
+    const sizeBytes =
+      result.kind === "opfs"
+        ? result.size
+        : result.kind === "bytes"
+          ? result.bytes.byteLength
+          : 0;
+    return { sizeBytes, result };
+  }
+
+  function withNote(result: EngineResult, note: string): EngineResult {
+    if (result.kind === "bytes" || result.kind === "opfs") {
+      return { ...result, note };
+    }
+    return result;
+  }
+
+  if (step.unreachable) {
+    const { width, height, fps } = step.smallest;
+    const floorBitrateBps = bppFloor(codec) * width * height * fps;
+    const { sizeBytes, result } = await encode(floorBitrateBps, {
+      width,
+      height,
+      fps,
+    });
+    onProgress?.(1);
+    return withNote(
+      result,
+      targetSizeResultNote({ kind: "unreachable", actualBytes: sizeBytes }),
+    );
+  }
+
+  const { width, height, fps } = step;
+  const { final } = await runWithSizeRetries({
+    targetBytes,
+    durationSeconds: duration,
+    initialBitrateBps: budget.videoBps as number,
+    encode: (bitrateBps) => encode(bitrateBps, { width, height, fps }),
+    cleanup: (pass) => deleteConversionOutput(pass.result),
+    signal,
+  });
+  onProgress?.(1);
+
+  const resized = height < startingHeight;
+  const outcome =
+    final.sizeBytes > targetBytes
+      ? ({ kind: "unreachable", actualBytes: final.sizeBytes } as const)
+      : resized
+        ? ({
+            kind: "resized",
+            actualBytes: final.sizeBytes,
+            resizedToHeight: height,
+          } as const)
+        : ({
+            kind: "hit",
+            actualBytes: final.sizeBytes,
+            targetBytes,
+          } as const);
+
+  return withNote(final.result, targetSizeResultNote(outcome));
 }
 
 async function load(_ctx: EngineLoadContext): Promise<EngineInstance> {

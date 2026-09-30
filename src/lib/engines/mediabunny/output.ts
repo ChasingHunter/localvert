@@ -177,6 +177,30 @@ async function cleanupFailedOpfsOutput(
   }
 }
 
+/**
+ * Deletes an OPFS output produced by a superseded `runConversion` pass — used
+ * by ADR-0017's target-size retry loop (`adapter.ts`'s `runVideoTargetSize`,
+ * via `video-planner.ts`'s `runWithSizeRetries`) to keep only one encoded
+ * attempt on disk at a time instead of accumulating one per retry. A no-op
+ * for a `bytes`/`stream` result — nothing was ever written to disk for
+ * those, so there's nothing to clean up.
+ */
+export async function deleteConversionOutput(
+  result: EngineResult,
+): Promise<void> {
+  if (result.kind !== "opfs") return;
+  try {
+    const slash = result.path.indexOf("/");
+    const dirName = slash === -1 ? OPFS_TEMP_DIR : result.path.slice(0, slash);
+    const name = slash === -1 ? result.path : result.path.slice(slash + 1);
+    const root = await navigator.storage.getDirectory();
+    const dir = await root.getDirectoryHandle(dirName, { create: false });
+    await dir.removeEntry(name);
+  } catch {
+    // Already removed, or OPFS unavailable — nothing more to do.
+  }
+}
+
 /** Everything one `Conversion` run needs beyond the task itself: the output
  * container, the file extension its OPFS temp name gets, its mime, and the
  * per-track/trim options to pass to `Conversion.init`. */

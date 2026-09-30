@@ -160,7 +160,17 @@ export type EngineResult =
       note?: string;
     }
   | { kind: "stream"; stream: ReadableStream<Uint8Array>; mime: string }
-  | { kind: "opfs"; path: string; mime: string; size: number }
+  | {
+      kind: "opfs";
+      path: string;
+      mime: string;
+      size: number;
+      /** Same idea as the `bytes` kind's `note` above — ADR-0017's
+       * target-size/percent video modes stream their result to OPFS
+       * (ADR-0010), so their own result-contract note ("19.4 MB, 97% of
+       * your 20 MB target.") has to travel on this variant instead. */
+      note?: string;
+    }
   | { kind: "raster"; image: RasterImage }
   /**
    * ADR-0008: a one-to-many step's output (e.g. `split`) — every produced

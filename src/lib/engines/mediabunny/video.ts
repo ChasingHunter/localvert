@@ -28,6 +28,7 @@ import {
 } from "mediabunny";
 import { FORMATS } from "@/lib/registry";
 import { estimateSourceVideoBps } from "./bitrate";
+import type { CodecFamily } from "./video-planner";
 
 /** The container formats every video tool in this slice reads or writes.
  * `StepFormat` is wider (every `FormatId`); this narrows it to what
@@ -184,8 +185,26 @@ export interface SourceBitrates {
   audio?: number;
   /** The source video track's own display height — used as the resolution
    * bucket for `chooseVideoBitrateBps` when the output isn't being resized
-   * (so the output resolution *is* the source's). */
+   * (so the output resolution *is* the source's), and as the starting rung
+   * for ADR-0017's `stepDownForBpp` ladder. */
   height?: number;
+  /** The source video track's own display width — `stepDownForBpp` derives
+   * every rung's width from this and `height`'s aspect ratio. */
+  width?: number;
+  /** ADR-0017's target-size/percent modes need the clip's duration for
+   * every step of the budget split (`planTargetSizeBudget`) — read here
+   * once, alongside the bitrate probe, rather than re-opening the `Input`. */
+  duration?: number;
+  /** Best-guess source frame rate (`InputVideoTrack.computeFrameRateMetrics`),
+   * used as the ladder's starting fps and the bpp divisor. Falls back to 30
+   * (a safe, common default) when it can't be read at all. */
+  fps?: number;
+  /** The source audio track's own codec — lets the caller skip re-encoding
+   * entirely (mediabunny's own packet-copy path, see `adapter.ts`'s
+   * `runVideo`) when it already matches the output's chosen codec, instead
+   * of always passing an explicit `codec`/`bitrate` that would force a
+   * transcode. */
+  audioCodec?: string;
 }
 
 /**
@@ -217,22 +236,52 @@ export async function sourceBitrates(blob: Blob): Promise<SourceBitrates> {
       (await audioTrack?.getAverageBitrate()) ??
       (await audioTrack?.getBitrate()) ??
       undefined;
+    const audioCodec = (await audioTrack?.getCodec()) ?? undefined;
+
+    // ADR-0017's target-size/percent modes need duration regardless of
+    // whether the video bitrate is already known (unlike the pre-existing
+    // "estimate video bitrate from file size" fallback below, which only
+    // needed it when video bitrate metadata was missing) — read it once
+    // here rather than every caller re-opening the same `Input`.
+    const duration =
+      (await input.getDurationFromMetadata()) ??
+      (await input.computeDuration());
 
     let video =
       (await videoTrack?.getAverageBitrate()) ??
       (await videoTrack?.getBitrate()) ??
       undefined;
     if (video === undefined) {
-      const duration =
-        (await input.getDurationFromMetadata()) ??
-        (await input.computeDuration());
       video = estimateSourceVideoBps(blob.size, duration, audio);
     }
 
-    return { video, audio, height: videoTrack?.displayHeight };
+    let fps: number | undefined;
+    try {
+      fps = (await videoTrack?.computeFrameRateMetrics())?.bestGuessFrameRate;
+    } catch {
+      fps = undefined;
+    }
+
+    return {
+      video,
+      audio,
+      audioCodec,
+      height: videoTrack?.displayHeight,
+      width: videoTrack?.displayWidth,
+      duration,
+      fps,
+    };
   } catch {
     return {};
   }
+}
+
+/** Maps mediabunny's own `VideoCodec` union to ADR-0017's coarser
+ * `CodecFamily` (`video-planner.ts`) — every non-avc codec this adapter can
+ * write (vp9, its vp8 fallback) uses the VP9-family bpp numbers, the closer
+ * of the two to how the actual encoder behaves. */
+export function codecFamilyFor(codec: VideoCodec): CodecFamily {
+  return codec === "avc" ? "avc" : "vp9";
 }
 
 /** `rotate-video`'s options -> mediabunny's `Rotation` (a plain clockwise
