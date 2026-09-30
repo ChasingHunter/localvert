@@ -37,6 +37,16 @@ export interface EncodeToTargetSizeResult {
   quality: number;
   /** False only when even `min` quality's output exceeds `targetBytes`. */
   hitTarget: boolean;
+  /** True when `max` quality's own output already fits under `targetBytes`
+   * without landing in the `[0.95*targetBytes, targetBytes]` band — i.e. the
+   * best (highest) quality this search is allowed to try is *already*
+   * smaller than the target allows. Since size only grows with quality,
+   * nothing between `min` and `max` can get closer to the band from below:
+   * `max` itself is the closest reachable point, so the caller should report
+   * "already under target at full quality" rather than a misleading percent
+   * of target computed by continuing to search (and likely landing on some
+   * arbitrary, *lower*-quality candidate further from the band still). */
+  atCeiling: boolean;
 }
 
 /** The result is accepted once its size falls in
@@ -78,16 +88,17 @@ export async function encodeToTargetSize(
   const floor = await encode(min);
   signal?.throwIfAborted();
   if (floor.byteLength > targetBytes) {
-    return { bytes: floor, quality: min, hitTarget: false };
+    return { bytes: floor, quality: min, hitTarget: false, atCeiling: false };
   }
   if (maxIterations <= 1) {
-    return { bytes: floor, quality: min, hitTarget: true };
+    return { bytes: floor, quality: min, hitTarget: true, atCeiling: false };
   }
 
   let best: EncodeToTargetSizeResult = {
     bytes: floor,
     quality: min,
     hitTarget: true,
+    atCeiling: false,
   };
   const lowBound = LOW_FRACTION * targetBytes;
   if (floor.byteLength >= lowBound) {
@@ -99,8 +110,11 @@ export async function encodeToTargetSize(
   const ceiling = await encode(max);
   signal?.throwIfAborted();
   if (ceiling.byteLength <= targetBytes) {
-    best = { bytes: ceiling, quality: max, hitTarget: true };
-    if (ceiling.byteLength >= lowBound) return best;
+    // `max` is the best quality this search is allowed to reach, and it
+    // already fits — nothing between `min` and `max` can land closer to the
+    // band (that would need an even *larger* output than `max` gives), so
+    // this is the final answer regardless of whether it's in-band.
+    return { bytes: ceiling, quality: max, hitTarget: true, atCeiling: true };
   }
 
   // Two known points: (min, floor.byteLength) always fits; (max,
@@ -134,7 +148,7 @@ export async function encodeToTargetSize(
     const size = bytes.byteLength;
 
     if (size <= targetBytes) {
-      best = { bytes, quality, hitTarget: true };
+      best = { bytes, quality, hitTarget: true, atCeiling: false };
       if (size >= lowBound) break; // Landed in the target band.
       lo = quality;
       loSize = size;

@@ -566,6 +566,7 @@ async function runCompress(
       targetBytes,
       hitTarget: searchResult.hitTarget,
       resizedTo,
+      atBestQuality: !resizedTo && searchResult.atCeiling,
     });
   } else if (mode === "visually-lossless" || mode === "strong") {
     let iteration = 0;

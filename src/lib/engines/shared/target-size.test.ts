@@ -92,6 +92,30 @@ describe("encodeToTargetSize", () => {
     expect(result.quality).toBeLessThanOrEqual(0.6);
   });
 
+  it("returns the ceiling immediately, flagged atCeiling, when max quality already undershoots the band (real-world validation, 2026-09-30)", async () => {
+    // An already-efficient source: even `max` quality's own output lands
+    // well under the target, outside `[0.95*target, target]`. Continuing to
+    // search *lower* qualities can only shrink the output further from the
+    // band, never closer — so the ceiling itself is the only sensible
+    // answer, reached with exactly two encodes (floor + ceiling probes).
+    const { encode, bytesOf } = fakeLinearEncoder();
+    const target = 500_000; // ceiling (quality 0.95) encodes to 95,000 bytes
+    const result = await encodeToTargetSize(encode, target);
+
+    expect(result.hitTarget).toBe(true);
+    expect(result.atCeiling).toBe(true);
+    expect(result.quality).toBe(0.95);
+    expect(result.bytes.byteLength).toBe(bytesOf(0.95));
+    expect(encode).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not flag atCeiling on a normal in-band result", async () => {
+    const { encode } = fakeExponentialEncoder();
+    const result = await encodeToTargetSize(encode, 50_000);
+    expect(result.hitTarget).toBe(true);
+    expect(result.atCeiling).toBe(false);
+  });
+
   it("throws synchronously-observable rejection when the signal is already aborted", async () => {
     const { encode } = fakeLinearEncoder();
     const controller = new AbortController();

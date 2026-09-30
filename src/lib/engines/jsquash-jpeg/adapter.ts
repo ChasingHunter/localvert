@@ -528,6 +528,10 @@ async function runCompress(
       targetBytes,
       hitTarget: searchResult.hitTarget,
       resizedTo,
+      // Only meaningful when no downscale round ran (`resizedTo` is what
+      // formatTargetSizeNote checks first) — a downscale round means the
+      // ceiling alone wasn't the end of the story.
+      atBestQuality: !resizedTo && searchResult.atCeiling,
     });
   } else if (mode === "visually-lossless" || mode === "strong") {
     const sourceQuality = estimateJpegQuality(new Uint8Array(originalBytes));

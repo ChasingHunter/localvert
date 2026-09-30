@@ -23,9 +23,14 @@ export interface PngTargetSizeResult<TRaster> {
   colors?: number;
   ssim: number;
   hitTarget: boolean;
-  /** True once every step's SSIM fell under the lossy-palette floor
-   * (0.998, ADR-0017) — signals "this photo can't get small enough as a
-   * PNG" so the caller's note can suggest JPG/WebP instead. */
+  /** True whenever the whole palette ladder ran out without ever hitting
+   * `targetBytes` — signals "this photo can't get small enough as a PNG" so
+   * the caller's note can suggest JPG/WebP instead, whether that's because
+   * every step's SSIM fell under the lossy floor (0.998, ADR-0017) or
+   * because even the least-destructive usable step still didn't fit: either
+   * way, going smaller only makes the image worse, not just slower, so a
+   * plain "smallest we could make it" note (implying "try a bigger target")
+   * would mislead — the real fix for a PNG photo is a different format. */
   unreachableQuality: boolean;
 }
 
@@ -55,7 +60,6 @@ export async function searchPngTargetSize<TRaster>(
   signal?.throwIfAborted();
 
   let best: PngTargetSizeResult<TRaster> | undefined;
-  let anyUsable = false;
 
   for (const colors of PALETTE_STEPS) {
     const raster = await quantize(colors);
@@ -67,7 +71,6 @@ export async function searchPngTargetSize<TRaster>(
       // worse) is unusable — stop rather than keep shrinking a ruined image.
       break;
     }
-    anyUsable = true;
 
     const bytes = await encode(raster);
     signal?.throwIfAborted();
@@ -93,7 +96,10 @@ export async function searchPngTargetSize<TRaster>(
   }
 
   if (best) {
-    return { ...best, unreachableQuality: !anyUsable };
+    // Reaching here means every tried step's `hitTarget` was false (a step
+    // that hits returns immediately, above) — so regardless of `anyUsable`,
+    // the target genuinely wasn't reachable via palette reduction alone.
+    return { ...best, unreachableQuality: true };
   }
 
   // Nothing was usable at all — even the least-aggressive step (256 colours)

@@ -46,8 +46,11 @@ describe("searchPngTargetSize", () => {
     });
     // Target so small only 64/32/16 colours would fit by size alone, but
     // they're all below the SSIM floor -> best remains 128 (still over
-    // target), reported as not having hit the target but not "unreachable"
-    // either, since 128 was usable.
+    // target). ADR-0017/real-world validation (2026-09-30): this still
+    // counts as "unreachable" for the caller's JPG/WebP-suggestion note —
+    // 128 being "usable" (good SSIM) doesn't mean the *target* was
+    // reachable, only that the target-size ladder never returns a ruined
+    // image as its answer.
     const result = await searchPngTargetSize(
       {},
       quantize,
@@ -57,6 +60,7 @@ describe("searchPngTargetSize", () => {
     );
     expect(result.hitTarget).toBe(false);
     expect(result.colors).toBe(128);
+    expect(result.unreachableQuality).toBe(true);
   });
 
   it("reports unreachableQuality when even the least-aggressive step fails the SSIM floor", async () => {
