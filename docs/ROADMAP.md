@@ -252,7 +252,12 @@ one repo, one engine; make PDF a front door, not a separate product):
 - [x] (2026-09-30) "Make a file smaller": /compress hub (picker already offers Compress as an action)
 - [x] (2026-09-30) Trust and comparison pages (/privacy, /vs/ilovepdf, /vs/smallpdf, /vs/vert): "check for yourself that nothing uploads", /vs/ilovepdf,
       /vs/smallpdf, /vs/vert
-- [ ] Further UX changes the owner will specify
+- [ ] Further UX changes the owner will specify. So far (2026-09-30): a /vs comparison index,
+      Popular tools on every category page, a Compress menu and a search box in the header
+- [ ] UX audit of every tool: simplify or add options only where it genuinely helps (owner,
+      2026-09-30); audit first, then build the "Do" items
+- [ ] AEO and SEO: structured data and a short FAQ on tool pages, llms.txt, and a few format
+      explainer pages if they earn their place
 
 - [ ] i18n
 - [ ] `file_handlers` and `share_target` in the manifest (open files from the OS)
