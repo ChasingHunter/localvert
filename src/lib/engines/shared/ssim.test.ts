@@ -96,10 +96,12 @@ describe("ssim", () => {
     console.log(
       `ssim() on a 1024x768 plane, downscaled to 512: ${elapsedMs.toFixed(1)}ms/call`,
     );
-    // Generous bound (the planner's own target is <150ms; this asserts a
-    // much looser <400ms so a real regression is caught without CI
-    // flakiness on a slower machine).
-    expect(elapsedMs).toBeLessThan(400);
+    // Generous bound (measured ~124ms/call in isolation, the planner's own
+    // target; under `pnpm test`'s full parallel worker contention on this
+    // machine it's been seen up to ~410ms) — this asserts a much looser
+    // <800ms so a real regression is caught without CI flakiness under
+    // load.
+    expect(elapsedMs).toBeLessThan(800);
   }, 20_000);
 
   it("measures cost at the full 1024 cap too, for comparison (not asserted beyond a generous bound)", () => {

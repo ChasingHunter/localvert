@@ -73,9 +73,9 @@ order (decode [+ transform] [+ encode]).
 
 | Slug | From | To | Engine | Batch | Notes |
 |---|---|---|---|---|---|
-| `compress-jpg` | JPEG | JPEG | jsquash-jpeg, exif | Yes | Mode: lossless (metadata strip), visually-lossless (default), strong, custom quality, or target size (KB). Never bigger than the input |
-| `compress-webp` | WebP | WebP | jsquash-webp, exif | Yes | Mode: lossless (metadata strip), visually-lossless (default), strong, custom quality, or target size (KB). Never bigger than the input |
-| `compress-png` | PNG | PNG | jsquash-png | Yes | Mode: lossless (oxipng, default) or smaller (image-q palette reduction + oxipng, optional dither). Never bigger than the input |
+| `compress-jpg` | JPEG | JPEG | jsquash-jpeg, exif | Yes | Mode: lossless (metadata strip), high quality (default, SSIM-searched), smallest file (SSIM-searched, looser), custom quality, target size (KB), or reduce by percentage. Target size/percent fall back to a resize if quality alone can't reach the budget. Never bigger than the input |
+| `compress-webp` | WebP | WebP | jsquash-webp, exif | Yes | Mode: lossless (metadata strip), high quality (default, SSIM-searched), smallest file (SSIM-searched, looser), custom quality, target size (KB), or reduce by percentage. Target size/percent fall back to a resize if quality alone can't reach the budget. Never bigger than the input |
+| `compress-png` | PNG | PNG | jsquash-png | Yes | Mode: lossless (oxipng, default — reduces to an exact palette automatically when the source has <=256 colours), smaller (image-q palette reduction + oxipng, optional dither), target size (KB), or reduce by percentage (steps the palette down 256->16, or reports it can't reach the target on a photo-like PNG). Never bigger than the input |
 | `resize-image-jpg` | JPEG | JPEG | jsquash-jpeg, jsquash-resize | Yes | Width/height, fit, allow upscale |
 | `resize-image-png` | PNG | PNG | jsquash-png, jsquash-resize | Yes | Width/height, fit, allow upscale |
 | `resize-image-webp` | WebP | WebP | jsquash-webp, jsquash-resize | Yes | Width/height, fit, allow upscale |
