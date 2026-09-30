@@ -66,6 +66,14 @@ describe("chooseAudioBitrateBps", () => {
       presetAudioBitrateBps("low"),
     );
   });
+
+  it("always returns a positive integer, even for a fractional source bitrate", () => {
+    // ADR-0017 (2026-09-30): mediabunny's `Quality` constructor rejects a
+    // fractional bitrate outright, and `InputTrack.getAverageBitrate()`
+    // frequently returns one — this branch used to pass it straight through.
+    const result = chooseAudioBitrateBps("high", 64_000.5);
+    expect(Number.isInteger(result)).toBe(true);
+  });
 });
 
 describe("estimateSourceVideoBps", () => {

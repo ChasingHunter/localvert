@@ -41,7 +41,13 @@ export function bppFloor(codec: CodecFamily): number {
  *
  * `sourceBps` undefined (the source's own bitrate couldn't be determined at
  * all) falls back to the bpp ceiling alone — same shape as `bitrate.ts`'s
- * `chooseVideoBitrateBps`.
+ * `chooseVideoBitrateBps`. Always a positive integer (rounded, floored at
+ * 1) — mediabunny's `Quality` constructor rejects a fractional bitrate
+ * outright ("options.bitrate, when provided, must be a positive integer"),
+ * and a source's own container-reported bitrate is frequently fractional
+ * (`InputTrack.getAverageBitrate()`), so this can't just pass floats
+ * through the way `bitrate.ts`'s original preset-ceiling table (all integer
+ * literals) never had to worry about.
  */
 export function bestQualityVideoBitrateBps(params: {
   sourceBps: number | undefined;
@@ -52,8 +58,11 @@ export function bestQualityVideoBitrateBps(params: {
 }): number {
   const { sourceBps, width, height, fps, codec } = params;
   const ceilingBps = bppCeiling(codec) * width * height * fps;
-  if (sourceBps === undefined) return ceilingBps;
-  return Math.min(sourceBps * 0.7, ceilingBps);
+  const raw =
+    sourceBps === undefined
+      ? ceilingBps
+      : Math.min(sourceBps * 0.7, ceilingBps);
+  return Math.max(1, Math.round(raw));
 }
 
 /** `T = source × (1 − p)` — "reduce by %" mode is target-size mode with a
@@ -85,7 +94,12 @@ export function audioReserveBps(params: {
         : totalKbps > 300
           ? 64_000
           : 48_000;
-  return sourceAudioBps === undefined ? tier : Math.min(tier, sourceAudioBps);
+  // Rounded — see `bestQualityVideoBitrateBps`'s doc comment: mediabunny's
+  // `Quality` constructor rejects a fractional bitrate, and `sourceAudioBps`
+  // (a container-reported average bitrate) is frequently fractional.
+  return sourceAudioBps === undefined
+    ? tier
+    : Math.max(1, Math.round(Math.min(tier, sourceAudioBps)));
 }
 
 /** `2% of T + 32 KB` — container/muxing overhead reserved out of the target

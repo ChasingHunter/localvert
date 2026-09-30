@@ -110,7 +110,12 @@ export function chooseAudioBitrateBps(
 ): number {
   const ceiling = presetAudioBitrateBps(preset);
   if (sourceBps === undefined) return ceiling;
-  return Math.min(ceiling, sourceBps);
+  // Rounded (ADR-0017, 2026-09-30): mediabunny's `Quality` constructor
+  // rejects a fractional bitrate outright, and a source's own
+  // container-reported bitrate (`InputTrack.getAverageBitrate()`) is
+  // frequently fractional — unlike `ceiling`, which is always one of the
+  // integer literals in `PRESET_AUDIO_BITRATE_BPS` above.
+  return Math.max(1, Math.round(Math.min(ceiling, sourceBps)));
 }
 
 /**

@@ -49,7 +49,7 @@ describe("bestQualityVideoBitrateBps", () => {
       fps: 30,
       codec: "vp9",
     });
-    expect(result).toBe(ceilingBps);
+    expect(result).toBe(Math.round(ceilingBps));
   });
 
   it("uses the vp9 (lower) ceiling for vp9 output", () => {
@@ -57,6 +57,23 @@ describe("bestQualityVideoBitrateBps", () => {
     expect(
       bestQualityVideoBitrateBps({ ...params, codec: "vp9" }),
     ).toBeLessThan(bestQualityVideoBitrateBps({ ...params, codec: "avc" }));
+  });
+
+  it("always returns a positive integer, even for a fractional source bitrate", () => {
+    // A real regression: mediabunny's `Quality` constructor rejects a
+    // fractional bitrate outright ("must be a positive integer or a
+    // quality"), and `InputTrack.getAverageBitrate()` frequently returns
+    // one — caught by the e2e suite (compress-video's default "best
+    // quality" mode threw on every real browser run before this was fixed).
+    const result = bestQualityVideoBitrateBps({
+      sourceBps: 3_000_000.7,
+      width: 1921,
+      height: 817,
+      fps: 29.97,
+      codec: "avc",
+    });
+    expect(Number.isInteger(result)).toBe(true);
+    expect(result).toBeGreaterThan(0);
   });
 });
 
@@ -101,6 +118,15 @@ describe("audioReserveBps", () => {
       sourceAudioBps: 64_000,
     });
     expect(result).toBe(64_000);
+  });
+
+  it("always returns a positive integer, even for a fractional source bitrate", () => {
+    const result = audioReserveBps({
+      targetBytes: 200_000_000,
+      durationSeconds: 300,
+      sourceAudioBps: 64_000.3,
+    });
+    expect(Number.isInteger(result)).toBe(true);
   });
 });
 
