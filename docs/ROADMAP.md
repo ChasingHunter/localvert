@@ -243,7 +243,8 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
 **Before cutting v0.4.0** (owner, 2026-09-29; positioning research of 2026-09-28: keep one site,
 one repo, one engine; make PDF a front door, not a separate product):
 
-- [ ] Own domain (owner action) with the workers.dev address redirecting to it
+- [x] Own domain: https://localvert.dpdns.org (2026-09-30). The workers.dev address keeps serving
+      too (owner's choice); absolute canonicals, sitemap and robots point at the domain
 - [ ] PDF hub at /pdf: its own hero ("Every PDF tool you need. Your file never leaves your
       device."), editor up front, tools grouped Organize / Optimize / Convert / Edit / Security
 - [ ] Home page leads with the promise ("Convert, compress and edit files without uploading
@@ -263,5 +264,4 @@ one repo, one engine; make PDF a front door, not a separate product):
 
 ## Decisions still open
 
-- Custom domain (currently `localvert.<account>.workers.dev`)
 - TypeScript 7 (tsgo) friction: if it bites, pin 5.9 and write an ADR
