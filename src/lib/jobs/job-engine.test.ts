@@ -841,4 +841,33 @@ describe("createJobEngine / ADR-0013 neverLarger", () => {
     expect(job?.output?.size).toBe(20);
     expect(job?.output?.note).toBeUndefined();
   });
+
+  // ADR-0017 (2026-09-30): compress-video's target-size/percent modes set
+  // their own result-contract note ("19.4 MB, 97% of your 20 MB target.")
+  // on an OPFS-kind result — distinct from the never-larger fallback note
+  // above, and only reachable when the result IS kept (genuinely smaller
+  // than the input), same as the "bytes"-kind `note` passthrough already
+  // covered elsewhere in this file.
+  it("surfaces an OPFS-kind result's own note (target-size mode)", async () => {
+    const { engine, calls, store } = setup();
+    const tool = makeTool({ slug: "compress-video", neverLarger: true });
+    const file = new File(["a".repeat(37)], "clip.mp4", {
+      type: "video/mp4",
+    });
+
+    engine.submit(tool, [{ file, format: "mp4" }], {});
+    calls[0]?.deferred.resolve({
+      kind: "opfs",
+      path: "localvert-tmp/fake.mp4",
+      mime: "video/mp4",
+      size: 20,
+      note: "19.4 MB, 97% of your 20 MB target.",
+    });
+    await flush();
+
+    const job = store.getState().jobs[0];
+    expect(job).toMatchObject({ status: "done" });
+    expect(job?.output?.size).toBe(20);
+    expect(job?.output?.note).toBe("19.4 MB, 97% of your 20 MB target.");
+  });
 });
