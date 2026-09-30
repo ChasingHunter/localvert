@@ -149,7 +149,7 @@ Three rules, all enforced mechanically:
    download size, preload, and tell the service worker what to cache.
 2. **No engine may appear in a core chunk.** `scripts/check-sizes.ts` walks the
    chunk graph in CI and fails the build if one does.
-   `scripts/check-engine-eval.ts` also scans the shipped engine JS for
+   `scripts/check-engine-eval.ts` also scans the shipped engine JS and Next chunks for
    `new Function(` and `eval(`, which the production CSP would block.
 3. **Assets are versioned in the path** — `public/engines/<id>--<ver>/...` — so
    every engine URL is immutable and cacheable forever.

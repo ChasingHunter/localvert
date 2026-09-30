@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findEvalCalls } from "./check-engine-eval";
+import { findEvalCalls, isAllowedBySnippet } from "./check-engine-eval";
 
 describe("findEvalCalls", () => {
   it("finds new Function with its offset", () => {
@@ -28,5 +28,21 @@ describe("findEvalCalls", () => {
     expect(findEvalCalls("x instanceof Function;Function.prototype")).toEqual(
       [],
     );
+  });
+});
+
+describe("isAllowedBySnippet", () => {
+  const shim =
+    "a();Script.prototype.runInThisContext=function(){return eval(this.code)};";
+
+  it("allows an eval inside a listed snippet", () => {
+    const [hit] = findEvalCalls(shim);
+    expect(hit && isAllowedBySnippet(shim, hit)).toBe(true);
+  });
+
+  it("still flags an eval elsewhere in the same file", () => {
+    const src = `${shim}eval(userCode)`;
+    const hits = findEvalCalls(src);
+    expect(hits.map((h) => isAllowedBySnippet(src, h))).toEqual([true, false]);
   });
 });
