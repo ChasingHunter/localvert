@@ -149,6 +149,8 @@ Three rules, all enforced mechanically:
    download size, preload, and tell the service worker what to cache.
 2. **No engine may appear in a core chunk.** `scripts/check-sizes.ts` walks the
    chunk graph in CI and fails the build if one does.
+   `scripts/check-engine-eval.ts` also scans the shipped engine JS for
+   `new Function(` and `eval(`, which the production CSP would block.
 3. **Assets are versioned in the path** — `public/engines/<id>--<ver>/...` — so
    every engine URL is immutable and cacheable forever.
 
@@ -286,7 +288,7 @@ Break one of these and the product is a different product.
 | `src/lib/router/` | Capability probes, engine selection |
 | `src/lib/sinks/` | Blob, streaming ZIP, File System Access, OPFS |
 | `src/app/` | Routes, all statically generated from the registry |
-| `scripts/` | `gen-registry`, `sync-engines`, `upload-r2`, `check-sizes` |
+| `scripts/` | `gen-registry`, `sync-engines`, `upload-r2`, `check-sizes`, `check-engine-eval` |
 | `infra/` | Cloudflare Worker + `wrangler.jsonc` |
 
 ## Why it is this way

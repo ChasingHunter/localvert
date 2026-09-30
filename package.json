@@ -27,7 +27,8 @@
     "preview": "pnpm build && wrangler dev --config infra/wrangler.jsonc --port 8788",
     "check-sizes": "node scripts/check-sizes.ts",
     "check": "pnpm gen && pnpm typecheck && pnpm lint && pnpm test",
-    "verify": "pnpm check && pnpm build && pnpm check-sizes"
+    "check-engine-eval": "node scripts/check-engine-eval.ts",
+    "verify": "pnpm check && pnpm build && pnpm check-sizes && pnpm check-engine-eval"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
