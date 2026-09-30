@@ -375,4 +375,20 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
    * nothing derives it.
    */
   rank?: number;
+  /**
+   * ADR-0017's "Estimates" addendum (2026-09-30): marks a compress tool whose
+   * result size is arithmetic — computable from cheap file metadata (a
+   * probe, never a real decode) through the same planner math the engine
+   * itself uses — rather than something only a real encode can reveal
+   * (images: a perceptual quality search has no closed form, so they carry
+   * no `estimateKind` at all). `ToolRunner` reads this to decide two things:
+   * which worker-side probe to run (`src/lib/workers/probe.worker.ts`) and
+   * which of the tool's own `mode` values should *stage* a dropped file
+   * (show an estimate + an explicit Convert button) instead of submitting on
+   * drop — see `shouldStageForEstimate` in `src/lib/estimate/index.ts` for
+   * the exact mode list per kind, and `ToolRunner`'s own doc comment on why
+   * only the target/percent modes stage while "best quality" keeps
+   * submitting immediately.
+   */
+  estimateKind?: "video" | "audio" | "pdf";
 }
