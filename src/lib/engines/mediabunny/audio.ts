@@ -325,6 +325,23 @@ async function probeSourceAudio(input: EngineInput): Promise<{
   }
 }
 
+/**
+ * ADR-0017's "Estimates" addendum (2026-09-30): the same cheap probe
+ * `runAudioTranscode` runs internally before its own target-size/percent
+ * math, exposed for `src/lib/workers/probe.worker.ts` to call ahead of a job
+ * even existing — a dropped file staged in the options form (not yet
+ * submitted) has no `EngineTask` to build an `EngineInput` from, just a
+ * `File`. Thin wrapper: `File` already satisfies `Blob`, and `probeSourceAudio`
+ * only ever reads its input as one.
+ */
+export async function probeAudioMetadata(file: Blob): Promise<{
+  durationSec: number;
+  sizeBytes: number;
+  channels: number;
+}> {
+  return probeSourceAudio({ kind: "blob", blob: file });
+}
+
 /** The byte size of a `runConversion` result — always `"bytes"` or `"opfs"`
  * (the only two kinds it ever returns, see `output.ts`). */
 function resultByteSize(result: EngineResult): number {

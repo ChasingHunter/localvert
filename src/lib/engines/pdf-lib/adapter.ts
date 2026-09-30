@@ -1183,6 +1183,29 @@ function totalImageBytes(images: readonly ImageStreamEntry[]): number {
 }
 
 /**
+ * ADR-0017's "Estimates" addendum (2026-09-30): the same cheap
+ * image-bytes-vs-everything-else split `runCompressToTarget` already does
+ * before it starts walking the ladder, exposed for `probe.worker.ts` to call
+ * on a dropped-but-not-yet-submitted file — no image recompression, just a
+ * page count and a byte split, so this is safe to run on every keystroke's
+ * worth of a staged target/percent option without re-probing.
+ */
+export async function probePdf(bytes: ArrayBuffer): Promise<{
+  pageCount: number;
+  imageBytes: number;
+  nonImageBytes: number;
+}> {
+  const mod = await import("@cantoo/pdf-lib");
+  const doc = await loadPdf(mod, bytes);
+  const imageBytes = totalImageBytes(findImageStreams(mod, doc));
+  return {
+    pageCount: doc.getPageCount(),
+    imageBytes,
+    nonImageBytes: bytes.byteLength - imageBytes,
+  };
+}
+
+/**
  * compress (pdf -> pdf, ADR-0013 + ADR-0017): `mode: "lossless"` (the tool's
  * default) does no image recompression at all — only `pruneUnreferencedObjects`
  * plus `useObjectStreams: true`, both purely structural. `"balanced"`/

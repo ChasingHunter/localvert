@@ -1,5 +1,6 @@
 import * as Comlink from "comlink";
 import { EngineError } from "@/lib/engines";
+import type { MediaProbeResult, PdfProbeResult } from "@/lib/estimate/types";
 import type { WorkerHandle } from "./pool";
 import type { EngineHostApi, Promisified, RunRequest } from "./protocol";
 
@@ -23,6 +24,17 @@ import type { EngineHostApi, Promisified, RunRequest } from "./protocol";
  */
 interface ZipWorkerApi {
   zip(entries: { name: string; blob: Blob }[]): ReadableStream<Uint8Array>;
+}
+
+/**
+ * Mirrors `probe.worker.ts`'s own `Comlink.expose` shape — see that file's
+ * doc comment. Duplicated for the same reason `ZipWorkerApi` is: importing a
+ * `*.worker.ts` file's types here would pull `tsconfig.worker.json`'s
+ * WebWorker lib into this main-thread module's own program.
+ */
+interface ProbeWorkerApi {
+  probeMedia(file: Blob): Promise<MediaProbeResult>;
+  probePdf(bytes: ArrayBuffer): Promise<PdfProbeResult>;
 }
 
 /**
@@ -159,4 +171,41 @@ export function zipInWorker(
       throw e;
     },
   );
+}
+
+/**
+ * Spawns a fresh, one-shot `probe.worker.ts` and terminates it once the call
+ * settles either way — same reasoning as `zipInWorker`: a probe is cheap and
+ * infrequent (one per staged drop, plus a re-probe only if the user drops a
+ * *different* file, never on every options edit — `size-estimate.tsx`
+ * recomputes the estimate text from the cached probe instead), so there's no
+ * shared/pinned worker to reuse the way the real engine worker (`pool.ts`)
+ * is. ADR-0017's "Estimates" addendum (2026-09-30).
+ */
+function probeInWorker<T>(
+  call: (api: ProbeWorkerApi) => Promise<T>,
+): Promise<T> {
+  const worker = new Worker(new URL("./probe.worker.ts", import.meta.url), {
+    type: "module",
+    name: "localvert-probe",
+  });
+  const remote = Comlink.wrap<ProbeWorkerApi>(worker);
+  const failure = workerFailure(worker, "probe worker");
+
+  return Promise.race([call(remote), failure]).finally(() => {
+    remote[Comlink.releaseProxy]();
+    worker.terminate();
+  });
+}
+
+/** Video/audio metadata for `compress-video`/`compress-audio`'s pre-run
+ * estimate (ADR-0017) — see `probe.worker.ts`'s `probeMedia`. */
+export function probeMediaInWorker(file: Blob): Promise<MediaProbeResult> {
+  return probeInWorker((api) => api.probeMedia(file));
+}
+
+/** Page count + image-bytes split for `compress-pdf`'s pre-run estimate — see
+ * `probe.worker.ts`'s `probePdf`. */
+export function probePdfInWorker(bytes: ArrayBuffer): Promise<PdfProbeResult> {
+  return probeInWorker((api) => api.probePdf(bytes));
 }
