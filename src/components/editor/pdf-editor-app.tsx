@@ -10,6 +10,7 @@ import {
 import {
   PdfAnnotationSubtype,
   type PdfDocumentObject,
+  PdfStandardFont,
   type PdfWidgetAnnoObject,
   type Rect,
   type SearchResult,
@@ -88,6 +89,11 @@ import {
 } from "@/lib/editor/draft-store";
 import { flattenExportedForms } from "@/lib/editor/flatten-forms";
 import { flattenRedactedPagesToImages } from "@/lib/editor/flatten-redacted-pages";
+import {
+  FONT_SELECT_OPTIONS,
+  MATCH_DOCUMENT_VALUE,
+  matchDocumentFont,
+} from "@/lib/editor/font-match";
 import { arrowKeyNudge } from "@/lib/editor/nudge";
 import {
   createPdfiumWorkerEngine,
@@ -226,12 +232,19 @@ function buildToolContext(
   color: string,
   strokeWidth: number,
   fontSize: number,
+  fontFamily: PdfStandardFont | typeof MATCH_DOCUMENT_VALUE,
 ): Record<string, unknown> | undefined {
   if (COLOR_STYLE_TOOLS.has(toolId)) {
     return { color, strokeColor: color, strokeWidth };
   }
   if (toolId === "freeText") {
-    return { fontColor: color, fontSize };
+    // "Match document" is never a real tool default -- there's no concrete
+    // font to give the plugin until a click point exists (see the
+    // `onAnnotationEvent` listener below), so the tool's LAST concrete font
+    // stays as its default and this patch omits `fontFamily` entirely.
+    return fontFamily === MATCH_DOCUMENT_VALUE
+      ? { fontColor: color, fontSize }
+      : { fontColor: color, fontSize, fontFamily };
   }
   return undefined;
 }
@@ -543,6 +556,17 @@ function Editor({
   const [toolColors, setToolColors] = useState(DEFAULT_TOOL_COLORS);
   const [strokeWidth, setStrokeWidth] = useState(3);
   const [fontSize, setFontSize] = useState(16);
+  // Owner bug #5 -- font picker. `fontFamily` is either a concrete
+  // `PdfStandardFont` or the `MATCH_DOCUMENT_VALUE` sentinel, which resolves
+  // to a concrete font only once a FreeText annotation is actually placed
+  // (see the `onAnnotationEvent` listener below) -- there's no click point to
+  // match against before that. `fontMatchHint` is the "Closest match..."
+  // copy from the most recent match, shown under the select until it changes
+  // or the tool switches away from FreeText.
+  const [fontFamily, setFontFamily] = useState<
+    PdfStandardFont | typeof MATCH_DOCUMENT_VALUE
+  >(PdfStandardFont.Helvetica);
+  const [fontMatchHint, setFontMatchHint] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const stampInputRef = useRef<HTMLInputElement | null>(null);
   const [signOpen, setSignOpen] = useState(false);
@@ -587,6 +611,16 @@ function Editor({
       ? ((selectedAnnotation.object as { strokeWidth?: number }).strokeWidth ??
         strokeWidth)
       : strokeWidth;
+  // A selected FreeText's own resolved font always wins over the picker's
+  // remembered default -- same reasoning as `displayFontSize`/`displayColor`
+  // above. It never shows `MATCH_DOCUMENT_VALUE`: `fontFamily` on the
+  // annotation object is always a concrete `PdfStandardFont` by the time it
+  // exists (placed directly, or resolved by the match effect below).
+  const displayFontFamily: PdfStandardFont | typeof MATCH_DOCUMENT_VALUE =
+    selectedAnnotation && isFreeTextSelected
+      ? ((selectedAnnotation.object as { fontFamily?: PdfStandardFont })
+          .fontFamily ?? PdfStandardFont.Helvetica)
+      : fontFamily;
 
   /** Applies a style-picker change: if an annotation is selected, edits it
    * directly through `AnnotationCapability.updateAnnotation` (cited in
@@ -928,6 +962,7 @@ function Editor({
       colorForTool(toolColors, activeTool),
       strokeWidth,
       fontSize,
+      fontFamily,
     );
     if (patch) provides.setToolDefaults(activeTool, patch);
   }, [
@@ -935,6 +970,7 @@ function Editor({
     toolColors,
     strokeWidth,
     fontSize,
+    fontFamily,
     annotationCapability.provides,
   ]);
 
@@ -964,6 +1000,62 @@ function Editor({
       }
     });
   }, [annotationCapability.provides, documentId]);
+
+  // Owner bug #5 -- "Match document". A FreeText annotation's own placement
+  // point (its `rect`, set the moment it's created) is the only "click
+  // point" this editor has -- the plugin's pointer handler never surfaces the
+  // raw pointer event to app code -- so resolving "nearest existing text" has
+  // to happen here, reacting to the SAME `create` event the STAMP listener
+  // above uses, rather than at click time. Fires only while the picker is
+  // actually set to `MATCH_DOCUMENT_VALUE` (read via a ref so a stale closure
+  // from an earlier tool-defaults render can't fire this for a font the user
+  // has since changed away from); a concrete font choice never reaches this
+  // branch, since `buildToolContext` already put it on the tool defaults.
+  const fontFamilyRef = useRef(fontFamily);
+  fontFamilyRef.current = fontFamily;
+  useEffect(() => {
+    const provides = annotationCapability.provides;
+    if (!provides) return;
+    return provides.onAnnotationEvent((event) => {
+      if (
+        event.type !== "create" ||
+        event.documentId !== documentId ||
+        event.annotation.type !== PdfAnnotationSubtype.FREETEXT ||
+        fontFamilyRef.current !== MATCH_DOCUMENT_VALUE
+      ) {
+        return;
+      }
+      const pageIndex = event.pageIndex;
+      const annotationId = event.annotation.id;
+      const { rect } = event.annotation;
+      const pageHeight = doc?.pages[pageIndex]?.size.height ?? 0;
+      // `rect` is top-left-origin (`@embedpdf/models`'s `Rect` convention);
+      // `TextObjectInfo.bounds` (what `textEdit.list` returns) is PDFium's
+      // native bottom-left-origin -- same flip `textBoundsToCssBox` in
+      // `text-edit-layer.tsx` does, in reverse.
+      const anchor = {
+        x: rect.origin.x + rect.size.width / 2,
+        y: pageHeight - (rect.origin.y + rect.size.height / 2),
+      };
+      textEdit
+        .list(documentId, pageIndex)
+        .then((objects) => {
+          const match = matchDocumentFont(objects, anchor);
+          provides.updateAnnotation(pageIndex, annotationId, {
+            fontFamily: match?.font ?? PdfStandardFont.Helvetica,
+          });
+          setFontMatchHint(
+            match?.hint ??
+              "No other text on this page to match. Using Sans (Helvetica).",
+          );
+        })
+        .catch(() => {
+          // Best-effort -- the annotation keeps whatever font it was created
+          // with (the tool default, Helvetica by default) rather than being
+          // left in a broken state.
+        });
+    });
+  }, [annotationCapability.provides, documentId, doc, textEdit]);
 
   // Shared by both stamp-placement paths — the file-picker "Insert image"
   // tool below, and `SignatureDialog`'s drawn/typed/uploaded PNG — so the
@@ -1626,6 +1718,43 @@ function Editor({
             className="w-14 rounded border border-border bg-canvas px-1 py-0.5 text-ink"
           />
         </label>
+
+        <label className="flex items-center gap-1 text-xs text-ink-muted">
+          Font
+          <select
+            aria-label="Font"
+            value={displayFontFamily}
+            onChange={(e) => {
+              const raw = e.target.value;
+              if (raw === MATCH_DOCUMENT_VALUE) {
+                // Resolved once a new FreeText is actually placed -- see the
+                // `onAnnotationEvent` match-resolution effect above. Picking
+                // it while an annotation is already selected does nothing:
+                // there's no new placement point to match against.
+                setFontFamily(MATCH_DOCUMENT_VALUE);
+                setFontMatchHint(null);
+                return;
+              }
+              const next = Number(raw) as PdfStandardFont;
+              setFontFamily(next);
+              setFontMatchHint(null);
+              if (selectedAnnotation && isFreeTextSelected) {
+                applyStyleChange({ fontFamily: next });
+              }
+            }}
+            className="rounded border border-border bg-canvas px-1 py-0.5 text-ink"
+          >
+            {FONT_SELECT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+            <option value={MATCH_DOCUMENT_VALUE}>Match document</option>
+          </select>
+        </label>
+        {fontMatchHint && (
+          <span className="text-xs text-ink-muted">{fontMatchHint}</span>
+        )}
 
         <div className="ml-auto flex items-center gap-1">
           <Button

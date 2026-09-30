@@ -278,6 +278,61 @@ test.describe("pdf-editor interactions", () => {
     expect(da).toMatch(/\b24\b/);
   });
 
+  // Owner bug #5 -- font picker. Choosing a standard font before placing
+  // FreeText should carry through to the exported annotation's /DA. PDFium's
+  // AcroForm-style default resource names ("TiRo" for Times-Roman) are the
+  // documented convention its DA generator uses for the 14 standard fonts --
+  // not independently re-verified against a live export in this slice (this
+  // suite isn't run here; the planner runs e2e on main).
+  test("choosing Serif (Times) sets the exported FreeText's font", async ({
+    page,
+  }) => {
+    await openEditor(page);
+
+    await page.getByRole("button", { name: "Add text" }).click();
+    await page.getByLabel("Font").selectOption({ label: "Serif (Times)" });
+    const point = await pointOnPage(page, 0, 0.5, 0.2);
+    await page.mouse.click(point.x, point.y);
+    await page.keyboard.type("Localvert");
+    await page.keyboard.press("Escape");
+
+    const bytes = await exportBytes(page);
+    const dict = (await pageAnnotDicts(bytes)).find(
+      (d) => subtypeOf(d) === "FreeText",
+    );
+    if (!dict) throw new Error("no FreeText annotation after export");
+    expect(daOf(dict)).toMatch(/TiRo/);
+  });
+
+  // Owner bug #5 -- "Match document". `e2e/fixtures/pdf-editor.pdf`'s own
+  // page text is set in Helvetica (confirmed by reading the fixture's
+  // /Resources /Font dict directly), so the nearest-text match should
+  // resolve to Sans (Helvetica) -- an exact match, so no "closest match"
+  // hint should appear (see `font-match.ts`'s `matchDocumentFont`).
+  test("Match document picks the fixture's own font (Helvetica)", async ({
+    page,
+  }) => {
+    await openEditor(page);
+
+    await page.getByRole("button", { name: "Add text" }).click();
+    await page.getByLabel("Font").selectOption({ label: "Match document" });
+    const point = await pointOnPage(page, 0, 0.5, 0.2);
+    await page.mouse.click(point.x, point.y);
+    await page.keyboard.type("Localvert");
+    await page.keyboard.press("Escape");
+
+    // An exact match (the fixture's text IS Helvetica) shows no hint -- see
+    // `matchDocumentFont`'s `STANDARD_FONT_NAMES` check.
+    await expect(page.getByText(/Closest match/)).not.toBeVisible();
+
+    const bytes = await exportBytes(page);
+    const dict = (await pageAnnotDicts(bytes)).find(
+      (d) => subtypeOf(d) === "FreeText",
+    );
+    if (!dict) throw new Error("no FreeText annotation after export");
+    expect(daOf(dict)).toMatch(/Helv/);
+  });
+
   // Regression for "no way to close the open PDF and open another".
   test("Close returns to the drop zone, and opening another fixture works", async ({
     page,
