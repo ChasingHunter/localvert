@@ -156,6 +156,7 @@ export interface ToolCatalogEntry {
   kind: "job" | "app";
   arity: "one-to-one" | "many-to-one" | "one-to-many";
   rank?: number;
+  categoryRank?: number;
 }
 
 /**
@@ -250,6 +251,7 @@ export function parseToolCatalogEntry(
   const kind = extractOptionalString(body, "kind");
   const arity = extractOptionalString(body, "arity");
   const rank = extractOptionalInt(body, "rank");
+  const categoryRank = extractOptionalInt(body, "categoryRank");
 
   if (kind !== null && kind !== "job" && kind !== "app") {
     throw new Error(
@@ -276,6 +278,7 @@ export function parseToolCatalogEntry(
     kind: kind ?? "job",
     arity: (arity ?? "one-to-one") as ToolCatalogEntry["arity"],
     ...(rank !== undefined ? { rank } : {}),
+    ...(categoryRank !== undefined ? { categoryRank } : {}),
   };
 }
 
@@ -302,7 +305,9 @@ export function scanToolCatalog(
 export function genCatalog(entries: readonly ToolCatalogEntry[]): string {
   const rows = entries.map((e) => {
     const accepts = e.accepts.map((a) => `"${a}"`).join(", ");
-    const rankPart = e.rank !== undefined ? ` rank: ${e.rank},` : "";
+    const rankPart =
+      (e.rank !== undefined ? ` rank: ${e.rank},` : "") +
+      (e.categoryRank !== undefined ? ` categoryRank: ${e.categoryRank},` : "");
     return (
       `  { slug: "${e.slug}", title: ${JSON.stringify(e.title)}, ` +
       `category: "${e.category}", accepts: [${accepts}], ` +
@@ -333,6 +338,8 @@ export function genCatalog(entries: readonly ToolCatalogEntry[]): string {
     '  arity: "one-to-one" | "many-to-one" | "one-to-many";',
     "  /** 1 = most popular; unset = not featured — see `ToolDefinition.rank`. */",
     "  rank?: number;",
+    "  /** 1 = first in its category's Popular row — see `ToolDefinition.categoryRank`. */",
+    "  categoryRank?: number;",
     "}",
     "",
     `export const CATALOG: readonly CatalogEntry[] = ${body};`,

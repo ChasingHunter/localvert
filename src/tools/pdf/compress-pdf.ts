@@ -17,6 +17,7 @@ import { defineTool } from "@/lib/registry";
 export default defineTool({
   slug: "compress-pdf",
   category: "pdf",
+  categoryRank: 3,
   title: "Compress PDF",
   description:
     "Shrink a PDF. Pick a target size or percentage, or a fixed compression level. Never makes the file bigger.",

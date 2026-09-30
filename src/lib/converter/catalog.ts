@@ -462,3 +462,21 @@ export function popular(): PopularEntry[] {
       };
     });
 }
+
+/** How many tools a category's Popular row shows at most. */
+const CATEGORY_POPULAR_LIMIT = 6;
+
+/**
+ * A category page's Popular row: that category's tools that set a
+ * `categoryRank`, ascending, capped at six. Matches on the tool's own
+ * category (not the category of its input format, which is what the
+ * site-wide `popular()` chips filter by), so "Extract Audio" sits under
+ * Audio even though it takes video in.
+ */
+export function popularInCategory(category: Category): CatalogEntry[] {
+  return CATALOG.filter(
+    (t) => t.category === category && t.categoryRank !== undefined,
+  )
+    .sort((a, b) => (a.categoryRank ?? 0) - (b.categoryRank ?? 0))
+    .slice(0, CATEGORY_POPULAR_LIMIT);
+}

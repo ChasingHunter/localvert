@@ -14,6 +14,7 @@ import { defineTool, imagePipeline } from "@/lib/registry";
 export default defineTool({
   slug: "resize-image-jpg",
   category: "image",
+  categoryRank: 6,
   title: "Resize JPG",
   description:
     "Resize a JPG by width, height, or both. Re-encoding strips embedded metadata, including GPS.",

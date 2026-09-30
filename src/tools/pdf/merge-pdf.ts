@@ -10,6 +10,7 @@ import { defineTool } from "@/lib/registry";
 export default defineTool({
   slug: "merge-pdf",
   category: "pdf",
+  categoryRank: 2,
   title: "Merge PDF",
   description: "Combine multiple PDFs into one file, in the order you choose.",
 

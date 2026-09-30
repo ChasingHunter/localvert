@@ -17,6 +17,7 @@ import { defineTool } from "@/lib/registry";
 export default defineTool({
   slug: "mp4-to-webm",
   category: "video",
+  categoryRank: 3,
   title: "MP4 to WebM",
   description:
     "Convert MP4 or MOV video to WebM: smaller, royalty-free, and plays on modern devices.",

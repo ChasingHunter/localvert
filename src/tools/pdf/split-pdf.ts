@@ -15,6 +15,7 @@ import { defineTool } from "@/lib/registry";
 export default defineTool({
   slug: "split-pdf",
   category: "pdf",
+  categoryRank: 4,
   title: "Split PDF",
   description:
     "Split a PDF into separate files: one per page, or by custom page ranges.",

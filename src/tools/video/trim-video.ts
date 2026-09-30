@@ -14,6 +14,7 @@ import { defineTool } from "@/lib/registry";
 export default defineTool({
   slug: "trim-video",
   category: "video",
+  categoryRank: 5,
   title: "Trim Video",
   description: "Cut a video down to a start and end time.",
 

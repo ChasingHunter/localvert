@@ -29,6 +29,7 @@ describe("generated catalog matches the registry", () => {
           kind: row?.kind,
           arity: row?.arity,
           rank: row?.rank,
+          categoryRank: row?.categoryRank,
         },
         tool.slug,
       ).toEqual({
@@ -39,6 +40,7 @@ describe("generated catalog matches the registry", () => {
         kind: tool.kind ?? "job",
         arity: tool.arity ?? "one-to-one",
         rank: tool.rank,
+        categoryRank: tool.categoryRank,
       });
     }
   });

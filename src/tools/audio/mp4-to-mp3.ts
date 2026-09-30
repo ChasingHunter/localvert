@@ -8,6 +8,7 @@ import { lossyAudioDefaults, lossyAudioOptions } from "../_shared-options";
 export default defineTool({
   slug: "mp4-to-mp3",
   category: "audio",
+  categoryRank: 1,
   title: "MP4 to MP3",
   description: "Pull the audio out of an MP4 video as MP3.",
 

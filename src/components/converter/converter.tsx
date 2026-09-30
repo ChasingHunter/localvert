@@ -16,6 +16,7 @@ import {
   matchTarget,
   nativeInputFormats,
   popular,
+  popularInCategory,
   targetsFor,
 } from "@/lib/converter/catalog";
 import { setPendingFiles } from "@/lib/converter/handoff";
@@ -93,6 +94,13 @@ function useSwapAnimation<T>(value: T) {
     el.classList.add("format-swap");
   }, [value]);
   return ref;
+}
+
+/** One Popular chip: where it links, its text, and whose colour it wears. */
+interface PopularChip {
+  slug: string;
+  label: string;
+  tint: Category;
 }
 
 interface ConverterProps {
@@ -291,9 +299,20 @@ export function Converter({
   );
 
   const canGo = fromId !== null && toId !== null;
-  const popularChips = popular().filter(
-    (p) => !category || FORMATS[p.from].category === category,
-  );
+  // Home: the site-wide top eight. A category page: that category's own
+  // most useful tools (`categoryRank`), so /audio and /data get a row too
+  // instead of only the categories that own a site-wide top-eight tool.
+  const popularChips: PopularChip[] = category
+    ? popularInCategory(category).map((t) => ({
+        slug: t.slug,
+        label: t.title,
+        tint: t.category,
+      }))
+    : popular().map((p) => ({
+        slug: p.slug,
+        label: popularChipLabel(p),
+        tint: FORMATS[p.from].category,
+      }));
 
   const isHero = variant === "hero";
   const fromSwapRef = useSwapAnimation(fromId);
@@ -521,9 +540,9 @@ export function Converter({
               <Link
                 key={entry.slug}
                 href={`/tools/${entry.slug}`}
-                className={`flex min-h-11 items-center rounded-full px-4 py-2 text-sm font-medium text-ink outline-none transition-colors hover:brightness-95 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas motion-reduce:transition-none ${CATEGORY_TINT_BG[FORMATS[entry.from].category]}`}
+                className={`flex min-h-11 items-center rounded-full px-4 py-2 text-sm font-medium text-ink outline-none transition-colors hover:brightness-95 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas motion-reduce:transition-none ${CATEGORY_TINT_BG[entry.tint]}`}
               >
-                {popularChipLabel(entry)}
+                {entry.label}
               </Link>
             ))}
           </div>

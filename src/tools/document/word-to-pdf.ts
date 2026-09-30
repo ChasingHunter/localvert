@@ -15,6 +15,7 @@ const options = z.object({});
 export default defineTool({
   slug: "word-to-pdf",
   category: "document",
+  categoryRank: 1,
   title: "Word to PDF",
   description:
     "Convert Word, OpenDocument Text or RTF files to PDF with LibreOffice. Needs a one-time 74 MB download on desktop.",

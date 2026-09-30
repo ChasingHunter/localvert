@@ -99,6 +99,12 @@ export function defineTool<S extends z.ZodObject>(
   if (def.rank !== undefined && (!Number.isInteger(def.rank) || def.rank < 1)) {
     fail(`rank (${def.rank}) must be a positive integer`);
   }
+  if (
+    def.categoryRank !== undefined &&
+    (!Number.isInteger(def.categoryRank) || def.categoryRank < 1)
+  ) {
+    fail(`categoryRank (${def.categoryRank}) must be a positive integer`);
+  }
 
   const arity = def.arity ?? "one-to-one";
   if (arity === "many-to-one") {

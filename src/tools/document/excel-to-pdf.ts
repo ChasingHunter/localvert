@@ -11,6 +11,7 @@ const options = z.object({});
 export default defineTool({
   slug: "excel-to-pdf",
   category: "document",
+  categoryRank: 2,
   title: "Excel to PDF",
   description:
     "Convert Excel or OpenDocument Spreadsheet files to PDF with LibreOffice. Needs a one-time 74 MB download on desktop.",

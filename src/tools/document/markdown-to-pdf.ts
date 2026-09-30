@@ -20,6 +20,7 @@ const options = z.object({
 export default defineTool({
   slug: "markdown-to-pdf",
   category: "document",
+  categoryRank: 4,
   title: "Markdown to PDF",
   description: "Convert a Markdown file to a paginated PDF.",
 

@@ -376,6 +376,14 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
    */
   rank?: number;
   /**
+   * 1 = first in its own category's Popular row (category pages and the
+   * PDF hub); unset = not featured there. Separate from `rank`, which is
+   * one site-wide order: a category's most useful tools are not the eight
+   * most popular ones overall. Set by hand per tool; `src/lib/converter/
+   * catalog.ts`'s `popularInCategory` reads it.
+   */
+  categoryRank?: number;
+  /**
    * ADR-0017's "Estimates" addendum (2026-09-30): marks a compress tool whose
    * result size is arithmetic — computable from cheap file metadata (a
    * probe, never a real decode) through the same planner math the engine

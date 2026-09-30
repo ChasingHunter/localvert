@@ -11,6 +11,7 @@ const options = z.object({});
 export default defineTool({
   slug: "powerpoint-to-pdf",
   category: "document",
+  categoryRank: 3,
   title: "PowerPoint to PDF",
   description:
     "Convert PowerPoint or OpenDocument Presentation files to PDF with LibreOffice. Needs a one-time 74 MB download on desktop.",

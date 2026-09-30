@@ -11,6 +11,7 @@ import { csvInputDefaults, csvInputOptions } from "../_shared-options";
 export default defineTool({
   slug: "csv-to-xlsx",
   category: "data",
+  categoryRank: 1,
   title: "CSV to Excel (XLSX)",
   description: "Convert a CSV file to an Excel spreadsheet (.xlsx).",
 

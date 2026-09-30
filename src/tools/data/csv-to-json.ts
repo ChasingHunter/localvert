@@ -10,6 +10,7 @@ import { csvInputDefaults, csvInputOptions } from "../_shared-options";
 export default defineTool({
   slug: "csv-to-json",
   category: "data",
+  categoryRank: 4,
   title: "CSV to JSON",
   description: "Convert a CSV file to a JSON array of objects.",
 

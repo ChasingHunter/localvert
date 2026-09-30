@@ -19,6 +19,7 @@ import { defineTool } from "@/lib/registry";
 export default defineTool({
   slug: "pdf-editor",
   category: "pdf",
+  categoryRank: 6,
   title: "PDF Editor",
   description:
     "Highlight, underline, draw, add text and stamps to a PDF, then export it.",

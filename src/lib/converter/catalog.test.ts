@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CATEGORIES } from "@/lib/registry/categories";
 import { FORMATS, type FormatId } from "@/lib/registry/formats";
 import { TOOLS_BY_SLUG } from "@/tools";
+import { CATALOG } from "@/tools/catalog";
 import {
   formatsSummaryText,
   inputFormats,
@@ -10,6 +11,7 @@ import {
   matchTarget,
   nativeInputFormats,
   popular,
+  popularInCategory,
   type Target,
   targetsFor,
 } from "./catalog";
@@ -349,5 +351,39 @@ describe("popular", () => {
       rank: 7,
     });
     expect(bySlug.get("jpg-to-pdf")).toMatchObject({ from: "jpg", rank: 8 });
+  });
+});
+
+describe("popularInCategory", () => {
+  const withTools = CATEGORIES.filter((c) =>
+    CATALOG.some((t) => t.category === c),
+  );
+
+  it("gives every category that has tools at least three popular entries", () => {
+    expect(withTools.length).toBeGreaterThan(0);
+    for (const category of withTools) {
+      expect(
+        popularInCategory(category).length,
+        category,
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("only lists real tools that belong to that category, capped at six", () => {
+    for (const category of withTools) {
+      const rows = popularInCategory(category);
+      expect(rows.length, category).toBeLessThanOrEqual(6);
+      for (const row of rows) {
+        expect(TOOLS_BY_SLUG.get(row.slug), row.slug).toBeDefined();
+        expect(row.category, row.slug).toBe(category);
+      }
+    }
+  });
+
+  it("orders by categoryRank and puts the expected leaders first", () => {
+    const audio = popularInCategory("audio").map((t) => t.slug);
+    expect(audio[0]).toBe("mp4-to-mp3");
+    const ranks = popularInCategory("image").map((t) => t.categoryRank ?? 0);
+    expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
   });
 });

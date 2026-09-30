@@ -17,6 +17,7 @@ import { defineTool } from "@/lib/registry";
 export default defineTool({
   slug: "video-to-gif",
   category: "video",
+  categoryRank: 4,
   title: "Video to GIF",
   description:
     "Convert a video clip to an animated GIF. Trim the range, and pick frame rate, width and colors.",

@@ -19,6 +19,8 @@ export interface CatalogEntry {
   arity: "one-to-one" | "many-to-one" | "one-to-many";
   /** 1 = most popular; unset = not featured — see `ToolDefinition.rank`. */
   rank?: number;
+  /** 1 = first in its category's Popular row — see `ToolDefinition.categoryRank`. */
+  categoryRank?: number;
 }
 
 export const CATALOG: readonly CatalogEntry[] = [
@@ -39,6 +41,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "same",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 4,
   },
   {
     slug: "extract-audio",
@@ -48,6 +51,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "mp3",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 5,
   },
   {
     slug: "flac-to-mp3",
@@ -75,6 +79,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "mp3",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 3,
   },
   {
     slug: "m4a-to-wav",
@@ -130,6 +135,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     kind: "job",
     arity: "one-to-one",
     rank: 3,
+    categoryRank: 1,
   },
   {
     slug: "ogg-to-mp3",
@@ -166,6 +172,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "mp3",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 2,
   },
   {
     slug: "webm-to-mp3",
@@ -193,6 +200,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "json",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 4,
   },
   {
     slug: "csv-to-xlsx",
@@ -202,6 +210,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "xlsx",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 1,
   },
   {
     slug: "json-to-csv",
@@ -211,6 +220,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "csv",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 3,
   },
   {
     slug: "json-to-xlsx",
@@ -238,6 +248,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "csv",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 2,
   },
   {
     slug: "xlsx-to-json",
@@ -274,6 +285,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "pdf",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 2,
   },
   {
     slug: "html-to-pdf",
@@ -292,6 +304,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "pdf",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 4,
   },
   {
     slug: "powerpoint-to-pdf",
@@ -301,6 +314,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "pdf",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 3,
   },
   {
     slug: "txt-to-pdf",
@@ -319,6 +333,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "pdf",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 1,
   },
   {
     slug: "avif-to-jpg",
@@ -364,6 +379,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "jpg",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 4,
   },
   {
     slug: "compress-png",
@@ -437,6 +453,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     kind: "job",
     arity: "one-to-one",
     rank: 6,
+    categoryRank: 3,
   },
   {
     slug: "heic-to-png",
@@ -519,6 +536,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     kind: "job",
     arity: "one-to-one",
     rank: 2,
+    categoryRank: 1,
   },
   {
     slug: "jpg-to-svg",
@@ -601,6 +619,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     kind: "job",
     arity: "one-to-one",
     rank: 5,
+    categoryRank: 2,
   },
   {
     slug: "png-to-jxl",
@@ -673,6 +692,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "jpg",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 6,
   },
   {
     slug: "resize-image-png",
@@ -781,6 +801,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "png",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 5,
   },
   {
     slug: "webp-to-svg",
@@ -809,6 +830,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     kind: "job",
     arity: "one-to-one",
     rank: 4,
+    categoryRank: 3,
   },
   {
     slug: "delete-pdf-pages",
@@ -864,6 +886,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     kind: "job",
     arity: "many-to-one",
     rank: 8,
+    categoryRank: 5,
   },
   {
     slug: "merge-pdf",
@@ -874,6 +897,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     kind: "job",
     arity: "many-to-one",
     rank: 7,
+    categoryRank: 2,
   },
   {
     slug: "pdf-editor",
@@ -883,6 +907,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "pdf",
     kind: "app",
     arity: "one-to-one",
+    categoryRank: 6,
   },
   {
     slug: "pdf-to-jpg",
@@ -929,6 +954,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     kind: "job",
     arity: "one-to-one",
     rank: 1,
+    categoryRank: 1,
   },
   {
     slug: "png-to-pdf",
@@ -983,6 +1009,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "pdf",
     kind: "job",
     arity: "one-to-many",
+    categoryRank: 4,
   },
   {
     slug: "unlock-pdf",
@@ -1019,6 +1046,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "same",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 1,
   },
   {
     slug: "flv-to-mp4",
@@ -1046,6 +1074,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "mp4",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 2,
   },
   {
     slug: "mov-to-webm",
@@ -1073,6 +1102,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "webm",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 3,
   },
   {
     slug: "mute-video",
@@ -1109,6 +1139,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "same",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 5,
   },
   {
     slug: "video-to-gif",
@@ -1118,6 +1149,7 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "gif",
     kind: "job",
     arity: "one-to-one",
+    categoryRank: 4,
   },
   {
     slug: "webm-to-mp4",

@@ -8,6 +8,7 @@ import { lossyAudioDefaults, lossyAudioOptions } from "../_shared-options";
 export default defineTool({
   slug: "wav-to-mp3",
   category: "audio",
+  categoryRank: 2,
   title: "WAV to MP3",
   description:
     "Convert WAV to MP3 for a much smaller file that still plays everywhere.",

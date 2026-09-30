@@ -76,6 +76,16 @@ describe("defineTool", () => {
     expect(() => defineTool(def)).toThrow(/^\[tool jpg-to-png\]/);
   });
 
+  it("accepts a positive integer categoryRank and rejects anything else", () => {
+    expect(() => defineTool(validDef({ categoryRank: 1 }))).not.toThrow();
+    expect(() => defineTool(validDef({ categoryRank: 0 }))).toThrow(
+      /^\[tool jpg-to-png\]/,
+    );
+    expect(() => defineTool(validDef({ categoryRank: 2.5 }))).toThrow(
+      /^\[tool jpg-to-png\]/,
+    );
+  });
+
   it("rejects a non-integer rank", () => {
     const def = validDef({ rank: 1.5 });
     expect(() => defineTool(def)).toThrow(/^\[tool jpg-to-png\]/);

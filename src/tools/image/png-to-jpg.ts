@@ -21,6 +21,7 @@ import { jpgDefaults, jpgOptions } from "../_shared-options";
 export default defineTool({
   slug: "png-to-jpg",
   category: "image",
+  categoryRank: 2,
   title: "PNG to JPG",
   description:
     "Convert PNG to JPG to make photos and screenshots much smaller. Transparent areas get a background color, and re-encoding removes metadata such as GPS.",

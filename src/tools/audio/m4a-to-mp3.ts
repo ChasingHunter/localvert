@@ -6,6 +6,7 @@ import { lossyAudioDefaults, lossyAudioOptions } from "../_shared-options";
 export default defineTool({
   slug: "m4a-to-mp3",
   category: "audio",
+  categoryRank: 3,
   title: "M4A to MP3",
   description:
     "Convert M4A (AAC) to MP3, the format that plays on nearly every device and app.",

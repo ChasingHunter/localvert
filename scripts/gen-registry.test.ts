@@ -60,6 +60,7 @@ function toolFile(
     kind?: "job" | "app";
     arity?: "one-to-one" | "many-to-one" | "one-to-many";
     rank?: number;
+    categoryRank?: number;
   } = {},
 ): string {
   const [category, slug] = categorySlug.split("/");
@@ -79,6 +80,9 @@ function toolFile(
     lines.push(`  arity: "${overrides.arity}",`);
   }
   if (overrides.rank !== undefined) lines.push(`  rank: ${overrides.rank},`);
+  if (overrides.categoryRank !== undefined) {
+    lines.push(`  categoryRank: ${overrides.categoryRank},`);
+  }
   lines.push("};");
   return `${lines.join("\n")}\n`;
 }
@@ -406,6 +410,16 @@ describe("genCatalog", () => {
       toolFile("image/a-to-b", { rank: 1 }),
     );
     expect(genCatalog([entry])).toContain("rank: 1,");
+  });
+
+  it("includes categoryRank when a tool sets one, and parses it from source", () => {
+    const entry = parseToolCatalogEntry(
+      { category: "image", slug: "a-to-b", importPath: "", varName: "" },
+      toolFile("image/a-to-b", { categoryRank: 3 }),
+    );
+    expect(entry.categoryRank).toBe(3);
+    expect(entry.rank).toBeUndefined();
+    expect(genCatalog([entry])).toContain("categoryRank: 3,");
   });
 });
 

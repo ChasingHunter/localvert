@@ -20,6 +20,7 @@ import { defineTool } from "@/lib/registry";
 export default defineTool({
   slug: "compress-jpg",
   category: "image",
+  categoryRank: 4,
   title: "Compress JPG",
   description:
     "Shrink a JPG. Keep high quality (the default), go smaller, set the quality yourself, aim for a size like under 200 KB, or cut it by a percentage. Never makes the file bigger.",

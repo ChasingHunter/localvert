@@ -37,6 +37,7 @@ import { defineTool } from "@/lib/registry";
 export default defineTool({
   slug: "compress-video",
   category: "video",
+  categoryRank: 1,
   title: "Compress Video",
   description:
     "Shrink a video's file size. Keep the best quality automatically, or aim for a target size like under 20 MB.",

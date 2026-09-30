@@ -13,6 +13,7 @@ import { defineTool } from "@/lib/registry";
 export default defineTool({
   slug: "json-to-csv",
   category: "data",
+  categoryRank: 3,
   title: "JSON to CSV",
   description: "Convert a JSON array of objects to a CSV file.",
 

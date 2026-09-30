@@ -30,6 +30,7 @@ import {
 export default defineTool({
   slug: "extract-audio",
   category: "audio",
+  categoryRank: 5,
   title: "Extract Audio",
   description:
     "Pull the audio track out of a video file as MP3, M4A, WAV, Ogg or Opus.",

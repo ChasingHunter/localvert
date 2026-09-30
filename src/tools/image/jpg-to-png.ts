@@ -19,6 +19,7 @@ import { defineTool, imagePipeline } from "@/lib/registry";
 export default defineTool({
   slug: "jpg-to-png",
   category: "image",
+  categoryRank: 1,
   title: "JPG to PNG",
   description:
     "Convert JPG to PNG, a lossless format. Re-encoding removes metadata such as GPS.",

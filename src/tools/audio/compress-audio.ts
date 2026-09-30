@@ -34,6 +34,7 @@ import { audioChannelsSelect } from "../_shared-options";
 export default defineTool({
   slug: "compress-audio",
   category: "audio",
+  categoryRank: 4,
   title: "Compress Audio",
   description:
     "Shrink an MP3, M4A, Ogg or Opus file. Pick a target size or percentage, or let us pick a lower bitrate for you. Never makes the file bigger.",

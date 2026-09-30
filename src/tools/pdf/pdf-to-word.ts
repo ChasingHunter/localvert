@@ -24,6 +24,7 @@ const options = z.object({
 export default defineTool({
   slug: "pdf-to-word",
   category: "pdf",
+  categoryRank: 1,
   title: "PDF to Word",
   description:
     "Convert a PDF to an editable .docx. Layout is approximate and text-only: columns, tables and images don't carry over. Scanned PDFs need OCR first: see PDF to Searchable PDF.",

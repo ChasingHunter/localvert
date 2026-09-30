@@ -11,6 +11,7 @@ import { defineTool } from "@/lib/registry";
 export default defineTool({
   slug: "xlsx-to-csv",
   category: "data",
+  categoryRank: 2,
   title: "Excel (XLSX) to CSV",
   description: "Convert an Excel spreadsheet to a CSV file.",
 

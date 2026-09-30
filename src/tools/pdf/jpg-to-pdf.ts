@@ -11,6 +11,7 @@ import { imagesToPdfDefaults, imagesToPdfOptions } from "../_shared-options";
 export default defineTool({
   slug: "jpg-to-pdf",
   category: "pdf",
+  categoryRank: 5,
   title: "JPG to PDF",
   description:
     "Combine JPG images into one PDF, one image per page, in the order you choose.",

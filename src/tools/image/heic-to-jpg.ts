@@ -15,6 +15,7 @@ import { jpgDefaults, jpgOptions } from "../_shared-options";
 export default defineTool({
   slug: "heic-to-jpg",
   category: "image",
+  categoryRank: 3,
   title: "HEIC to JPG",
   description:
     "Convert HEIC to JPG so iPhone photos open anywhere. Only the primary image in a HEIC file converts, and re-encoding strips embedded metadata, including GPS.",

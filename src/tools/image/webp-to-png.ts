@@ -10,6 +10,7 @@ import { defineTool, imagePipeline } from "@/lib/registry";
 export default defineTool({
   slug: "webp-to-png",
   category: "image",
+  categoryRank: 5,
   title: "WebP to PNG",
   description:
     "Convert WebP to PNG so it opens anywhere. Re-encoding strips embedded metadata, including GPS.",

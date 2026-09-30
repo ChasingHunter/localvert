@@ -15,6 +15,7 @@ import { defineTool } from "@/lib/registry";
 export default defineTool({
   slug: "mov-to-mp4",
   category: "video",
+  categoryRank: 2,
   title: "MOV to MP4",
   description:
     "Convert QuickTime MOV to MP4, a format every device and editor supports.",
