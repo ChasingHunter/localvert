@@ -704,7 +704,10 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
     return <p className="text-sm text-ink-muted">Loading converter…</p>;
   }
 
-  const hasOptions = Object.keys(tool.options.shape).length > 0;
+  // `hasFormFields` is computed by `defineTool` from the fields that actually
+  // render (crop and hidden ones don't), so crop tools with nothing else to
+  // show don't get an empty options column.
+  const hasOptions = tool.hasFormFields ?? false;
   const showRerun = shouldShowRerun({
     hasOptions,
     hasCropField,
@@ -857,6 +860,9 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
           zipping={zipping}
           onDownloadJobOutputs={handleDownloadJobOutputs}
           zippingJobId={zippingJobId}
+          showSaving={
+            tool.neverLarger === true || tool.estimateKind !== undefined
+          }
         />
 
         {zipError && <p className="text-sm text-danger">{zipError}</p>}

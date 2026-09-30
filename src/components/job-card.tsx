@@ -1,6 +1,7 @@
 "use client";
 
 import { Trash2Icon, XIcon } from "lucide-react";
+import { formatBytes, jobSizeSummary } from "@/components/job-summary";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import type { Job } from "@/lib/jobs";
@@ -17,6 +18,8 @@ interface JobCardProps {
    * any — disables that job's own button so a second click can't start a
    * second zip. */
   zippingId: string | null;
+  /** Compress tools: append the saving, "1.2 MB → 557 KB (−54%)". */
+  showSaving?: boolean;
 }
 
 const STATUS_LABEL: Record<Job["status"], string> = {
@@ -26,19 +29,6 @@ const STATUS_LABEL: Record<Job["status"], string> = {
   error: "Error",
   cancelled: "Cancelled",
 };
-
-/** `1536` -> "1.5 KB". Matches the precision the download link's size needs, no more. */
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB"];
-  let value = bytes / 1024;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex++;
-  }
-  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIndex]}`;
-}
 
 /**
  * One tracked conversion, read straight off the job store — this component
@@ -51,6 +41,7 @@ export function JobCard({
   onRemove,
   onDownloadOutputs,
   zippingId,
+  showSaving = false,
 }: JobCardProps) {
   const cancellable = job.status === "queued" || job.status === "running";
 
@@ -62,10 +53,7 @@ export function JobCard({
             {job.fileName}
           </span>
           <span className="text-xs text-ink-muted">
-            {STATUS_LABEL[job.status]} · {formatBytes(job.inputSize)}
-            {job.output && ` → ${formatBytes(job.output.size)}`}
-            {job.outputs &&
-              ` → ${job.outputs.length} files, ${formatBytes(job.outputs.reduce((sum, o) => sum + o.size, 0))}`}
+            {STATUS_LABEL[job.status]} · {jobSizeSummary(job, showSaving)}
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-2">

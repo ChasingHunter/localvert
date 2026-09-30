@@ -368,6 +368,13 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
     hint: string;
   };
   /**
+   * Whether the options form has at least one field to show: any option
+   * whose control isn't `"crop"` (own editor) or `"hidden"` (engine-only).
+   * Computed by `defineTool`, never set by hand. `ToolRunner` reads it to
+   * decide whether to reserve the options column.
+   */
+  hasFormFields?: boolean;
+  /**
    * For each `requiredOptionKeys` entry that also carries a `showWhen`, that
    * condition (computed by `defineTool`, never set by hand). A required field
    * that is currently hidden must not block the run, so `ToolRunner` skips

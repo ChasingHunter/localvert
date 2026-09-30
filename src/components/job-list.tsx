@@ -17,6 +17,8 @@ interface JobListProps {
    * every `JobCard`, see its own doc comment. */
   onDownloadJobOutputs: (id: string) => void;
   zippingJobId: string | null;
+  /** Passed to every `JobCard`: show the saving on compress results. */
+  showSaving?: boolean;
 }
 
 /**
@@ -33,6 +35,7 @@ export function JobList({
   zipping,
   onDownloadJobOutputs,
   zippingJobId,
+  showSaving = false,
 }: JobListProps) {
   const doneCount = jobs.filter((j) => j.status === "done").length;
   const settledCount = jobs.filter((j) =>
@@ -88,6 +91,7 @@ export function JobList({
             onRemove={onRemove}
             onDownloadOutputs={onDownloadJobOutputs}
             zippingId={zippingJobId}
+            showSaving={showSaving}
           />
         ))}
       </ul>

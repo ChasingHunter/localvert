@@ -136,6 +136,32 @@ describe("defineTool", () => {
     expect(defineTool(def).requiredOptionKeys).toEqual(["password"]);
   });
 
+  it("hasFormFields is false when every option is crop or hidden", () => {
+    const def = validDef({
+      options: z.object({
+        crop: z
+          .object({ x: z.number() })
+          .meta({ label: "Crop", control: "crop" }),
+        mode: z.enum(["a"]).meta({ label: "Mode", control: "hidden" }),
+      }),
+      defaults: { crop: { x: 0 }, mode: "a" },
+    });
+    expect(defineTool(def).hasFormFields).toBe(false);
+  });
+
+  it("hasFormFields is true once any option renders", () => {
+    const def = validDef({
+      options: z.object({
+        crop: z
+          .object({ x: z.number() })
+          .meta({ label: "Crop", control: "crop" }),
+        note: z.string().meta({ label: "Note", control: "text" }),
+      }),
+      defaults: { crop: { x: 0 }, note: "" },
+    });
+    expect(defineTool(def).hasFormFields).toBe(true);
+  });
+
   it("records the showWhen of a required field that has one", () => {
     const def = validDef({
       options: z.object({

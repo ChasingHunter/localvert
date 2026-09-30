@@ -159,5 +159,13 @@ export function defineTool<S extends z.ZodObject>(
   }
   def.requiredOptionShowWhen = showWhenByKey;
 
+  // Same rule OptionsForm applies: crop and hidden fields never render.
+  def.hasFormFields = Object.values(def.options.shape).some((field) => {
+    const control = z.globalRegistry.get(
+      unwrapField(field as z.core.$ZodType),
+    )?.control;
+    return control !== "crop" && control !== "hidden";
+  });
+
   return def;
 }
