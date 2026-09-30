@@ -114,7 +114,7 @@ describe("pdfTargetNote", () => {
       ladder: PDF_COMPRESS_LADDER,
     });
     expect(note).toBe(
-      "Already under 0.9 MB at the lightest compression (0.3 MB).",
+      "Already under 0.9 MB at the lightest compression (307 KB).",
     );
   });
 

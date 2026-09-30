@@ -1225,7 +1225,9 @@ describe("pdf-lib adapter", () => {
       if (result.kind !== "bytes") throw new Error("expected bytes result");
 
       expect(result.bytes.byteLength).toBeLessThanOrEqual(targetBytes);
-      expect(result.note).toMatch(/MB.*target/);
+      // Either a percent of the target, or, when even the lightest ladder
+      // step already undershoots, the "Already under" wording (ADR-0017).
+      expect(result.note).toMatch(/target|Already under/);
     }, 30000);
 
     it("mode target-size reports an unreachable target honestly", async () => {

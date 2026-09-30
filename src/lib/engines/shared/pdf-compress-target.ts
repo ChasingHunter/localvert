@@ -72,6 +72,14 @@ export async function runCompressLadder(
  * imported: that file lives in the `mediabunny` engine's own lazily-loaded
  * chunk, and importing across engine boundaries would pull mediabunny code
  * into the pdf-lib chunk for a three-line formatter. */
+/** An achieved size: MB like `formatMB`, but anything under 1 MB in KB, so a
+ * small result reads "307 KB" rather than "0.3 MB". Targets keep
+ * `formatMB`, since that's the unit the user typed them in. */
+export function formatAchieved(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return formatMB(bytes);
+}
+
 export function formatMB(bytes: number): string {
   const rounded = Math.round((bytes / (1024 * 1024)) * 10) / 10;
   const text = Number.isInteger(rounded)
@@ -101,17 +109,17 @@ export function pdfTargetNote(args: {
 }): string {
   const { targetBytes, nonImageBytes, result, ladder } = args;
   if (nonImageBytes > targetBytes) {
-    return `The text and fonts alone are ${formatMB(nonImageBytes)}, so ${formatMB(targetBytes)} isn't possible.`;
+    return `The text and fonts alone are ${formatAchieved(nonImageBytes)}, so ${formatMB(targetBytes)} isn't possible.`;
   }
   if (!result?.hit) {
     const smallest = result?.totalBytes ?? nonImageBytes;
-    return `The smallest we could make it is about ${formatMB(smallest)}.`;
+    return `The smallest we could make it is about ${formatAchieved(smallest)}.`;
   }
   const atLightestStep =
     ladder !== undefined && ladder.length > 0 && result.step === ladder[0];
   if (atLightestStep) {
-    return `Already under ${formatMB(targetBytes)} at the lightest compression (${formatMB(result.totalBytes)}).`;
+    return `Already under ${formatMB(targetBytes)} at the lightest compression (${formatAchieved(result.totalBytes)}).`;
   }
   const percentOfTarget = Math.round((result.totalBytes / targetBytes) * 100);
-  return `${formatMB(result.totalBytes)}, ${percentOfTarget}% of your ${formatMB(targetBytes)} target.`;
+  return `${formatAchieved(result.totalBytes)}, ${percentOfTarget}% of your ${formatMB(targetBytes)} target.`;
 }
