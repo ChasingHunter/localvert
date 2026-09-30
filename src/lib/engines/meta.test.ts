@@ -11,13 +11,13 @@ describe("engineBaseUrl", () => {
   it("points at public/engines/<id>@<version>/ for a static engine", () => {
     expect(
       engineBaseUrl({ id: "jsquash", version: "1.2.3", location: "static" }),
-    ).toBe("/engines/jsquash@1.2.3/");
+    ).toBe("/engines/jsquash--1.2.3/");
   });
 
   it("points at the R2-backed /engines/xl/<id>@<version>/ prefix for an r2 engine", () => {
     expect(
       engineBaseUrl({ id: "ffmpeg", version: "0.12.6", location: "r2" }),
-    ).toBe("/engines/xl/ffmpeg@0.12.6/");
+    ).toBe("/engines/xl/ffmpeg--0.12.6/");
   });
 
   it("is empty for a bundled engine, same as native", () => {

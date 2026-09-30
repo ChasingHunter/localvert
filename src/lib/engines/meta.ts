@@ -64,11 +64,20 @@ export interface EngineManifestEntry extends EngineMeta {
  *  - "native": ships no assets of its own — empty string, unused.
  *  - "bundled": pure JS inside the engine's own worker chunk — empty
  *    string, unused, same as "native".
- *  - "static": this origin's `public/engines/<id>@<version>/`, immutable
+ *  - "static": this origin's `public/engines/<id>--<version>/`, immutable
  *    per version.
- *  - "r2": the same origin's R2-backed `/engines/xl/<id>@<version>/`
+ *  - "r2": the same origin's R2-backed `/engines/xl/<id>--<version>/`
  *    prefix, for engines too large to ship as a static asset — see
  *    docs/adr/0003-workers-static-assets-over-pages.md.
+ *
+ * The `id`/`version` delimiter is `--`, not `@`: Cloudflare Workers Static
+ * Assets 307-redirects any request containing a literal `@` to its
+ * percent-encoded form (`%40`) before serving it, so every engine asset paid
+ * one avoidable round trip in production. `--` is URL-safe (no redirect,
+ * no encoding) and unambiguous to split back into `id`/`version` with
+ * `lastIndexOf("--")`: engine ids use single hyphens only (e.g.
+ * `jsquash-jpeg`), never a double hyphen, and a semver version never
+ * contains one either.
  */
 export function engineBaseUrl(
   meta: Pick<EngineMeta, "id" | "version" | "location">,
@@ -78,8 +87,8 @@ export function engineBaseUrl(
     case "bundled":
       return "";
     case "static":
-      return `/engines/${meta.id}@${meta.version}/`;
+      return `/engines/${meta.id}--${meta.version}/`;
     case "r2":
-      return `/engines/xl/${meta.id}@${meta.version}/`;
+      return `/engines/xl/${meta.id}--${meta.version}/`;
   }
 }

@@ -1,9 +1,11 @@
 /**
  * `pnpm sync-engines` — copies each engine's assets out of the npm package
- * that owns them and into place for the build: `public/engines/<id>@<
- * version>/` for a "static" engine, `.engines-r2/xl/<id>@<version>/` (a
+ * that owns them and into place for the build: `public/engines/<id>--<
+ * version>/` for a "static" engine, `.engines-r2/xl/<id>--<version>/` (a
  * staging area, uploaded later by `scripts/upload-r2.ts`) for an "r2" one.
- * `<version>` is the installed `package`'s own version — never read from
+ * `--`, not `@`, separates id from version — see `src/lib/engines/meta.ts`'s
+ * `engineBaseUrl` doc comment for why. `<version>` is the installed
+ * `package`'s own version — never read from
  * `engine.json`, which may not declare one for a "static"/"r2" engine (see
  * `scripts/gen-registry.ts`) — so a Dependabot bump of an engine package
  * changes nothing here but the destination path; no engine.json edit, no
@@ -632,7 +634,7 @@ function destRoot(
   source: EngineSource,
   version: string,
 ): string {
-  const dirName = `${source.id}@${version}`;
+  const dirName = `${source.id}--${version}`;
   return source.location === "static"
     ? join(rootDir, "public", "engines", dirName)
     : join(rootDir, ".engines-r2", "xl", dirName);
@@ -761,7 +763,7 @@ function copyEngineFiles(
 }
 
 /**
- * Removes `public/engines/<id>@<oldVersion>` directories for every "static"
+ * Removes `public/engines/<id>--<oldVersion>` directories for every "static"
  * engine we own whose current (installed) version has moved on — otherwise
  * a version bump leaves the old build artifact behind forever, since nothing
  * else ever deletes it. `versions` maps each source's `id` to its resolved
@@ -776,16 +778,19 @@ function cleanStaleStaticDirs(
   if (!existsSync(publicEnginesDir)) return [];
 
   const keep = new Set(
-    staticSources.map((s) => `${s.id}@${versions.get(s.id)}`),
+    staticSources.map((s) => `${s.id}--${versions.get(s.id)}`),
   );
   const ownedIds = new Set(staticSources.map((s) => s.id));
   const removed: string[] = [];
 
   for (const entry of readdirSync(publicEnginesDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    const atIndex = entry.name.lastIndexOf("@");
-    if (atIndex === -1) continue;
-    const ownerId = entry.name.slice(0, atIndex);
+    // `lastIndexOf` (not `indexOf`): the delimiter is unambiguous (see
+    // `meta.ts`'s `engineBaseUrl` doc comment), but `lastIndexOf` is the
+    // correct split point regardless, same as the id/version split above.
+    const delimIndex = entry.name.lastIndexOf("--");
+    if (delimIndex === -1) continue;
+    const ownerId = entry.name.slice(0, delimIndex);
     if (!ownedIds.has(ownerId) || keep.has(entry.name)) continue;
     rmSync(join(publicEnginesDir, entry.name), {
       recursive: true,

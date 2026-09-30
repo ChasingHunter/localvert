@@ -75,15 +75,15 @@ describe("seedLocalR2", () => {
   it("puts every staged file into the local R2 store, with --local and the right content-type", () => {
     const dir = makeTempDir();
     writeWranglerJsonc(dir, "localvert-engines");
-    writeFile(dir, ".engines-r2/xl/ffmpeg@1.0.0/ffmpeg-core.wasm", "w");
-    writeFile(dir, ".engines-r2/xl/ffmpeg@1.0.0/ffmpeg-core.js", "j");
+    writeFile(dir, ".engines-r2/xl/ffmpeg--1.0.0/ffmpeg-core.wasm", "w");
+    writeFile(dir, ".engines-r2/xl/ffmpeg--1.0.0/ffmpeg-core.js", "j");
     const { exec, calls } = makeFakeExec();
 
     const seeded = seedLocalR2(dir, exec, FAKE_WRANGLER_BIN);
 
     expect(seeded).toEqual([
-      "xl/ffmpeg@1.0.0/ffmpeg-core.js",
-      "xl/ffmpeg@1.0.0/ffmpeg-core.wasm",
+      "xl/ffmpeg--1.0.0/ffmpeg-core.js",
+      "xl/ffmpeg--1.0.0/ffmpeg-core.wasm",
     ]);
     expect(calls).toHaveLength(2);
     for (const { args } of calls) {
@@ -97,7 +97,7 @@ describe("seedLocalR2", () => {
       c.args.some((a) => a.endsWith("ffmpeg-core.js")),
     );
     expect(jsCall?.args).toContain(
-      "localvert-engines/xl/ffmpeg@1.0.0/ffmpeg-core.js",
+      "localvert-engines/xl/ffmpeg--1.0.0/ffmpeg-core.js",
     );
     expect(jsCall?.args).toContain("text/javascript");
     const wasmCall = calls.find((c) =>
@@ -109,7 +109,7 @@ describe("seedLocalR2", () => {
   it("re-seeds every rerun rather than skipping existing keys", () => {
     const dir = makeTempDir();
     writeWranglerJsonc(dir, "localvert-engines");
-    writeFile(dir, ".engines-r2/xl/foo@1.0.0/foo.wasm", "bytes");
+    writeFile(dir, ".engines-r2/xl/foo--1.0.0/foo.wasm", "bytes");
     const { exec, calls } = makeFakeExec();
 
     seedLocalR2(dir, exec, FAKE_WRANGLER_BIN);

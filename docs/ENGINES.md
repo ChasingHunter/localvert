@@ -260,8 +260,8 @@ the handful of exports this op uses.
 ## Delivery table
 
 Size, placement, threading. Placement is enforced by `scripts/sync-engines.ts`:
-**≤20 MiB → static** (`public/engines/<id>@<ver>/`), **larger → R2**
-(`xl/<id>@<ver>/`), because static assets have a hard 25 MiB per-file limit
+**≤20 MiB → static** (`public/engines/<id>--<ver>/`), **larger → R2**
+(`xl/<id>--<ver>/`), because static assets have a hard 25 MiB per-file limit
 ([ADR-0003](adr/0003-workers-static-assets-over-pages.md)).
 
 `Isolation` means the engine needs `SharedArrayBuffer`, so it only runs when
@@ -331,7 +331,7 @@ file we commit:
   **version is always the installed `package`'s own version** — `engine.json`
   may not declare a `version` field at all; `pnpm gen` rejects one if present,
   to keep exactly one source of truth. Engine URLs are versioned by this
-  derived value (`<id>@<installed-version>/`).
+  derived value (`<id>--<installed-version>/`).
 - A "bundled" engine (pure JS in its own worker chunk, no separate fetched
   asset) is either our own code — a hand-written `version` in `engine.json`,
   bumped by hand when the code changes (e.g. `exif`) — or a thin wrapper
@@ -380,14 +380,14 @@ sniff has already come back empty. See `textFormatFromExtension`'s doc
 comment for the exact mechanism.
 
 `pnpm sync-engines` copies each "static"/"r2" engine's files into place
-(`public/engines/<id>@<version>/` for "static", `.engines-r2/xl/<id>@<
+(`public/engines/<id>--<version>/` for "static", `.engines-r2/xl/<id>--<
 version>/` — a gitignored staging area — for "r2"; a "native" or "bundled"
 engine has nothing to copy and is skipped), reading the same installed
 package's version `pnpm gen` derives independently. It enforces the
 placement rule above mechanically: a "static" file over 20 MiB fails the
 command outright ("set location to r2"); an "r2" engine whose files are all
 comfortably under 20 MiB gets a warning to reconsider "static" instead. It
-also removes a stale `public/engines/<id>@<oldVersion>/` directory once a
+also removes a stale `public/engines/<id>--<oldVersion>/` directory once a
 version has moved on. `pnpm build` runs it automatically, chained into
 `pnpm gen` to rebuild `manifest.ts` from the freshly copied files.
 
@@ -409,7 +409,7 @@ those adapters' `metadata` constant for the pattern. Only `canvas` and `exif`
 straight off their own `engine.json`.
 
 `pnpm upload-r2` uploads whatever `sync-engines` staged in `.engines-r2/xl/`
-to the `localvert-engines` R2 bucket, keyed `xl/<id>@<version>/<file>` —
+to the `localvert-engines` R2 bucket, keyed `xl/<id>--<version>/<file>` —
 exactly what `infra/worker/index.ts` serves. Every key is versioned, so an
 object that already exists is already correct; the CI deploy job re-runs
 `sync-engines` to restage `.engines-r2/` (gitignored, not part of the build
@@ -436,7 +436,7 @@ first, then adapter, wiring, size budget, docs.
 1. **Dynamic import from a worker only.** The main thread never imports an
    adapter. It sees the generated `manifest.ts` and nothing else.
 2. **No engine in a core chunk.** `scripts/check-sizes.ts` fails the build.
-3. **Version in the asset path** — `<id>@<ver>/` — so every URL is immutable
+3. **Version in the asset path** — `<id>--<ver>/` — so every URL is immutable
    and cacheable forever. The adapter's `version` must match the path segment.
 4. **Self-host everything.** Several of these libraries fetch assets from a CDN
    by default; `tesseract.js` is the notable one, fetching worker, core and

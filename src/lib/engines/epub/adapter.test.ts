@@ -60,7 +60,7 @@ describe("epub adapter", () => {
   });
 
   it("unzips a real epub and returns concatenated HTML", async () => {
-    const instance = await epub.load({ baseUrl: "/engines/epub@1.0.0/" });
+    const instance = await epub.load({ baseUrl: "/engines/epub--1.0.0/" });
     const task = baseTask({ input: bytesInput(buildEpubZip()) });
     const result = await instance.run(task);
     expect(result.kind).toBe("bytes");
@@ -71,7 +71,7 @@ describe("epub adapter", () => {
   });
 
   it("rejects a non-zip input as decode-failed", async () => {
-    const instance = await epub.load({ baseUrl: "/engines/epub@1.0.0/" });
+    const instance = await epub.load({ baseUrl: "/engines/epub--1.0.0/" });
     const task = baseTask({
       input: bytesInput(
         new TextEncoder().encode("not a zip").buffer as ArrayBuffer,

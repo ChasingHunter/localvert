@@ -26,8 +26,8 @@ export interface EngineAsset {
 /**
  * One file `scripts/sync-engines.ts` copies from the source npm package into
  * this engine's asset directory. `from` is relative to the package's own
- * directory; `to` is the filename it lands as under `public/engines/<id>@<
- * version>/` (static) or `.engines-r2/xl/<id>@<version>/` (r2).
+ * directory; `to` is the filename it lands as under `public/engines/<id>--<
+ * version>/` (static) or `.engines-r2/xl/<id>--<version>/` (r2).
  *
  * `package` overrides the engine's own top-level `package` for this one
  * file — for an engine whose assets are split across several npm packages
@@ -93,7 +93,7 @@ export type EngineLocation = "native" | "static" | "r2" | "bundled";
 
 /**
  * Passed to `EngineAdapter.load`. `baseUrl` is the engine's own asset root,
- * e.g. "/engines/canvas@1.0.0/" — meaningless for a "native" engine, which
+ * e.g. "/engines/canvas--1.0.0/" — meaningless for a "native" engine, which
  * ignores it.
  */
 export interface EngineLoadContext {
@@ -195,7 +195,7 @@ export interface EngineInstance {
 
 export interface EngineAdapter {
   id: EngineId;
-  /** Must match the asset path segment, e.g. "1.0.0" for `canvas@1.0.0`. */
+  /** Must match the asset path segment, e.g. "1.0.0" for `canvas--1.0.0`. */
   version: string;
   /** SPDX id, e.g. "MIT", "LGPL-3.0-or-later". */
   license: string;

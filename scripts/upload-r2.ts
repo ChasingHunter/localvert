@@ -2,7 +2,7 @@
  * `pnpm upload-r2` — uploads every file `sync-engines` staged under
  * `.engines-r2/xl/` to the `localvert-engines` R2 bucket, at the same key an
  * xl-engine fetch will ask the Worker for (`infra/worker/index.ts`):
- * `xl/<id>@<version>/<file>`.
+ * `xl/<id>--<version>/<file>`.
  *
  * Every staged key is content-addressed by version (ADR-0003,
  * docs/adr/0003-workers-static-assets-over-pages.md — the asset path
@@ -115,7 +115,7 @@ export function readBucketName(wranglerJsoncPath: string): string {
 }
 
 export interface StagedUpload {
-  /** "xl/<id>@<version>/<file>" — also the R2 object key. */
+  /** "xl/<id>--<version>/<file>" — also the R2 object key. */
   key: string;
   filePath: string;
   contentType: string;

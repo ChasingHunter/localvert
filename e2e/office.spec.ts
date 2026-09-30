@@ -101,7 +101,7 @@ test.describe("word to pdf (libreoffice engine, ADR-0012)", () => {
     test.setTimeout(300_000);
     const engineRequests: { url: string; status: number }[] = [];
     page.on("response", (response) => {
-      if (response.url().includes("/engines/xl/libreoffice@")) {
+      if (response.url().includes("/engines/xl/libreoffice--")) {
         engineRequests.push({ url: response.url(), status: response.status() });
       }
     });

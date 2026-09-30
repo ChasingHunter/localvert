@@ -149,11 +149,11 @@ Three rules, all enforced mechanically:
    download size, preload, and tell the service worker what to cache.
 2. **No engine may appear in a core chunk.** `scripts/check-sizes.ts` walks the
    chunk graph in CI and fails the build if one does.
-3. **Assets are versioned in the path** — `public/engines/<id>@<ver>/...` — so
+3. **Assets are versioned in the path** — `public/engines/<id>--<ver>/...` — so
    every engine URL is immutable and cacheable forever.
 
 Engines ≤20 MiB ship as static assets. Larger ones (ffmpeg core-mt ~32 MB,
-LibreOffice ~80 MB) live in R2 under `xl/<id>@<ver>/` and are fetched on demand
+LibreOffice ~80 MB) live in R2 under `xl/<id>--<ver>/` and are fetched on demand
 behind an explicit user gate. See [ENGINES.md](ENGINES.md) for the table and
 [ADR-0003](adr/0003-workers-static-assets-over-pages.md) for why.
 

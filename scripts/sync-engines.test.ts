@@ -123,7 +123,7 @@ describe("syncEngines", () => {
     expect(syncEngines(dir).engines).toEqual([]);
   });
 
-  it("copies a static engine's files to public/engines/<id>@<installedVersion>/", () => {
+  it("copies a static engine's files to public/engines/<id>--<installedVersion>/", () => {
     const dir = makeTempDir();
     writePackage(dir, "@acme/foo", "1.2.3", {
       "codec/foo.wasm": "0123456789", // 10 bytes
@@ -143,7 +143,7 @@ describe("syncEngines", () => {
         files: [{ path: "foo.wasm", bytes: 10 }],
       },
     ]);
-    expect(readFile(dir, "public/engines/foo@1.2.3/foo.wasm")).toBe(
+    expect(readFile(dir, "public/engines/foo--1.2.3/foo.wasm")).toBe(
       "0123456789",
     );
   });
@@ -156,16 +156,18 @@ describe("syncEngines", () => {
       files: [{ from: "foo.wasm", to: "foo.wasm" }],
     });
     syncEngines(dir);
-    expect(existsSync(join(dir, "public", "engines", "foo@1.2.3"))).toBe(true);
+    expect(existsSync(join(dir, "public", "engines", "foo--1.2.3"))).toBe(true);
 
     // Simulate a Dependabot bump: only node_modules changes.
     writePackage(dir, "@acme/foo", "1.3.0", { "foo.wasm": "new" });
     const result = syncEngines(dir);
 
     expect(result.engines[0]?.version).toBe("1.3.0");
-    expect(readFile(dir, "public/engines/foo@1.3.0/foo.wasm")).toBe("new");
+    expect(readFile(dir, "public/engines/foo--1.3.0/foo.wasm")).toBe("new");
     // The stale old-version dir is cleaned up too (existing behavior).
-    expect(existsSync(join(dir, "public", "engines", "foo@1.2.3"))).toBe(false);
+    expect(existsSync(join(dir, "public", "engines", "foo--1.2.3"))).toBe(
+      false,
+    );
   });
 
   it("a file entry's own \"package\" borrows from a different npm package than the engine's own", () => {
@@ -201,15 +203,15 @@ describe("syncEngines", () => {
         ],
       },
     ]);
-    expect(readFile(dir, "public/engines/foo@1.2.3/foo.wasm")).toBe(
+    expect(readFile(dir, "public/engines/foo--1.2.3/foo.wasm")).toBe(
       "0123456789",
     );
-    expect(readFile(dir, "public/engines/foo@1.2.3/foo.dat")).toBe("hello");
+    expect(readFile(dir, "public/engines/foo--1.2.3/foo.dat")).toBe("hello");
     // The engine's own version comes from "@acme/foo" alone — "@acme/foo-data"
     // (9.9.9) never factors into it.
   });
 
-  it("copies an r2 engine's files to .engines-r2/xl/<id>@<version>/", () => {
+  it("copies an r2 engine's files to .engines-r2/xl/<id>--<version>/", () => {
     const dir = makeTempDir();
     writePackage(dir, "@acme/bar", "0.9.0", {
       "core/bar.wasm": "x".repeat(50),
@@ -226,7 +228,7 @@ describe("syncEngines", () => {
     const result = syncEngines(dir, 10);
 
     expect(existsSync(join(dir, "public", "engines"))).toBe(false);
-    expect(readFile(dir, ".engines-r2/xl/bar@0.9.0/bar.wasm")).toBe(
+    expect(readFile(dir, ".engines-r2/xl/bar--0.9.0/bar.wasm")).toBe(
       "x".repeat(50),
     );
     expect(result.engines).toEqual([
@@ -265,10 +267,10 @@ describe("syncEngines", () => {
       },
     ]);
     expect(
-      readFile(dir, "public/engines/withcmaps@1.0.0/cmaps/Foo.bcmap"),
+      readFile(dir, "public/engines/withcmaps--1.0.0/cmaps/Foo.bcmap"),
     ).toBe("cmap-a");
     expect(
-      readFile(dir, "public/engines/withcmaps@1.0.0/cmaps/nested/Bar.bcmap"),
+      readFile(dir, "public/engines/withcmaps--1.0.0/cmaps/nested/Bar.bcmap"),
     ).toBe("cmap-b");
   });
 
@@ -327,9 +329,9 @@ describe("syncEngines", () => {
     ]);
   });
 
-  it("removes a stale public/engines/<id>@<oldVersion> dir for an engine we own", () => {
+  it("removes a stale public/engines/<id>--<oldVersion> dir for an engine we own", () => {
     const dir = makeTempDir();
-    writeFile(dir, "public/engines/foo@0.9.0/foo.wasm", "old");
+    writeFile(dir, "public/engines/foo--0.9.0/foo.wasm", "old");
     writePackage(dir, "@acme/foo", "1.0.0", { "foo.wasm": "new-bytes" });
     writeEngine(dir, "foo", {
       package: "@acme/foo",
@@ -338,20 +340,22 @@ describe("syncEngines", () => {
 
     const result = syncEngines(dir);
 
-    expect(result.removedStaleDirs).toEqual(["foo@0.9.0"]);
-    expect(existsSync(join(dir, "public", "engines", "foo@0.9.0"))).toBe(false);
-    expect(existsSync(join(dir, "public", "engines", "foo@1.0.0"))).toBe(true);
+    expect(result.removedStaleDirs).toEqual(["foo--0.9.0"]);
+    expect(existsSync(join(dir, "public", "engines", "foo--0.9.0"))).toBe(
+      false,
+    );
+    expect(existsSync(join(dir, "public", "engines", "foo--1.0.0"))).toBe(true);
   });
 
   it("leaves an unrelated public/engines directory alone", () => {
     const dir = makeTempDir();
-    writeFile(dir, "public/engines/other@1.0.0/other.wasm", "untouched");
+    writeFile(dir, "public/engines/other--1.0.0/other.wasm", "untouched");
     writeEngine(dir, "canvas", { location: "native" });
 
     const result = syncEngines(dir);
 
     expect(result.removedStaleDirs).toEqual([]);
-    expect(existsSync(join(dir, "public", "engines", "other@1.0.0"))).toBe(
+    expect(existsSync(join(dir, "public", "engines", "other--1.0.0"))).toBe(
       true,
     );
   });

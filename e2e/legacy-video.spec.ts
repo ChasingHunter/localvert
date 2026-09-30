@@ -92,7 +92,7 @@ test.describe("ffmpeg download consent (ADR-0002 rule 4)", () => {
     // can assert the actual wasm request happened and succeeded.
     const engineRequests: { url: string; status: number }[] = [];
     page.on("response", (response) => {
-      if (response.url().includes("/engines/xl/ffmpeg@")) {
+      if (response.url().includes("/engines/xl/ffmpeg--")) {
         engineRequests.push({ url: response.url(), status: response.status() });
       }
     });

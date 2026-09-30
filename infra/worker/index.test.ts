@@ -76,8 +76,8 @@ function fakeCtx() {
   return { ctx, waited };
 }
 
-const ENGINE_PATH = "/engines/xl/ffmpeg-core@1.0.0/ffmpeg-core.wasm";
-const ENGINE_KEY = "xl/ffmpeg-core@1.0.0/ffmpeg-core.wasm";
+const ENGINE_PATH = "/engines/xl/ffmpeg-core--1.0.0/ffmpeg-core.wasm";
+const ENGINE_KEY = "xl/ffmpeg-core--1.0.0/ffmpeg-core.wasm";
 
 describe("handle", () => {
   it("delegates a non-xl path straight to ASSETS", async () => {
@@ -128,7 +128,7 @@ describe("handle", () => {
     expect(assetsFetch).toHaveBeenCalled();
   });
 
-  it("rejects a key that doesn't match the id@version/file shape", async () => {
+  it("rejects a key that doesn't match the id--version/file shape", async () => {
     const { env, get, assetsFetch } = fakeEnv();
     const { ctx } = fakeCtx();
     const request = new Request("http://localhost/engines/xl/not-a-valid-key");

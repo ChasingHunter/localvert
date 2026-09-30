@@ -24,7 +24,7 @@ function entry(
       { path: "ffmpeg-core.js", bytes: 111804 },
       { path: "ffmpeg-core.wasm", bytes: 32232419 },
     ],
-    baseUrl: "/engines/xl/ffmpeg@0.12.10/",
+    baseUrl: "/engines/xl/ffmpeg--0.12.10/",
     totalBytes: 32344223,
     ...overrides,
   };

@@ -977,8 +977,8 @@ describe("genEngineManifest", () => {
     const dir = makeFullFixture();
     const out = genEngineManifest(scanEngines(dir));
     expect(out).toContain('baseUrl: "",'); // bar: native
-    expect(out).toContain('baseUrl: "/engines/foo@1.2.3/",'); // foo: static
-    expect(out).toContain('baseUrl: "/engines/xl/baz@2.1.0/",'); // baz: r2
+    expect(out).toContain('baseUrl: "/engines/foo--1.2.3/",'); // foo: static
+    expect(out).toContain('baseUrl: "/engines/xl/baz--2.1.0/",'); // baz: r2
   });
 
   it("sums each engine's asset bytes into totalBytes", () => {

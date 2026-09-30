@@ -3,7 +3,7 @@ import { test as base, expect } from "@playwright/test";
 
 /**
  * Live end-to-end run of the typst engine (ADR-0011): `location: "static"`,
- * served straight from this origin's `public/engines/typst@<version>/` —
+ * served straight from this origin's `public/engines/typst--<version>/` —
  * no `wrangler dev` R2 simulation, no download-consent gate, unlike
  * `e2e/legacy-video.spec.ts`'s ffmpeg. The compiler wasm ships gzipped
  * (`typst_ts_web_compiler_bg.wasm.gz`, ~10 MB vs. ~28 MB raw — comfortably
@@ -86,7 +86,7 @@ test.describe("markdown to pdf (typst engine, ADR-0011)", () => {
     test.setTimeout(120_000);
     const engineRequests: { url: string; status: number }[] = [];
     page.on("response", (response) => {
-      if (response.url().includes("/engines/typst@")) {
+      if (response.url().includes("/engines/typst--")) {
         engineRequests.push({ url: response.url(), status: response.status() });
       }
     });

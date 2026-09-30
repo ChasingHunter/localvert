@@ -160,16 +160,16 @@ describe("findStagedFiles", () => {
     expect(findStagedFiles(makeTempDir())).toEqual([]);
   });
 
-  it("keys every staged file as xl/<id>@<version>/<file>, sorted", () => {
+  it("keys every staged file as xl/<id>--<version>/<file>, sorted", () => {
     const dir = makeTempDir();
-    writeFile(dir, ".engines-r2/xl/ffmpeg-core@1.0.0/ffmpeg-core.wasm", "w");
-    writeFile(dir, ".engines-r2/xl/ffmpeg-core@1.0.0/ffmpeg-core.js", "j");
+    writeFile(dir, ".engines-r2/xl/ffmpeg-core--1.0.0/ffmpeg-core.wasm", "w");
+    writeFile(dir, ".engines-r2/xl/ffmpeg-core--1.0.0/ffmpeg-core.js", "j");
 
     const staged = findStagedFiles(dir);
 
     expect(staged.map((s) => s.key)).toEqual([
-      "xl/ffmpeg-core@1.0.0/ffmpeg-core.js",
-      "xl/ffmpeg-core@1.0.0/ffmpeg-core.wasm",
+      "xl/ffmpeg-core--1.0.0/ffmpeg-core.js",
+      "xl/ffmpeg-core--1.0.0/ffmpeg-core.wasm",
     ]);
     expect(staged[0]?.contentType).toBe("text/javascript");
     expect(staged[1]?.contentType).toBe("application/wasm");
@@ -207,7 +207,7 @@ describe("uploadStaged", () => {
   it("fails fast when credentials are missing but work is staged", () => {
     const dir = makeTempDir();
     writeWranglerJsonc(dir, "localvert-engines");
-    writeFile(dir, ".engines-r2/xl/foo@1.0.0/foo.wasm", "bytes");
+    writeFile(dir, ".engines-r2/xl/foo--1.0.0/foo.wasm", "bytes");
     const { exec, calls } = makeFakeExec();
 
     expect(() => uploadStaged(dir, {}, exec, FAKE_WRANGLER_BIN)).toThrow(
@@ -224,14 +224,14 @@ describe("uploadStaged", () => {
   it("skips a key that already exists in the bucket", () => {
     const dir = makeTempDir();
     writeWranglerJsonc(dir, "localvert-engines");
-    writeFile(dir, ".engines-r2/xl/foo@1.0.0/foo.wasm", "bytes");
-    const { exec, calls } = makeFakeExec(new Set(["xl/foo@1.0.0/foo.wasm"]));
+    writeFile(dir, ".engines-r2/xl/foo--1.0.0/foo.wasm", "bytes");
+    const { exec, calls } = makeFakeExec(new Set(["xl/foo--1.0.0/foo.wasm"]));
 
     const result = uploadStaged(dir, creds, exec, FAKE_WRANGLER_BIN);
 
     expect(result).toEqual({
       uploaded: [],
-      skipped: ["xl/foo@1.0.0/foo.wasm"],
+      skipped: ["xl/foo--1.0.0/foo.wasm"],
     });
     // Only the existence check ran — never a put for an already-present key.
     expect(calls).toHaveLength(1);
@@ -240,7 +240,7 @@ describe("uploadStaged", () => {
       "r2",
       "object",
       "get",
-      "localvert-engines/xl/foo@1.0.0/foo.wasm",
+      "localvert-engines/xl/foo--1.0.0/foo.wasm",
       "--pipe",
       "--remote",
     ]);
@@ -249,14 +249,14 @@ describe("uploadStaged", () => {
   it("puts a missing key with the right bucket/key, file, content-type and --remote", () => {
     const dir = makeTempDir();
     writeWranglerJsonc(dir, "localvert-engines");
-    const stagedPath = join(dir, ".engines-r2", "xl", "foo@1.0.0", "foo.wasm");
-    writeFile(dir, ".engines-r2/xl/foo@1.0.0/foo.wasm", "bytes");
+    const stagedPath = join(dir, ".engines-r2", "xl", "foo--1.0.0", "foo.wasm");
+    writeFile(dir, ".engines-r2/xl/foo--1.0.0/foo.wasm", "bytes");
     const { exec, calls } = makeFakeExec();
 
     const result = uploadStaged(dir, creds, exec, FAKE_WRANGLER_BIN);
 
     expect(result).toEqual({
-      uploaded: ["xl/foo@1.0.0/foo.wasm"],
+      uploaded: ["xl/foo--1.0.0/foo.wasm"],
       skipped: [],
     });
     const putCall = calls.find((c) => c.args[3] === "put");
@@ -265,7 +265,7 @@ describe("uploadStaged", () => {
       "r2",
       "object",
       "put",
-      "localvert-engines/xl/foo@1.0.0/foo.wasm",
+      "localvert-engines/xl/foo--1.0.0/foo.wasm",
       "--file",
       stagedPath,
       "--content-type",

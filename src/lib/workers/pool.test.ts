@@ -213,7 +213,7 @@ const BYTES_RESULT: EngineResult = {
 function step(overrides: Partial<RunStep> = {}): RunStep {
   return {
     engine: CANVAS,
-    baseUrl: "/engines/canvas@1.0.0/",
+    baseUrl: "/engines/canvas--1.0.0/",
     op: "transcode",
     inputFormat: "png",
     outputFormat: "jpg",

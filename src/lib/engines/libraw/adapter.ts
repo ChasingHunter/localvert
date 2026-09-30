@@ -128,7 +128,7 @@ async function inputToBytes(input: EngineInput): Promise<ArrayBuffer> {
  * is no hook to point either the worker or the wasm at this engine's own
  * `ctx.baseUrl`. Bundled through our adapter's dynamic import, that URL
  * would resolve to wherever the app bundler places the package's worker
- * chunk, not to `public/engines/libraw@<version>/` — invariant 3 territory,
+ * chunk, not to `public/engines/libraw--<version>/` — invariant 3 territory,
  * and unversioned besides.
  *
  * `dist/libraw.js` is the lower-level Emscripten glue `worker.js` is itself

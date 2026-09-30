@@ -888,17 +888,22 @@ function engineBaseUrl(
   // tests) and Next's own dev server resolve `public/`'s literal, unencoded
   // "pdfjs@6.3.289" directory name and 404 on the encoded form instead of
   // decoding it, so encoding here traded a small prod-only round trip for a
-  // broken local dev/test story across every static/r2 engine. Left as the
-  // literal, filesystem-matching form; see docs/adr/ or a future slice if
-  // this round trip turns out to matter in practice.
+  // broken local dev/test story across every static/r2 engine. Fixed
+  // instead by dropping "@" from the path entirely — see `--` below.
+  //
+  // `--` is the id/version delimiter: URL-safe (no redirect anywhere, no
+  // encoding mismatch between prod and dev servers) and unambiguous to
+  // split back apart with `lastIndexOf("--")`, since engine ids use single
+  // hyphens only (e.g. "jsquash-jpeg") and semver versions never contain a
+  // double hyphen either.
   switch (location) {
     case "native":
     case "bundled":
       return "";
     case "static":
-      return `/engines/${id}@${version}/`;
+      return `/engines/${id}--${version}/`;
     case "r2":
-      return `/engines/xl/${id}@${version}/`;
+      return `/engines/xl/${id}--${version}/`;
   }
 }
 

@@ -9,7 +9,7 @@
  *     install via `self.__SW_MANIFEST`, injected at build time.
  *   - `/engines/*` (including `/engines/xl/*`, proxied through the R2
  *     Worker — see infra/worker/index.ts) is `CacheFirst` in a dedicated,
- *     unbounded cache: those URLs are versioned (`<id>@<version>/...`), so a
+ *     unbounded cache: those URLs are versioned (`<id>--<version>/...`), so a
  *     cached response is never stale, and content never needs evicting.
  *   - A navigation that isn't in the precache list (i.e. not a real route)
  *     tries the network, same as with no service worker at all — so an

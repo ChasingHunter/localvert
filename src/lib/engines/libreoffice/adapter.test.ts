@@ -190,7 +190,7 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 }
 
 const ctx: EngineLoadContext = {
-  baseUrl: "/engines/xl/libreoffice@2.3.1/",
+  baseUrl: "/engines/xl/libreoffice--2.3.1/",
   capabilities: {
     crossOriginIsolated: true,
     sharedArrayBuffer: true,

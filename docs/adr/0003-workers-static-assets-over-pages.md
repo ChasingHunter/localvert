@@ -116,3 +116,12 @@ per-file limit is hard, and ffmpeg core-mt and LibreOffice are both over it.
 **Split large engines into <25 MiB chunks and reassemble in the browser.**
 Rejected: real complexity, defeats browser and edge caching of the real
 artifact, and breaks streaming instantiation for a self-inflicted reason.
+
+**2026-09-30 update:** this ADR's placement paths (`public/engines/<id>@<ver>/`
+and `xl/<id>@<ver>/`) originally separated id from version with `@`. Workers
+Static Assets 307-redirects any request containing a literal `@` to its
+percent-encoded form, so every static/r2 engine asset paid an avoidable extra
+round trip in production. The delimiter changed to `--`
+(`public/engines/<id>--<ver>/`, `xl/<id>--<ver>/`) — see
+`src/lib/engines/meta.ts`'s `engineBaseUrl` doc comment. The placement
+decision itself (≤20 MiB static / larger R2, version-in-path) is unchanged.

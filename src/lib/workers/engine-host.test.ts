@@ -29,7 +29,7 @@ type Loaders = Partial<
 function step(overrides: Partial<RunStep> = {}): RunStep {
   return {
     engine: "canvas",
-    baseUrl: "/engines/canvas@1.0.0/",
+    baseUrl: "/engines/canvas--1.0.0/",
     op: "transcode",
     inputFormat: "png",
     outputFormat: "jpg",

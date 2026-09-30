@@ -16,9 +16,11 @@
 
 import { COEP, CSP } from "./security-headers";
 
-/** "/engines/xl/<id>@<version>/<file...>" once the leading "/engines/" is stripped. */
+/** "/engines/xl/<id>--<version>/<file...>" once the leading "/engines/" is
+ * stripped. `--` (not `@`) separates id from version — see
+ * `src/lib/engines/meta.ts`'s `engineBaseUrl` doc comment for why. */
 const KEY_PATTERN =
-  /^xl\/[a-z0-9-]+@[0-9A-Za-z.+-]+\/[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/;
+  /^xl\/[a-z0-9-]+--[0-9A-Za-z.+-]+\/[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*$/;
 
 const EXTENSION_CONTENT_TYPES: Record<string, string> = {
   // Required for WebAssembly.instantiateStreaming to accept the response.
