@@ -390,8 +390,8 @@ async function runCompress(
   const picked = neverLarger(
     strippedOriginal,
     encoded,
-    "This PNG was already about as small as it gets — kept the original " +
-      "(with metadata removed).",
+    "This PNG was already about as small as it gets. You got the original " +
+      "back, with metadata removed.",
   );
 
   onProgress?.(1);

@@ -341,7 +341,12 @@ function formatMB(bytes: number): string {
 
 export type TargetSizeOutcome =
   | { kind: "hit"; actualBytes: number; targetBytes: number }
-  | { kind: "resized"; actualBytes: number; resizedToHeight: number }
+  | {
+      kind: "resized";
+      actualBytes: number;
+      targetBytes: number;
+      resizedToHeight: number;
+    }
   | { kind: "unreachable"; actualBytes: number };
 
 /** ADR-0017's result-contract wording — the exact three shapes from the
@@ -354,7 +359,7 @@ export function targetSizeResultNote(outcome: TargetSizeOutcome): string {
       return `${formatMB(outcome.actualBytes)} MB, ${pct}% of your ${formatMB(outcome.targetBytes)} MB target.`;
     }
     case "resized":
-      return `Resized to ${outcome.resizedToHeight}p to fit ${formatMB(outcome.actualBytes)} MB.`;
+      return `Resized to ${outcome.resizedToHeight}p to fit your ${formatMB(outcome.targetBytes)} MB target (${formatMB(outcome.actualBytes)} MB).`;
     case "unreachable":
       return `The smallest we could make it is ${formatMB(outcome.actualBytes)} MB.`;
   }

@@ -12,7 +12,7 @@ export interface NeverLargerResult {
 }
 
 const DEFAULT_MESSAGE =
-  "Already about as small as it gets — kept the original file.";
+  "Already about as small as it gets. You got the original file back.";
 
 /**
  * Returns `candidate` unless `original` is the same size or smaller, in

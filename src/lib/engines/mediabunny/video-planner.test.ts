@@ -392,10 +392,11 @@ describe("targetSizeResultNote", () => {
   it("formats a resized outcome", () => {
     const note = targetSizeResultNote({
       kind: "resized",
-      actualBytes: 20 * 1024 * 1024,
+      actualBytes: 19 * 1024 * 1024,
+      targetBytes: 20 * 1024 * 1024,
       resizedToHeight: 720,
     });
-    expect(note).toBe("Resized to 720p to fit 20 MB.");
+    expect(note).toBe("Resized to 720p to fit your 20 MB target (19 MB).");
   });
 
   it("formats an unreachable outcome", () => {

@@ -521,6 +521,7 @@ async function runVideoTargetSize(args: {
         ? ({
             kind: "resized",
             actualBytes: final.sizeBytes,
+            targetBytes,
             resizedToHeight: height,
           } as const)
         : ({

@@ -56,7 +56,7 @@ describe("jsonToCsv", () => {
   });
 
   it("throws a clear error for an array of non-objects", () => {
-    expect(() => jsonToCsv([1, 2, 3])).toThrow(/row 0 is not an object/);
+    expect(() => jsonToCsv([1, 2, 3])).toThrow(/Row 0 isn.t an object/);
   });
 
   it("respects an explicit delimiter", () => {

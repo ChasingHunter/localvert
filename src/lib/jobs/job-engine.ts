@@ -31,7 +31,7 @@ import type { JobStore } from "./store";
  * default message, used by every compress tool that enforces this inside
  * its own engine adapter instead. */
 const NEVER_LARGER_JOB_NOTE =
-  "Already about as small as it gets — kept the original file.";
+  "Already about as small as it gets. You got the original file back.";
 
 export interface SubmitFile {
   file: File;

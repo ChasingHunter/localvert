@@ -93,13 +93,13 @@ export function jsonToCsv(
 function asArrayOfFlatObjects(json: unknown): JsonRecord[] {
   if (!Array.isArray(json)) {
     throw new DataConversionError(
-      "JSON to CSV/XLSX needs an array of objects — this JSON is not an array",
+      "JSON to CSV/XLSX needs an array of objects. This JSON isn't an array.",
     );
   }
   return json.map((row, i) => {
     if (typeof row !== "object" || row === null || Array.isArray(row)) {
       throw new DataConversionError(
-        `JSON to CSV/XLSX needs an array of objects — row ${i} is not an object`,
+        `JSON to CSV/XLSX needs an array of objects. Row ${i} isn't an object.`,
       );
     }
     const flat: JsonRecord = {};
