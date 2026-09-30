@@ -356,10 +356,10 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
    * engine adapter, where the original input bytes and the final result are
    * both in hand in the same call (see each adapter's own never-larger
    * check, via `src/lib/engines/shared/never-larger.ts`). `compress-audio`
-   * can't do that cheaply — its engine (`mediabunny`) may stream a large
-   * output straight to OPFS rather than holding it in memory, so
-   * `job-engine.ts`'s `applyResult` is where this flag is read instead: it
-   * compares the finished job's own output size against `file.size` and
+   * and `compress-video` can't do that cheaply — their engine (`mediabunny`)
+   * may stream a large output straight to OPFS rather than holding it in
+   * memory, so `job-engine.ts`'s `applyResult` is where this flag is read
+   * instead: it compares the finished job's own output size against `file.size` and
    * swaps in the original file unchanged (with a note) if the result isn't
    * smaller. Never set this on a plain format-conversion tool, where the
    * output being a different size — bigger or smaller — is normal and

@@ -339,7 +339,7 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
     const { tool, id, file, parsedOptions, result } = args;
 
     if (result.kind === "opfs") {
-      // ADR-0013: compress-audio's never-larger-than-input check — see
+      // ADR-0013: compress-audio's/compress-video's never-larger-than-input check — see
       // `ToolDefinition.neverLarger`'s doc comment for why this reads the
       // flag here rather than inside the engine adapter itself. Discards
       // the OPFS output entirely (never even read into memory) and hands
@@ -430,7 +430,7 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
         ? new Blob([result.bytes], { type: result.mime })
         : await collectToBlob(result.stream, result.mime);
 
-    // ADR-0013: compress-audio's never-larger-than-input check (see
+    // ADR-0013: compress-audio's/compress-video's never-larger-than-input check (see
     // `ToolDefinition.neverLarger`'s doc comment) — a stream/bytes result
     // that isn't actually smaller than the input is discarded in favour of
     // the original file unchanged.

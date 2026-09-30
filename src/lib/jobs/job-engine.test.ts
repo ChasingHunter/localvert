@@ -14,6 +14,22 @@ import type { JobEngineOptions } from "./job-engine";
 import { createJobEngine } from "./job-engine";
 import { createJobStore } from "./store";
 
+// Real OPFS isn't available under plain Vitest (node environment, no
+// `navigator.storage`) — mocked here so the "opfs"-kind result tests below
+// (compress-video's OPFS output path, ADR-0010/0013) can exercise
+// `job-engine.ts`'s `readOpfsFile`/`deleteOpfsFile` calls deterministically
+// instead of hitting real filesystem APIs that don't exist in this
+// environment. `sweepOpfsTemp` is fire-and-forget at `createJobEngine`
+// construction time regardless, so it's stubbed too.
+vi.mock("./opfs-temp", () => ({
+  readOpfsFile: vi.fn(
+    async (path: string) =>
+      new File(["mock-opfs-bytes"], path.split("/").pop() ?? path),
+  ),
+  deleteOpfsFile: vi.fn(async () => {}),
+  sweepOpfsTemp: vi.fn(async () => {}),
+}));
+
 /**
  * Fake `WorkerPool.run`: hands each call back a controllable deferred, so a
  * test decides exactly when (and how) a job settles, and mirrors real
@@ -769,6 +785,60 @@ describe("createJobEngine / ADR-0013 neverLarger", () => {
 
     const job = store.getState().jobs[0];
     expect(job?.output?.size).toBe(11);
+    expect(job?.output?.note).toBeUndefined();
+  });
+
+  // compress-video (ADR-0013's addendum, 2026-09-30): its engine result
+  // writes large outputs straight to OPFS (ADR-0010) rather than holding
+  // them in memory, so `applyResult`'s "opfs"-kind branch is its own
+  // never-larger check, separate from the "bytes"-kind one exercised above.
+  // Same tool-level flag, same job-card contract, different `EngineResult`
+  // shape — this is the case a mediabunny-produced video job actually hits.
+  it("falls back to the original file for an oversized OPFS-kind result (compress-video)", async () => {
+    const { engine, calls, store, createObjectURL } = setup();
+    const tool = makeTool({ slug: "compress-video", neverLarger: true });
+    const file = new File(["a".repeat(37)], "clip.mp4", {
+      type: "video/mp4",
+    }); // 37 bytes, standing in for "37 MB"
+
+    engine.submit(tool, [{ file, format: "mp4" }], {});
+    // The "compressed" result is bigger than the input — the bug this test
+    // guards against ("a 37 MB video came out of compress-video as 64 MB").
+    calls[0]?.deferred.resolve({
+      kind: "opfs",
+      path: "localvert-tmp/fake.mp4",
+      mime: "video/mp4",
+      size: 64,
+    });
+    await flush();
+
+    const job = store.getState().jobs[0];
+    expect(job).toMatchObject({ status: "done" });
+    expect(job?.output?.size).toBe(37); // the original file's size, not 64
+    expect(job?.output?.mime).toBe("video/mp4");
+    expect(job?.output?.note).toBeTruthy();
+    expect(createObjectURL).toHaveBeenCalledWith(file);
+  });
+
+  it("keeps an OPFS-kind result that's genuinely smaller", async () => {
+    const { engine, calls, store } = setup();
+    const tool = makeTool({ slug: "compress-video", neverLarger: true });
+    const file = new File(["a".repeat(37)], "clip.mp4", {
+      type: "video/mp4",
+    });
+
+    engine.submit(tool, [{ file, format: "mp4" }], {});
+    calls[0]?.deferred.resolve({
+      kind: "opfs",
+      path: "localvert-tmp/fake.mp4",
+      mime: "video/mp4",
+      size: 20,
+    });
+    await flush();
+
+    const job = store.getState().jobs[0];
+    expect(job).toMatchObject({ status: "done" });
+    expect(job?.output?.size).toBe(20);
     expect(job?.output?.note).toBeUndefined();
   });
 });
