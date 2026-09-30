@@ -67,21 +67,11 @@ describe("engine worker + zip worker (real browser)", () => {
         );
       }
 
-      // Cancellation: the canvas transcode op only has one checkpoint that
-      // a real, message-delivered cancel can land on — the
-      // `signal.throwIfAborted()` right after `createImageBitmap` decodes
-      // the source (see canvas/adapter.ts `runTranscode`). Every checkpoint
-      // after that runs back-to-back with no yield to the event loop until
-      // the final `convertToBlob` encode, which isn't itself preceded or
-      // followed by another check — so once decode has finished, this op
-      // cannot observe an abort at all (only the pool's cancel-grace
-      // timeout could still catch it, and that defaults to 2s, far longer
-      // than this op takes end to end). A tiny source image decodes fast
-      // enough that the abort — sent right after dispatch, itself a
-      // message round trip — can lose that race under load: the whole
-      // conversion finishes and resolves before cancellation lands. A
-      // decode with real work in it (a large image) keeps that one
-      // checkpoint open long enough for the cancel to always win.
+      // Cancellation: the canvas transcode checks the abort signal after
+      // decode, after draw and after encode (canvas/adapter.ts). Aborting
+      // straight after dispatch raced a tiny image's whole conversion, so
+      // this uses a large image and aborts only once the worker reports
+      // progress, i.e. while it is mid-op with the encode still ahead.
       const bigCanvas = new OffscreenCanvas(4000, 3000);
       const bigCtx = bigCanvas.getContext("2d");
       if (!bigCtx) throw new Error("no 2d context in test setup");
@@ -105,7 +95,13 @@ describe("engine worker + zip worker (real browser)", () => {
           ],
           options: {},
         },
-        { signal: controller.signal },
+        {
+          signal: controller.signal,
+          // Cancel once the worker has reported progress: it is then
+          // provably inside the op (past decode), so the abort races only
+          // the draw + encode of a large image, not the dispatch itself.
+          onProgress: () => controller.abort(),
+        },
       );
       // Attach a handler immediately (rather than only via the `expect`
       // below, after `controller.abort()`) so a fast rejection can never be
@@ -114,9 +110,12 @@ describe("engine worker + zip worker (real browser)", () => {
         () => ({ ok: true as const }),
         (error: unknown) => ({ ok: false as const, error }),
       );
-      controller.abort();
+      // Backstop: if no progress report ever arrives, cancel anyway after a
+      // beat so the run settles and the assertion below can fail clearly.
+      const backstop = setTimeout(() => controller.abort(), 1_500);
 
       const outcome = await cancelledOutcome;
+      clearTimeout(backstop);
       if (outcome.ok) {
         throw new Error(
           "conversion completed before the abort landed — the test's " +
