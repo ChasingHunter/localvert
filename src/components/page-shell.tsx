@@ -22,8 +22,18 @@ interface PageShellProps {
 export function PageShell({ children }: PageShellProps) {
   return (
     <div className="flex min-h-dvh flex-col">
+      {/* First tab stop on every page: jumps past the header's twelve or so
+          links. Hidden until focused. */}
+      <a
+        href="#main"
+        className="sr-only rounded-full bg-accent px-4 py-2 text-sm font-medium text-canvas outline-none focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+      >
+        Skip to content
+      </a>
       <SiteHeader />
-      <main className="flex-1">{children}</main>
+      <main id="main" tabIndex={-1} className="flex-1 outline-none">
+        {children}
+      </main>
       <SiteFooter />
     </div>
   );
