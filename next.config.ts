@@ -40,6 +40,19 @@ const nextConfig: NextConfig = {
   // Note: Next 16 removed the `eslint` config key along with its built-in
   // ESLint integration. Linting is Biome's job here (`pnpm lint`).
 
+  // `@embedpdf/pdfium` resolves to its node-capable build inside the pdfium
+  // worker, and that glue has a `require("crypto")` for Node's random source.
+  // Turbopack answers it by bundling crypto-browserify (about 459 KB) into the
+  // worker. The branch is unreachable here: Emscripten picks
+  // `crypto.getRandomValues` first, which every browser worker has, and the
+  // Node path also needs `process.versions.node`. So point `crypto` at an empty
+  // module in the browser. No other engine imports it.
+  turbopack: {
+    resolveAlias: {
+      crypto: { browser: "./src/lib/empty-module.ts" },
+    },
+  },
+
   ...(isDev
     ? {
         headers: async () => [
