@@ -54,8 +54,11 @@ export function downloadBytes(
 
 /** Storage key for one engine version's consent — versioned so a later
  * engine upgrade (different license terms, different size) asks again. */
+/** Every consent key starts with this; `<id>@<version>` follows. */
+export const CONSENT_KEY_PREFIX = "localvert:engine-consent:";
+
 function consentKey(id: string, version: string): string {
-  return `localvert:engine-consent:${id}@${version}`;
+  return `${CONSENT_KEY_PREFIX}${id}@${version}`;
 }
 
 /**

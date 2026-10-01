@@ -34,6 +34,12 @@ export function SiteFooter() {
           >
             Compare
           </Link>
+          <Link
+            href="/storage"
+            className="rounded-sm font-medium text-ink outline-none transition-colors hover:text-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+          >
+            Storage
+          </Link>
           <a
             href="https://github.com/ChasingHunter/localvert"
             target="_blank"

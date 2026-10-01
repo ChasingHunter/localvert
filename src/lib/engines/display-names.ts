@@ -10,6 +10,19 @@
 const ENGINE_DISPLAY_NAMES: Record<string, string> = {
   ffmpeg: "FFmpeg",
   libreoffice: "LibreOffice",
+  // The static wasm engines, named for the storage page's list.
+  "jsquash-avif": "AVIF codec",
+  "jsquash-jpeg": "JPEG codec",
+  "jsquash-jxl": "JPEG XL codec",
+  "jsquash-png": "PNG codec",
+  "jsquash-resize": "Image resizer",
+  "jsquash-webp": "WebP codec",
+  libraw: "RAW photo decoder",
+  pdfium: "PDF editor",
+  pdfjs: "PDF viewer",
+  resvg: "SVG renderer",
+  tesseract: "Text recognition (OCR)",
+  typst: "Markdown to PDF",
 };
 
 /** Falls back to the id itself for any engine this map hasn't caught up with. */
