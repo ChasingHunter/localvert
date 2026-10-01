@@ -96,6 +96,11 @@ export function CropEditor({
   const dragRef = useRef<DragState | null>(null);
 
   const baseId = useId();
+  const rootRef = useRef<HTMLFieldSetElement | null>(null);
+  // Move focus into the editor once, when it opens (see the root element).
+  useEffect(() => {
+    rootRef.current?.focus();
+  }, []);
 
   // A fresh file resets every derived measurement — the previous image's
   // natural/display size and crop rect describe a bitmap this editor no
@@ -265,7 +270,7 @@ export function CropEditor({
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
           onKeyDown={handleHandleKeyDown(id)}
-          className={`absolute size-3 touch-none rounded-full border-2 border-accent bg-canvas p-0 outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 ${
+          className={`absolute flex size-6 touch-none items-center justify-center rounded-full bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 ${
             id === "nw"
               ? "top-0 left-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize"
               : id === "se"
@@ -274,13 +279,28 @@ export function CropEditor({
                   ? "top-0 right-0 translate-x-1/2 -translate-y-1/2 cursor-nesw-resize"
                   : "bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize"
           }`}
-        />
+        >
+          {/* The visible dot stays 12px; the button around it is 24px so the
+              handle meets the minimum target size (WCAG 2.5.8). */}
+          <span
+            aria-hidden="true"
+            className="size-3 rounded-full border-2 border-accent bg-canvas"
+          />
+        </button>
       ))}
     </div>
   );
 
   return (
-    <div className="flex flex-col gap-4">
+    // Focus lands here when the editor opens: the drop area that held it has
+    // just been replaced, so without this keyboard users restart from the top
+    // of the page. The group name tells a screen reader what opened.
+    <fieldset
+      ref={rootRef}
+      aria-label={`Crop ${file.name}`}
+      tabIndex={-1}
+      className="flex min-w-0 flex-col gap-4 outline-none"
+    >
       <div className="relative inline-block max-w-full select-none rounded-2xl border border-border bg-surface p-2">
         {objectUrl && (
           // eslint/Next's no-img-element doesn't apply (this project lints
@@ -377,6 +397,6 @@ export function CropEditor({
           Cancel
         </Button>
       </div>
-    </div>
+    </fieldset>
   );
 }

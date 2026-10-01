@@ -46,6 +46,11 @@ export function VideoRangeEditor({
   const [playable, setPlayable] = useState(true);
   const [message, setMessage] = useState("");
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const rootRef = useRef<HTMLFieldSetElement | null>(null);
+  // Move focus into the editor once, when it opens (see the root element).
+  useEffect(() => {
+    rootRef.current?.focus();
+  }, []);
 
   // A fresh file resets everything derived from the previous one, and the
   // URL is revoked when the file changes or the editor goes away.
@@ -95,7 +100,15 @@ export function VideoRangeEditor({
   const end = currentEnd(kind, options, duration ?? 0);
 
   return (
-    <div className="flex flex-col gap-4">
+    // Focus lands here when the editor opens: the drop area that held it has
+    // just been replaced, so without this keyboard users restart from the top
+    // of the page. The group name tells a screen reader what opened.
+    <fieldset
+      ref={rootRef}
+      aria-label={`Choose the part of ${file.name} to keep`}
+      tabIndex={-1}
+      className="flex min-w-0 flex-col gap-4 outline-none"
+    >
       <div className="max-w-full overflow-hidden rounded-2xl border border-border bg-surface p-2">
         {objectUrl && (
           // biome-ignore lint/a11y/useMediaCaption: the user's own clip, played back locally for choosing trim points; there is no caption track to offer.
@@ -180,6 +193,6 @@ export function VideoRangeEditor({
           Cancel
         </Button>
       </div>
-    </div>
+    </fieldset>
   );
 }
