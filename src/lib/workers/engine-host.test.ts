@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type {
   EngineAdapter,
+  EngineInput,
   EngineInstance,
   EngineResult,
   RasterImage,
@@ -483,6 +484,129 @@ describe("createEngineHost", () => {
       expect(outcome.ok).toBe(false);
       if (outcome.ok) throw new Error("expected ok:false");
       expect(outcome.error.code).toBe("aborted");
+    });
+  });
+
+  describe("fan-in before a merge step", () => {
+    const blobOf = (name: string): EngineInput => ({
+      kind: "blob",
+      blob: new Blob([name]),
+    });
+
+    function setup() {
+      const prefixSeen: EngineInput[] = [];
+      const mergeSeen: {
+        input: EngineInput;
+        inputs?: readonly EngineInput[];
+      }[] = [];
+      const prefix = makeAdapter({
+        id: DECODE_ENGINE,
+        load: async () => ({
+          run: async (task) => {
+            prefixSeen.push(task.input);
+            expect(task.inputs).toBeUndefined();
+            return {
+              kind: "bytes",
+              bytes: new ArrayBuffer(prefixSeen.length),
+              mime: "image/jpeg",
+            } satisfies EngineResult;
+          },
+          dispose: () => {},
+        }),
+      });
+      const merge = makeAdapter({
+        id: ENCODE_ENGINE,
+        load: async () => ({
+          run: async (task) => {
+            mergeSeen.push({ input: task.input, inputs: task.inputs });
+            return BYTES_RESULT;
+          },
+          dispose: () => {},
+        }),
+      });
+      const loaders: Loaders = {};
+      loaders[DECODE_ENGINE] = async () => ({ default: prefix });
+      loaders[ENCODE_ENGINE] = async () => ({ default: merge });
+      return { prefixSeen, mergeSeen, loaders };
+    }
+
+    const FAN_IN_STEPS: RunStep[] = [
+      step({
+        engine: DECODE_ENGINE,
+        op: "transcode",
+        inputFormat: "heic",
+        outputFormat: "jpg",
+      }),
+      step({
+        engine: ENCODE_ENGINE,
+        op: "merge",
+        inputFormat: "jpg",
+        outputFormat: "pdf",
+      }),
+    ];
+
+    it("runs the steps before a merge once per input, then merges the results in order", async () => {
+      const { prefixSeen, mergeSeen, loaders } = setup();
+      const host = createEngineHost(loaders, () => makeCaps());
+      const files = [blobOf("a"), blobOf("b"), blobOf("c")];
+
+      const outcome = await host.run(
+        baseReq({ input: files[0], inputs: files, steps: FAN_IN_STEPS }),
+      );
+
+      expect(outcome.ok).toBe(true);
+      expect(prefixSeen).toEqual(files);
+      expect(mergeSeen).toHaveLength(1);
+      const merged = mergeSeen[0]?.inputs;
+      expect(merged?.map((i) => i.kind)).toEqual(["bytes", "bytes", "bytes"]);
+      expect(
+        merged?.map((i) => (i.kind === "bytes" ? i.bytes.byteLength : -1)),
+      ).toEqual([1, 2, 3]);
+      expect(mergeSeen[0]?.input).toBe(merged?.[0]);
+    });
+
+    it("hands a merge at step 0 its inputs untouched", async () => {
+      const { prefixSeen, mergeSeen, loaders } = setup();
+      const host = createEngineHost(loaders, () => makeCaps());
+      const files = [blobOf("a"), blobOf("b")];
+
+      await host.run(
+        baseReq({
+          input: files[0],
+          inputs: files,
+          steps: [FAN_IN_STEPS[1] as RunStep],
+        }),
+      );
+
+      expect(prefixSeen).toEqual([]);
+      expect(mergeSeen[0]?.inputs).toBe(files);
+    });
+
+    it("stops at the first input whose prefix step fails", async () => {
+      const { mergeSeen, loaders } = setup();
+      let calls = 0;
+      loaders[DECODE_ENGINE] = async () => ({
+        default: makeAdapter({
+          id: DECODE_ENGINE,
+          load: async () => ({
+            run: async () => {
+              calls++;
+              throw new Error("bad file");
+            },
+            dispose: () => {},
+          }),
+        }),
+      });
+      const host = createEngineHost(loaders, () => makeCaps());
+      const files = [blobOf("a"), blobOf("b")];
+
+      const outcome = await host.run(
+        baseReq({ input: files[0], inputs: files, steps: FAN_IN_STEPS }),
+      );
+
+      expect(outcome.ok).toBe(false);
+      expect(calls).toBe(1);
+      expect(mergeSeen).toEqual([]);
     });
   });
 

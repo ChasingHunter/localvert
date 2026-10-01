@@ -139,10 +139,9 @@ export function createEngineHost(
    * — the raster intermediate stays a plain in-memory reference, never
    * transferred or cloned (ADR-0007: both steps run in this same worker). A
    * `"stream"` or `"files"` result mid-pipeline has no `EngineInput`
-   * counterpart; only a final step may produce one — every ADR-0008
-   * many-to-one/one-to-many tool today is a single-step pipeline, so this
-   * never actually fires for them, but a future multi-step one must fail
-   * loudly here rather than silently drop the extra output files.
+   * counterpart; only a final step may produce one (a one-to-many tool
+   * like word-to-jpg ends on it), and a step that produces one anywhere else
+   * must fail loudly here rather than silently drop the extra output files.
    */
   function resultToInput(result: EngineResult, engine: EngineId): EngineInput {
     switch (result.kind) {
@@ -198,13 +197,23 @@ export function createEngineHost(
         onProgress?.(clamped);
       };
 
-      let currentInput: EngineInput = input;
-      let result: EngineResult | undefined;
+      // Fan-in: a `merge` step after other steps means "do those steps to
+      // every input first, then merge the results" (heic-to-pdf: decode and
+      // encode each HEIC, then merge the JPGs). Everything before the merge
+      // is the per-file prefix; a merge at index 0 (or no merge) leaves
+      // `inputs` for step 0 to read directly, as before.
+      const mergeAt = steps.findIndex((s) => s.op === "merge");
+      const fanIn = inputs && inputs.length > 0 && mergeAt > 0;
+      const prefixLength = fanIn ? mergeAt : 0;
+      const units = fanIn ? inputs.length * prefixLength + (n - mergeAt) : n;
+      let unitsDone = 0;
 
-      for (let i = 0; i < n; i++) {
-        const step: RunStep | undefined = steps[i];
-        if (!step) break; // unreachable: guarded by `i < n === steps.length`
-
+      const execStep = async (
+        step: RunStep,
+        i: number,
+        stepInput: EngineInput,
+        stepInputs: readonly EngineInput[] | undefined,
+      ): Promise<{ result: EngineResult } | { failure: RunOutcome }> => {
         let entry: CacheEntry;
         try {
           // `loadEngine` reports no progress of its own, so `poke()` is called
@@ -229,8 +238,10 @@ export function createEngineHost(
           );
         } catch (e) {
           return {
-            ok: false,
-            error: serializeEngineError(toEngineError(e, step.engine)),
+            failure: {
+              ok: false,
+              error: serializeEngineError(toEngineError(e, step.engine)),
+            },
           };
         }
 
@@ -238,15 +249,17 @@ export function createEngineHost(
           !entry.adapter.supports(step.op, step.inputFormat, step.outputFormat)
         ) {
           return {
-            ok: false,
-            error: serializeEngineError(
-              new EngineError(
-                "unsupported",
-                `engine "${step.engine}" does not support step ${i} ` +
-                  `(${step.op} ${step.inputFormat} -> ${step.outputFormat})`,
-                { engine: step.engine },
+            failure: {
+              ok: false,
+              error: serializeEngineError(
+                new EngineError(
+                  "unsupported",
+                  `engine "${step.engine}" does not support step ${i} ` +
+                    `(${step.op} ${step.inputFormat} -> ${step.outputFormat})`,
+                  { engine: step.engine },
+                ),
               ),
-            ),
+            },
           };
         }
 
@@ -258,17 +271,12 @@ export function createEngineHost(
           // `onProgress` tick: a step that keeps reporting real progress
           // (a long but healthy transcode) never times out, only one that
           // goes silent for the full window does.
-          result = await withIdleTimeout(
+          const result = await withIdleTimeout(
             (poke) =>
               entry.instance.run({
                 op: step.op,
-                input: currentInput,
-                // Only the first step can be many-to-one (ADR-0008: a
-                // many-to-one tool's pipeline is a single `merge`-shaped
-                // step) — every later step's input is the previous step's
-                // own single `EngineResult`, converted by `resultToInput`
-                // above.
-                inputs: i === 0 ? inputs : undefined,
+                input: stepInput,
+                inputs: stepInputs,
                 inputFormat: step.inputFormat,
                 outputFormat: step.outputFormat,
                 options,
@@ -276,7 +284,7 @@ export function createEngineHost(
                 onProgress: (fraction: number) => {
                   poke();
                   if (onProgress) {
-                    reportOverall((i + clamp01(fraction)) / n);
+                    reportOverall((unitsDone + clamp01(fraction)) / units);
                   }
                 },
               }),
@@ -294,6 +302,8 @@ export function createEngineHost(
                 }),
             },
           );
+          unitsDone++;
+          return { result };
         } catch (e) {
           // Some adapters fetch their wasm lazily on first `run()` (see the
           // `withIdleTimeout` call above) rather than in `load()`, so a
@@ -305,22 +315,65 @@ export function createEngineHost(
           // network error to the job store.
           if (isOffline() || isNetworkFailure(e)) {
             return {
-              ok: false,
-              error: serializeEngineError(
-                classifyLoadFailure({
-                  engine: step.engine,
-                  cause: e,
-                  offline: true,
-                  timedOut: false,
-                }),
-              ),
+              failure: {
+                ok: false,
+                error: serializeEngineError(
+                  classifyLoadFailure({
+                    engine: step.engine,
+                    cause: e,
+                    offline: true,
+                    timedOut: false,
+                  }),
+                ),
+              },
             };
           }
           return {
-            ok: false,
-            error: serializeEngineError(toEngineError(e, step.engine)),
+            failure: {
+              ok: false,
+              error: serializeEngineError(toEngineError(e, step.engine)),
+            },
           };
         }
+      };
+
+      let currentInput: EngineInput = input;
+      let currentInputs = inputs;
+      let result: EngineResult | undefined;
+
+      if (fanIn) {
+        const merged: EngineInput[] = [];
+        for (const original of inputs) {
+          let fileInput = original;
+          for (let i = 0; i < prefixLength; i++) {
+            const step = steps[i];
+            if (!step) break; // unreachable: i < mergeAt <= steps.length
+            const out = await execStep(step, i, fileInput, undefined);
+            if ("failure" in out) return out.failure;
+            fileInput = resultToInput(out.result, step.engine);
+          }
+          merged.push(fileInput);
+        }
+        currentInput = merged[0] ?? input;
+        currentInputs = merged;
+      }
+
+      for (let i = prefixLength; i < n; i++) {
+        const step: RunStep | undefined = steps[i];
+        if (!step) break; // unreachable: guarded by `i < n === steps.length`
+
+        // Only the first step that runs here can be many-to-one: either
+        // step 0, or the merge after a fan-in prefix. Every later step's
+        // input is the previous step's own single `EngineResult`, converted
+        // by `resultToInput` above.
+        const out = await execStep(
+          step,
+          i,
+          currentInput,
+          i === prefixLength ? currentInputs : undefined,
+        );
+        if ("failure" in out) return out.failure;
+        result = out.result;
 
         if (i < n - 1) {
           currentInput = resultToInput(result, step.engine);
