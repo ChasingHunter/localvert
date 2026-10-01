@@ -22,7 +22,7 @@ import {
   type StreamTargetChunk,
 } from "mediabunny";
 import type { EngineId } from "@/lib/registry";
-import { EngineError } from "../errors";
+import { EngineError, NO_AUDIO_MESSAGE } from "../errors";
 import type { EngineInput, EngineResult, EngineTask } from "../types";
 
 /** ADR-0010's temp directory — see the same literal + doc comment in
@@ -265,6 +265,13 @@ export async function runConversion(
     });
 
     if (!conversion.isValid) {
+      // Audio-only output from a video (video discarded) with no audio track
+      // leaves nothing to write; say so plainly.
+      if (audio && video?.discard && !(await input.getPrimaryAudioTrack())) {
+        throw new EngineError("unsupported", NO_AUDIO_MESSAGE, {
+          engine: engineId,
+        });
+      }
       const reasons = conversion.discardedTracks
         .map((d) => d.reason)
         .join(", ");

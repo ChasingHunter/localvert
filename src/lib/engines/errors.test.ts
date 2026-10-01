@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { EngineError, isEngineError, toEngineError } from "./errors";
+import {
+  EngineError,
+  isEngineError,
+  isNoStreamsLog,
+  NO_AUDIO_MESSAGE,
+  toEngineError,
+} from "./errors";
 
 describe("EngineError", () => {
   it("carries code, message, engine and name", () => {
@@ -99,5 +105,28 @@ describe("toEngineError", () => {
     const err = toEngineError("just a string");
     expect(err.code).toBe("internal");
     expect(err.message).toBe("just a string");
+  });
+});
+
+describe("isNoStreamsLog", () => {
+  it("spots ffmpeg's empty-output messages", () => {
+    expect(isNoStreamsLog(["Output file #0 does not contain any stream"])).toBe(
+      true,
+    );
+    expect(isNoStreamsLog(["Output file does not contain any stream"])).toBe(
+      true,
+    );
+    expect(isNoStreamsLog(["Stream map '0:a' matches no streams."])).toBe(true);
+  });
+
+  it("ignores unrelated ffmpeg failures", () => {
+    expect(isNoStreamsLog(["Invalid data found when processing input"])).toBe(
+      false,
+    );
+    expect(isNoStreamsLog([])).toBe(false);
+  });
+
+  it("uses a plain sentence for the user", () => {
+    expect(NO_AUDIO_MESSAGE).toBe("This video has no sound to extract.");
   });
 });

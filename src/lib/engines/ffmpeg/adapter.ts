@@ -24,7 +24,12 @@
  */
 import type { Operation, StepFormat } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
-import { EngineError, toEngineError } from "../errors";
+import {
+  EngineError,
+  isNoStreamsLog,
+  NO_AUDIO_MESSAGE,
+  toEngineError,
+} from "../errors";
 import { ENGINE_MANIFEST } from "../manifest";
 import type {
   EngineAdapter,
@@ -279,6 +284,11 @@ async function runTranscode(
           outPath,
         );
     if (code !== 0) {
+      if (audioOnly && isNoStreamsLog(logLines)) {
+        throw new EngineError("unsupported", NO_AUDIO_MESSAGE, {
+          engine: metadata.id,
+        });
+      }
       throw new EngineError(
         "encode-failed",
         `ffmpeg exited with code ${code}: ${logLines.slice(-20).join("\n")}`,

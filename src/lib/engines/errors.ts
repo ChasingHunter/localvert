@@ -69,3 +69,18 @@ export function toEngineError(e: unknown, engine?: EngineId): EngineError {
   const message = e instanceof Error ? e.message : String(e);
   return new EngineError("internal", message, { engine, cause: e });
 }
+
+/** What the user sees when they ask for audio from a video that has none. */
+export const NO_AUDIO_MESSAGE = "This video has no sound to extract.";
+
+/**
+ * True when ffmpeg's log says an audio-only run had nothing to write: with
+ * `-vn` and no audio stream, nothing is mapped to the output, which ffmpeg
+ * reports as "Output file #0 does not contain any stream" (older builds drop
+ * the "#0") or "Stream map ... matches no streams".
+ */
+export function isNoStreamsLog(lines: readonly string[]): boolean {
+  return lines.some((l) =>
+    /does not contain any stream|matches no streams/i.test(l),
+  );
+}
