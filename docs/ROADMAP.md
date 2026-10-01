@@ -219,7 +219,8 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
 - [x] PDF → Word, layout approximate and text-only for now — pdf.js structure extraction + our own
       docx writer, since LibreOffice here imports PDFs into Draw only (ADR-0014); TXT/HTML/EPUB → PDF
       via LibreOffice (EPUB unpacked to HTML first) (2026-09-28)
-- [ ] PDF → Word images (follow-up to ADR-0014)
+- [x] (2026-10-02) PDF → Word images via PDFium: inline between paragraphs, JPEG passthrough,
+      a note when pictures are left out (ADR-0014 addendum)
 
 ## Phase 5 — Polish
 
