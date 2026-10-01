@@ -56,19 +56,15 @@ export const ALLOWLIST: Record<string, { offsets: number[]; reason: string }> =
  * every build, so they're matched by the code around the hit instead of by
  * path and offset. Same rule as `ALLOWLIST`: read the code first, say why.
  */
-export const SNIPPET_ALLOWLIST: { snippet: string; reason: string }[] = [
-  {
-    // vm-browserify's `Script.runInThisContext`, pulled in with the
-    // crypto-browserify polyfill. Only runs if something calls `vm`; the
-    // e2e suite exercises every tool under the production CSP.
-    snippet: "runInThisContext=function(){return eval(this.code)}",
-    reason: "vm-browserify shim, not called",
-  },
-];
+export const SNIPPET_ALLOWLIST: { snippet: string; reason: string }[] = [];
 
 /** Whether `hit` sits inside one of `SNIPPET_ALLOWLIST`'s snippets. */
-export function isAllowedBySnippet(source: string, hit: EvalHit): boolean {
-  return SNIPPET_ALLOWLIST.some(({ snippet }) => {
+export function isAllowedBySnippet(
+  source: string,
+  hit: EvalHit,
+  allowlist: { snippet: string }[] = SNIPPET_ALLOWLIST,
+): boolean {
+  return allowlist.some(({ snippet }) => {
     const start = source.lastIndexOf(snippet, hit.offset);
     return start !== -1 && hit.offset < start + snippet.length;
   });

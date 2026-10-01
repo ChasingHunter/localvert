@@ -32,17 +32,23 @@ describe("findEvalCalls", () => {
 });
 
 describe("isAllowedBySnippet", () => {
+  const list = [
+    { snippet: "runInThisContext=function(){return eval(this.code)}" },
+  ];
   const shim =
     "a();Script.prototype.runInThisContext=function(){return eval(this.code)};";
 
   it("allows an eval inside a listed snippet", () => {
     const [hit] = findEvalCalls(shim);
-    expect(hit && isAllowedBySnippet(shim, hit)).toBe(true);
+    expect(hit && isAllowedBySnippet(shim, hit, list)).toBe(true);
   });
 
   it("still flags an eval elsewhere in the same file", () => {
     const src = `${shim}eval(userCode)`;
     const hits = findEvalCalls(src);
-    expect(hits.map((h) => isAllowedBySnippet(src, h))).toEqual([true, false]);
+    expect(hits.map((h) => isAllowedBySnippet(src, h, list))).toEqual([
+      true,
+      false,
+    ]);
   });
 });
