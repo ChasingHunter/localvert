@@ -23,7 +23,12 @@ const PdfEditorApp = dynamicImport(
     import("@/components/editor/pdf-editor-app").then((mod) => ({
       default: mod.PdfEditorApp,
     })),
-  { ssr: false },
+  {
+    ssr: false,
+    // The editor's empty state is one 160px drop area; holding that space
+    // while its code loads keeps the FAQ below from jumping.
+    loading: () => <div className="h-40" aria-hidden="true" />,
+  },
 );
 
 export const APP_COMPONENTS: Record<AppId, ComponentType> = {

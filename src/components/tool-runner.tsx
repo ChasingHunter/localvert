@@ -701,7 +701,19 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
     );
   }
   if (!tool) {
-    return <p className="text-sm text-ink-muted">Loading converter…</p>;
+    // Same footprint as the loaded state's privacy line + drop area (160px),
+    // so the FAQ below doesn't jump when the tool's code arrives.
+    return (
+      <div className="flex flex-col gap-6">
+        <PrivacyNote size="sm" />
+        <div
+          role="status"
+          className="flex h-40 items-center justify-center rounded-lg border-2 border-dashed border-border text-sm text-ink-muted"
+        >
+          Loading converter…
+        </div>
+      </div>
+    );
   }
 
   // `hasFormFields` is computed by `defineTool` from the fields that actually
