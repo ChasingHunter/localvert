@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.5.0](https://github.com/ChasingHunter/localvert/compare/v0.4.0...v0.5.0) (2026-10-01)
+
+
+### Features
+
+* **pwa:** accept files from the share sheet ([157200f](https://github.com/ChasingHunter/localvert/commit/157200f8dc3ce0ecbc52020389f87b001127b0a8))
+* **pwa:** app icons and web manifest ([ae0417e](https://github.com/ChasingHunter/localvert/commit/ae0417eca183ef44298694c7dd6a6b1ec2cee370))
+* **pwa:** open files from the OS with an installed app ([c95dc42](https://github.com/ChasingHunter/localvert/commit/c95dc426fadbf89f281891df786f6b68a5069d5e))
+* **ui:** storage page to see and clear downloaded converters ([257c51a](https://github.com/ChasingHunter/localvert/commit/257c51a075708003c3112ba703e3688605933980))
+
+
+### Bug Fixes
+
+* **a11y:** add a skip-to-content link ([4810441](https://github.com/ChasingHunter/localvert/commit/48104415184b008c51889c81640f56f2ac2469d7))
+* **a11y:** alt text on editor images, keyboard-scrollable page viewport ([b09a0db](https://github.com/ChasingHunter/localvert/commit/b09a0db27e64d4cc5ad32fc7092ef4a9d80fbb04))
+* **a11y:** move focus into the crop and trim editors, 24px crop handles ([9f766d4](https://github.com/ChasingHunter/localvert/commit/9f766d4476bb3acb0fcde71769e1d7e5c1c3f85a))
+* **a11y:** name slider thumbs and underline the consent dialog's links ([0dbcd22](https://github.com/ChasingHunter/localvert/commit/0dbcd22bc1f3700bf46f2ea7af9b61f98d56920a))
+* **build:** serve the flat RSC segment names the client prefetches ([311c852](https://github.com/ChasingHunter/localvert/commit/311c852d12914f0e18d871d92dcf47247800839b))
+
+
+### Performance
+
+* **engine:** drop the node crypto polyfill from the pdfium worker ([a4613f0](https://github.com/ChasingHunter/localvert/commit/a4613f007b1f65952d806f40c533cd6ec2d488a7))
+* **ui:** hold the converter's footprint while a tool loads ([bb98d87](https://github.com/ChasingHunter/localvert/commit/bb98d8794cb43110046555a305f8e6e1954e955d))
+* **ui:** lighter Fraunces file and preloaded fonts ([3cd3390](https://github.com/ChasingHunter/localvert/commit/3cd3390d6559f19b754d3b458b445bdb12973665))
+
 ## [0.4.0](https://github.com/ChasingHunter/localvert/compare/v0.3.0...v0.4.0) (2026-10-01)
 
 
