@@ -85,11 +85,16 @@ async function fakeLaunch(
       },
     }));
     // The File Handling API isn't in lib.dom; open-files.tsx declares it.
-    (window as unknown as { launchQueue: unknown }).launchQueue = {
-      setConsumer(consumer: (p: { files: unknown[] }) => void) {
-        queueMicrotask(() => consumer({ files: handles }));
+    // Chromium already defines launchQueue as an accessor on window, so a
+    // plain assignment is silently ignored; redefine it instead.
+    Object.defineProperty(window, "launchQueue", {
+      configurable: true,
+      value: {
+        setConsumer(consumer: (p: { files: unknown[] }) => void) {
+          queueMicrotask(() => consumer({ files: handles }));
+        },
       },
-    };
+    });
   }, payload);
 }
 
