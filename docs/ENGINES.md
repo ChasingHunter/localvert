@@ -182,7 +182,9 @@ rasterising anything; the `docx` engine (pure JS, `bundled`, `fflate`'s
 `zipSync`) writes the actual `.docx` from that JSON in a second pipeline
 step — see ADR-0014 for the full mechanism, including why bold/italic
 detection reads `page.commonObjs` and what's deliberately not
-implemented yet (images, column detection).
+implemented yet (column detection). Its pictures come from the `pdfium`
+wasm below, fetched by this op from the same URL the editor uses (ADR-0014's
+images addendum).
 
 `tesseract` (`tesseract.js`, wrapping the Tesseract OCR engine) doesn't fit
 the decode/encode/transform shape either — its one op, `ocr`, hands an image
@@ -275,6 +277,10 @@ own worker, not a one-shot job the pipeline dispatches to. It has no
 decode/transform/encode shape), but its asset is still synced and its version
 still derived the same zero-maintenance way every job engine's is — see
 `scripts/gen-registry.ts`'s `EngineSourceMeta.kind`.
+
+`pdf-to-word` also reads it, outside the editor: `pdfjs`'s `extractLayout`
+op loads the same `pdfium.wasm` (dynamic import, same asset URL, so one
+download and one cache entry) to list a page's image objects. See ADR-0014.
 
 The editor's UI (E1b Unit 2) is built on `@embedpdf/core` + a set of MIT
 plugin packages (`plugin-document-manager`, `plugin-viewport`,

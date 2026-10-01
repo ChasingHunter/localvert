@@ -197,3 +197,55 @@ then `escapeXml` before landing in a `w:t` or `dc:title`.
   users can hit; text-only that's actually been run (`pnpm test`, real
   assertions on real generated PDFs) is more honest than a wider feature
   surface nobody has watched fail yet.
+
+## Addendum (2026-10-02): images, via PDFium
+
+"Images: not in this slice" above ruled images out because pdf.js gives no
+image position without replaying the content stream's transform stack by hand.
+The PDF editor now ships PDFium (`@embedpdf/pdfium`, ADR-0009), which lists a
+page's image objects with page-space bounds directly, so images are in.
+
+**Where it runs.** Not a new pipeline step: the second step only receives the
+first step's JSON, so the PDF's bytes are gone by then. `pdfjs`'s
+`extractLayout` op opens the same bytes in PDFium
+(`src/lib/engines/shared/pdfium-images.ts`), still inside the conversion
+worker, and puts each page's pictures in `LayoutPage.images`. The wasm is the
+`pdfium` engine's own asset (`ENGINE_MANIFEST.pdfium.baseUrl`), the exact URL
+the editor fetches, so it is one download shared through the browser and
+service-worker caches. It is `static`, no consent gate (same as `pdfjs`), and
+loaded by dynamic `import()`, so nothing lands in the core bundle. If PDFium
+fails to load the tool still converts, text only, and logs a warning.
+
+**Per image object** (`FPDF_PAGEOBJ_IMAGE`, directly on the page):
+
+- Under 24 px on either side: skipped (rules, bullets, dots).
+- A lone `DCTDecode` filter: the raw stream is a JPEG file and goes into
+  `word/media` untouched. Only if its header says 1 or 3 components
+  (`readJpegInfo`); a 4-component CMYK JPEG shows wrong in Word.
+- Anything else: `FPDFImageObj_GetRenderedBitmap`, which applies the soft
+  mask, colour space and decode array, encoded as PNG on an `OffscreenCanvas`
+  in the worker. PDFium renders at the picture's size on the page (72 dpi), so
+  the object is scaled up in memory first to match its own pixel size
+  (`imageRenderScale`, longest side capped at 3000 px). The page is never saved.
+- The same picture twice on one page is kept once; the same picture on
+  several pages is stored once in the docx.
+- At most 300 pictures per document.
+
+**Placement.** Inline, one picture per paragraph, no floating layout. An
+image goes before the first paragraph whose first-line baseline is below the
+image's top edge (`orderPageBlocks`, so `LayoutParagraph` now carries `y`).
+Width is the same fraction of the 6.5 in content width as the image is of the
+PDF page's width, capped at the content area (height too), aspect ratio
+taken from the drawn bounds (`imageExtentEmu`).
+
+**Scanned PDFs.** A page that is one big image used to come out as an empty
+page. It now comes out as that picture, which is the honest result: there is
+still no editable text, so the tool description says a scanned PDF becomes a
+picture per page and points at OCR (`pdf-to-searchable-pdf`) for text.
+
+**Limits.** Vector graphics (charts, logos drawn as paths) are not images and
+are not included. Images inside form XObjects are not found. Text next to a
+picture comes after it, not beside it. A JPEG with a soft mask loses its
+transparency (the raw file passes through). Page rotation only swaps the width
+used for sizing; pictures are not rotated to match. A CMYK JPEG is re-rendered
+as PNG, so it can end up larger than it was in the PDF.
