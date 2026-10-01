@@ -175,7 +175,7 @@ function OptionField({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between gap-2">
-        <Label htmlFor={id}>
+        <Label htmlFor={id} id={`${id}-label`}>
           {field.label}
           {/* A select's option labels carry their own unit ("192 kbps"), so
               a unit here would render as a stray "(kbps)" beside the name. */}
@@ -267,6 +267,7 @@ function FieldControl({
           value={[current]}
           onValueChange={([next]) => onChange(next)}
           disabled={disabled}
+          aria-labelledby={`${id}-label`}
           aria-describedby={describedBy}
         />
       );

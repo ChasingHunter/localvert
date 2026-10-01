@@ -8,6 +8,9 @@ function Slider({
   value,
   min = 0,
   max = 100,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
   ...props
 }: ComponentProps<typeof SliderPrimitive.Root>) {
   const values = value ?? defaultValue ?? [min];
@@ -39,6 +42,11 @@ function Slider({
           // biome-ignore lint/suspicious/noArrayIndexKey: thumb count is fixed per render, values themselves aren't stable keys
           key={i}
           data-slot="slider-thumb"
+          // The thumb is the element with role="slider"; Root is only a
+          // wrapper, so the name and description have to land here.
+          aria-label={ariaLabel}
+          aria-labelledby={ariaLabelledBy}
+          aria-describedby={ariaDescribedBy}
           className="block size-4 shrink-0 rounded-full border border-accent bg-surface shadow-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-50"
         />
       ))}

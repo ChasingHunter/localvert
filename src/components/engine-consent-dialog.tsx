@@ -95,7 +95,7 @@ export function EngineConsentDialog({
           href={sourceUrl}
           target="_blank"
           rel="noreferrer"
-          className="text-accent underline-offset-4 hover:underline"
+          className="rounded-sm text-accent underline underline-offset-4 outline-none hover:no-underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
         >
           Upstream source
         </a>
@@ -104,7 +104,7 @@ export function EngineConsentDialog({
           href={LICENSES_URL}
           target="_blank"
           rel="noreferrer"
-          className="text-accent underline-offset-4 hover:underline"
+          className="rounded-sm text-accent underline underline-offset-4 outline-none hover:no-underline focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
         >
           License details
         </a>
