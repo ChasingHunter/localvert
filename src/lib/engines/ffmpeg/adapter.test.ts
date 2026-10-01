@@ -9,7 +9,7 @@ import ffmpeg, { MAX_INPUT_BYTES } from "./adapter";
  * matching and the input-size cap.
  */
 describe("ffmpeg adapter", () => {
-  it("supports transcode from each legacy video container to mp4 only", () => {
+  it("supports transcode from each legacy video container to mp4", () => {
     expect(ffmpeg.supports("transcode", "avi", "mp4")).toBe(true);
     expect(ffmpeg.supports("transcode", "wmv", "mp4")).toBe(true);
     expect(ffmpeg.supports("transcode", "flv", "mp4")).toBe(true);
@@ -20,11 +20,16 @@ describe("ffmpeg adapter", () => {
     expect(ffmpeg.supports("transcode", "wma", "mp4")).toBe(false);
   });
 
+  it("also extracts mp3 audio from the legacy video containers", () => {
+    expect(ffmpeg.supports("transcode", "avi", "mp3")).toBe(true);
+    expect(ffmpeg.supports("transcode", "wmv", "mp3")).toBe(true);
+    expect(ffmpeg.supports("transcode", "flv", "mp3")).toBe(true);
+  });
+
   it("does not support other ops, inputs, or outputs", () => {
     expect(ffmpeg.supports("transcode", "avi", "webm")).toBe(false);
     expect(ffmpeg.supports("transcode", "mp4", "mp4")).toBe(false);
     expect(ffmpeg.supports("decode", "avi", "mp4")).toBe(false);
-    expect(ffmpeg.supports("transcode", "wmv", "mp3")).toBe(false);
   });
 
   it("caps input at 1 GiB", () => {

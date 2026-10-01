@@ -165,6 +165,9 @@ them, so that column reads their own **Arity** instead.
 | `m4a-to-wav` | M4A | WAV | mediabunny | Yes | Sample rate/channels only — PCM has no bitrate knob |
 | `flac-to-wav` | FLAC | WAV | mediabunny | Yes | Sample rate/channels only — PCM has no bitrate knob |
 | `wma-to-mp3` | WMA | MP3 | ffmpeg | Yes | Consent-gated GPL engine (ADR-0002), same route as `wmv-to-mp4`; decodes wmav1/wmav2, encodes with libmp3lame |
+| `wmv-to-mp3` | WMV | MP3 | ffmpeg | Yes | Audio extract and libmp3lame encode in one ffmpeg run (no mp4 in between). Consent-gated GPL engine (ADR-0002). |
+| `avi-to-mp3` | AVI | MP3 | ffmpeg | Yes | Same as `wmv-to-mp3`. |
+| `flv-to-mp3` | FLV | MP3 | ffmpeg | Yes | Same as `wmv-to-mp3`. |
 
 ## Document
 

@@ -3,10 +3,12 @@ import type { ToolDefinition } from "@/lib/registry";
 
 export const TOOL_LOADERS = {
   "aac-to-mp3": () => import("./audio/aac-to-mp3"),
+  "avi-to-mp3": () => import("./audio/avi-to-mp3"),
   "compress-audio": () => import("./audio/compress-audio"),
   "extract-audio": () => import("./audio/extract-audio"),
   "flac-to-mp3": () => import("./audio/flac-to-mp3"),
   "flac-to-wav": () => import("./audio/flac-to-wav"),
+  "flv-to-mp3": () => import("./audio/flv-to-mp3"),
   "m4a-to-mp3": () => import("./audio/m4a-to-mp3"),
   "m4a-to-wav": () => import("./audio/m4a-to-wav"),
   "mov-to-mp3": () => import("./audio/mov-to-mp3"),
@@ -20,6 +22,7 @@ export const TOOL_LOADERS = {
   "wav-to-mp3": () => import("./audio/wav-to-mp3"),
   "webm-to-mp3": () => import("./audio/webm-to-mp3"),
   "wma-to-mp3": () => import("./audio/wma-to-mp3"),
+  "wmv-to-mp3": () => import("./audio/wmv-to-mp3"),
   "csv-to-json": () => import("./data/csv-to-json"),
   "csv-to-xlsx": () => import("./data/csv-to-xlsx"),
   "json-to-csv": () => import("./data/json-to-csv"),

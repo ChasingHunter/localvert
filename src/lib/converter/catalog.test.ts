@@ -73,10 +73,10 @@ describe("inputFormatsForCategory", () => {
     expect(videoGroup?.formats).toContain("webm");
     expect(videoGroup?.formats).toContain("mkv");
     expect(videoGroup?.label).toBe("Video (extract the audio)");
-    // avi and flv are video-to-video-only tools (no audio tool accepts
-    // them), so they never show up on the audio page.
-    expect(videoGroup?.formats).not.toContain("avi");
-    expect(videoGroup?.formats).not.toContain("flv");
+    // avi, flv and wmv have audio tools too (x-to-mp3).
+    expect(videoGroup?.formats).toContain("avi");
+    expect(videoGroup?.formats).toContain("flv");
+    expect(videoGroup?.formats).toContain("wmv");
   });
 
   it("audio: the audio group is first, before the cross-category video group", () => {

@@ -7,9 +7,9 @@ describe("routeForFormats", () => {
       kind: "tool",
       slug: "aac-to-mp3",
     });
-    expect(routeForFormats(["avi", "avi"])).toEqual({
+    expect(routeForFormats(["wma", "wma"])).toEqual({
       kind: "tool",
-      slug: "avi-to-mp4",
+      slug: "wma-to-mp3",
     });
   });
 

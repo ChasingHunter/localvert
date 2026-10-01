@@ -114,13 +114,14 @@ const LEGACY_EXT: Record<string, string> = {
 };
 
 /**
- * Every legacy container here transcodes to mp4 (video), except `wma` —
- * WMA is audio-only (no video track to remux into mp4), so it's the one
- * pair in this adapter that goes to mp3 instead. Same reasoning as
- * `wmv-to-mp4`'s own doc comment for why this needs ffmpeg at all: WMA's
- * codec (wmav1/wmav2) isn't one WebCodecs decodes. Confirmed ffmpeg-core's
- * build includes both a wmav1/wmav2 decoder and a libmp3lame encoder by
- * grepping the installed `@ffmpeg/core` wasm for those strings.
+ * Every legacy container here transcodes to mp4 (video) or, for the
+ * "x-to-mp3" tools, to mp3 (audio extracted, video dropped). `wma` is
+ * audio-only (no video track to remux into mp4), so it only goes to mp3.
+ * Same reasoning as `wmv-to-mp4`'s own doc comment for why this needs
+ * ffmpeg at all: WMA's codec (wmav1/wmav2) isn't one WebCodecs decodes.
+ * Confirmed ffmpeg-core's build includes both a wmav1/wmav2 decoder and a
+ * libmp3lame encoder by grepping the installed `@ffmpeg/core` wasm for
+ * those strings. One run does the extract and the mp3 encode together.
  */
 function supports(
   op: Operation,
@@ -129,7 +130,7 @@ function supports(
 ): boolean {
   if (op !== "transcode" || !(input in LEGACY_EXT)) return false;
   if (input === "wma") return output === "mp3";
-  return output === "mp4";
+  return output === "mp4" || output === "mp3";
 }
 
 /** Reads `task.input` down to the bytes ffmpeg's MEMFS wants. */
@@ -197,7 +198,7 @@ async function run(
 
 /**
  * transcode: a legacy container (avi/wmv/flv) -> mp4, re-encoded to
- * AVC/AAC, or `wma` -> mp3, audio-only — these containers carry codecs
+ * AVC/AAC, or (and always for `wma`) -> mp3, audio-only — these containers carry codecs
  * (mpeg4/wmv/flv1/wma, mp3/wma/pcm) WebCodecs (mediabunny's path) doesn't
  * decode, which is why this tool reaches ffmpeg at all rather than the
  * permissive path (ADR-0002).
@@ -206,7 +207,7 @@ async function runTranscode(
   task: EngineTask,
   module: FFmpegModule,
 ): Promise<EngineResult> {
-  const { input, inputFormat, signal, onProgress } = task;
+  const { input, inputFormat, outputFormat, signal, onProgress } = task;
   signal.throwIfAborted();
 
   const bytes = await inputToBytes(input);
@@ -227,9 +228,9 @@ async function runTranscode(
       { engine: metadata.id },
     );
   }
-  // wma is the one legacy container this adapter transcodes to something
-  // other than mp4 — see `supports`'s own doc comment.
-  const audioOnly = inputFormat === "wma";
+  // mp3 output means audio-only (wma always, the others for "x-to-mp3") —
+  // see `supports`'s own doc comment.
+  const audioOnly = outputFormat === "mp3";
   const inPath = `/in.${ext}`;
   const outPath = audioOnly ? "/out.mp3" : "/out.mp4";
 
