@@ -165,3 +165,24 @@ from both pickers' perspective.
   search anyway.
 - **Full-page step navigation (Online-Convert style).** Two page loads before
   anything happens. Rejected.
+
+## Addendum (2026-10-02): multi-hop is curated tool files, not chaining
+
+The "chaining is a possible later ADR" note above is now decided: **no generic
+chaining**. The picker still only offers what one tool can do. When people
+search for a two-step conversion no single tool covers, we write a real tool
+file for it, with its own page, copy and tests.
+
+- `word-to-jpg`, `powerpoint-to-jpg`, `excel-to-jpg`: LibreOffice makes a PDF,
+  `pdfjs` renders a JPG per page.
+- `csv-to-pdf`: the `data` engine writes an xlsx, LibreOffice prints it.
+- `heic-to-pdf`, `tiff-to-pdf`: decode and re-encode each file to JPG, then
+  merge. `engine-host` runs the steps before a `merge` once per input.
+
+The consent gate already walks every step of a pipeline, so a tool that ends
+in LibreOffice or ffmpeg asks for the download like any other.
+
+Output formats that depend on an option (`extract-audio` writes WAV, M4A or
+Ogg when its `format` option says so) are declared with `producesAlso` on the
+tool. The picker lists one row per format no other tool produces, and opens
+the tool with that option already set.
