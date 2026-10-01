@@ -16,6 +16,13 @@
 
 const pending = new Map<string, File[]>();
 
+/**
+ * Handoff key for the home Converter island (ADR-0018). `/open` stages files
+ * under it when no single tool fits, and the Converter classifies and offers
+ * targets for them on mount. Not a valid tool slug, so it can't collide.
+ */
+export const HOME_HANDOFF_KEY = "@home";
+
 /** Stages `files` for the tool page at `/tools/<slug>` to pick up on mount. */
 export function setPendingFiles(slug: string, files: readonly File[]): void {
   pending.set(slug, [...files]);

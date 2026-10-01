@@ -19,7 +19,11 @@ import {
   popularInCategory,
   targetsFor,
 } from "@/lib/converter/catalog";
-import { setPendingFiles } from "@/lib/converter/handoff";
+import {
+  HOME_HANDOFF_KEY,
+  setPendingFiles,
+  takePendingFiles,
+} from "@/lib/converter/handoff";
 import { CATEGORY_META, type Category } from "@/lib/registry/categories";
 import { FORMATS, type FormatId } from "@/lib/registry/formats";
 import {
@@ -267,6 +271,21 @@ export function Converter({
     },
     [selectGroup, category],
   );
+
+  // ADR-0018: files opened from the OS or the share sheet that no single
+  // tool fits are staged by `/open` under `HOME_HANDOFF_KEY`. Take them once
+  // on mount and run them through the same detection a drop goes through.
+  // The classifier is imported lazily so the home page's first load doesn't
+  // pay for it. Deliberately no cancel flag: the store is one-shot, so a
+  // dev-mode double effect must not drop files the first run already took.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only on purpose, the store is one-shot.
+  useEffect(() => {
+    const files = takePendingFiles(HOME_HANDOFF_KEY);
+    if (!files || files.length === 0) return;
+    void import("@/components/dropzone-logic")
+      .then(({ classifyFiles }) => classifyFiles(files, scopedAcceptedFormats))
+      .then(({ accepted, rejected }) => handleDroppedFiles(accepted, rejected));
+  }, []);
 
   const handleToChange = useCallback(
     (slug: string) => {
