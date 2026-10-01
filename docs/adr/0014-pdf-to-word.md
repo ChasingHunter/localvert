@@ -214,7 +214,10 @@ worker, and puts each page's pictures in `LayoutPage.images`. The wasm is the
 the editor fetches, so it is one download shared through the browser and
 service-worker caches. It is `static`, no consent gate (same as `pdfjs`), and
 loaded by dynamic `import()`, so nothing lands in the core bundle. If PDFium
-fails to load the tool still converts, text only, and logs a warning.
+fails to load, or a page's pictures can't be read, the tool still converts the
+text, logs a warning, and sets the job note ("Converted the text, but couldn't
+include the pictures this time."). The note rides in `LayoutDocument.notes` to
+the `docx` step, which returns it as the result note.
 
 **Per image object** (`FPDF_PAGEOBJ_IMAGE`, directly on the page):
 
@@ -229,7 +232,9 @@ fails to load the tool still converts, text only, and logs a warning.
   (`imageRenderScale`, longest side capped at 3000 px). The page is never saved.
 - The same picture twice on one page is kept once; the same picture on
   several pages is stored once in the docx.
-- At most 300 pictures per document.
+- At most 300 pictures and about 150 MB of encoded picture bytes per document
+  (the first picture always fits). Past either, the rest are skipped and the
+  note says "Some pictures were left out to keep the file a sane size."
 
 **Placement.** Inline, one picture per paragraph, no floating layout. An
 image goes before the first paragraph whose first-line baseline is below the

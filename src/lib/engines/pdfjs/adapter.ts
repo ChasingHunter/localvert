@@ -701,22 +701,32 @@ function resolveFontStyle(
   };
 }
 
+const PICTURES_FAILED_NOTE =
+  "Converted the text, but couldn't include the pictures this time.";
+const PICTURES_LEFT_OUT_NOTE =
+  "Some pictures were left out to keep the file a sane size.";
+
 /** Opens the PDF in PDFium for picture extraction. Failure to load PDFium
- * (offline with the asset uncached, say) is logged, not fatal: the Word file
- * just comes out without pictures. A cancel still propagates. */
+ * (offline with the asset uncached, say) is logged and reported through
+ * `failed`, not fatal: the Word file just comes out without pictures. A
+ * cancel still propagates. */
 async function openImages(
   bytes: Uint8Array,
   signal: AbortSignal,
+  failed: () => void,
 ): Promise<PdfiumImageSession | null> {
   try {
-    return await openPdfiumImages(
+    const session = await openPdfiumImages(
       bytes,
       `${ENGINE_MANIFEST.pdfium.baseUrl}pdfium.wasm`,
       signal,
     );
+    if (!session) failed();
+    return session;
   } catch (e) {
     signal.throwIfAborted();
     console.warn("pdf-to-word: pictures skipped, PDFium failed to load", e);
+    failed();
     return null;
   }
 }
@@ -724,11 +734,13 @@ async function openImages(
 async function pageImagesOrEmpty(
   session: PdfiumImageSession,
   pageIndex: number,
+  failed: () => void,
 ): Promise<LayoutImage[]> {
   try {
     return await session.pageImages(pageIndex);
   } catch (e) {
     console.warn(`pdf-to-word: pictures on page ${pageIndex + 1} skipped`, e);
+    failed();
     return [];
   }
 }
@@ -771,7 +783,11 @@ async function runExtractLayout(
   // getDocument() because pdf.js may take ownership of `bytes`; PDFium copies
   // them into its own heap here. Optional: if PDFium can't load, the document
   // still converts, text only.
-  const pdfium = await openImages(bytes, signal);
+  let picturesFailed = false;
+  const markFailed = () => {
+    picturesFailed = true;
+  };
+  const pdfium = await openImages(bytes, signal, markFailed);
 
   const loadingTask = pdfjsLib.getDocument({
     data: bytes,
@@ -873,7 +889,7 @@ async function runExtractLayout(
         page.cleanup();
       }
       pagesImages.push(
-        pdfium ? await pageImagesOrEmpty(pdfium, pageIndex) : [],
+        pdfium ? await pageImagesOrEmpty(pdfium, pageIndex, markFailed) : [],
       );
       onProgress?.(((i + 1) / indices.length) * 0.9);
     }
@@ -885,7 +901,11 @@ async function runExtractLayout(
       const images = pagesImages[n] ?? [];
       return images.length > 0 ? { paragraphs, images } : { paragraphs };
     });
-    const layoutDoc: LayoutDocument = { pages };
+    const notes: string[] = [];
+    if (picturesFailed) notes.push(PICTURES_FAILED_NOTE);
+    if (pdfium?.leftOut) notes.push(PICTURES_LEFT_OUT_NOTE);
+    const layoutDoc: LayoutDocument =
+      notes.length > 0 ? { pages, notes } : { pages };
 
     onProgress?.(1);
     const json = JSON.stringify(layoutDoc);

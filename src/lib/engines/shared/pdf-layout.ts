@@ -150,6 +150,9 @@ export function imageExtentEmu(
 
 export interface LayoutDocument {
   pages: LayoutPage[];
+  /** Plain-language notes for the person (pictures left out, say). The docx
+   * step hands them on as the job's result note. */
+  notes?: string[];
 }
 
 /** One reconstructed visual line: still position-tagged (needed for

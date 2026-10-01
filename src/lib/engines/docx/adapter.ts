@@ -107,6 +107,8 @@ async function run(task: EngineTask): Promise<EngineResult> {
         docxBytes.byteOffset + docxBytes.byteLength,
       ) as ArrayBuffer,
       mime: FORMATS.docx.mime,
+      // Pictures the first step couldn't (or wouldn't) include.
+      ...(layoutDoc.notes?.length ? { note: layoutDoc.notes.join(" ") } : {}),
     };
   } catch (e) {
     throw toEngineError(e, metadata.id);

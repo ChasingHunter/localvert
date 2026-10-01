@@ -178,4 +178,22 @@ describe("docx adapter", () => {
       );
     });
   });
+
+  it("hands the layout's notes on as the result note", async () => {
+    const instance = await adapter.load({
+      baseUrl: "",
+      capabilities: {} as never,
+    });
+    const withNotes = await instance.run(
+      baseTask({
+        input: layoutInput({ ...SAMPLE_LAYOUT, notes: ["One.", "Two."] }),
+      }),
+    );
+    expect(withNotes.kind === "bytes" && withNotes.note).toBe("One. Two.");
+
+    const plain = await instance.run(
+      baseTask({ input: layoutInput(SAMPLE_LAYOUT) }),
+    );
+    expect(plain.kind === "bytes" && plain.note).toBeUndefined();
+  });
 });

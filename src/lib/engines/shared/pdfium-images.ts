@@ -34,6 +34,22 @@ const PAGEOBJ_IMAGE = 3;
 const MAX_PNG_SIDE = 3000;
 /** Hostile or enormous PDFs: stop after this many pictures per document. */
 const MAX_IMAGES = 300;
+/** Encoded picture bytes (before base64) one document may add up to. */
+export const MAX_MEDIA_BYTES = 150 * 1024 * 1024;
+
+/**
+ * Pure budget check: may another picture of `nextBytes` go in when
+ * `usedBytes` are already in? The first picture always fits, so one huge
+ * scan is never dropped just for being big. Past that, the total stays at or
+ * under `limit`.
+ */
+export function fitsMediaBudget(
+  usedBytes: number,
+  nextBytes: number,
+  limit: number = MAX_MEDIA_BYTES,
+): boolean {
+  return usedBytes === 0 || usedBytes + nextBytes <= limit;
+}
 const FPDF_BITMAP_GRAY = 1;
 const FPDF_BITMAP_BGR = 2;
 
@@ -68,6 +84,8 @@ function loadModule(
 export interface PdfiumImageSession {
   /** Pictures on one page (0-based), in no particular order. */
   pageImages(pageIndex: number): Promise<LayoutImage[]>;
+  /** True once any picture was skipped for the count or size budget. */
+  readonly leftOut: boolean;
   close(): void;
 }
 
@@ -213,6 +231,8 @@ export async function openPdfiumImages(
   }
 
   let emitted = 0;
+  let usedBytes = 0;
+  let leftOut = false;
 
   async function pageImages(pageIndex: number): Promise<LayoutImage[]> {
     const pagePtr = module.FPDF_LoadPage(docPtr, pageIndex);
@@ -230,7 +250,7 @@ export async function openPdfiumImages(
       const out: LayoutImage[] = [];
       const seen = new Set<string>();
       const count = module.FPDFPage_CountObjects(pagePtr);
-      for (let i = 0; i < count && emitted < MAX_IMAGES; i++) {
+      for (let i = 0; i < count; i++) {
         const objPtr = module.FPDFPage_GetObject(pagePtr, i);
         if (!objPtr || module.FPDFPageObj_GetType(objPtr) !== PAGEOBJ_IMAGE) {
           continue;
@@ -309,6 +329,14 @@ export async function openPdfiumImages(
           }
         }
 
+        if (
+          emitted >= MAX_IMAGES ||
+          !fitsMediaBudget(usedBytes, encoded.length)
+        ) {
+          leftOut = true;
+          continue;
+        }
+        usedBytes += encoded.length;
         const data = bytesToBase64(encoded);
         // The same picture drawn twice on one page (a repeated bullet or
         // watermark) is kept once.
@@ -327,6 +355,9 @@ export async function openPdfiumImages(
 
   return {
     pageImages,
+    get leftOut() {
+      return leftOut;
+    },
     close() {
       module.FPDF_CloseDocument(docPtr);
       free(filePtr);
