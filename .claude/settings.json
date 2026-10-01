@@ -7,7 +7,22 @@
   },
   "permissions": {
     "defaultMode": "acceptEdits",
-    "ask": ["Bash(git push:*)"],
+    "ask": [
+      "Bash(git push --delete:*)",
+      "Bash(git push origin --delete:*)",
+      "Bash(git push * --delete*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git push * --force*)",
+      "Bash(git push * +*)",
+      "Bash(git branch -D:*)",
+      "Bash(git branch -d:*)",
+      "Bash(git branch --delete:*)",
+      "Bash(git worktree remove:*)",
+      "Bash(git stash drop:*)",
+      "Bash(git stash clear:*)",
+      "Bash(rm -rf:*)",
+      "Bash(rm -r:*)"
+    ],
     "deny": [
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
@@ -34,6 +49,7 @@
     "allow": [
       "Bash(pnpm:*)",
       "Bash(node:*)",
+      "Bash(git push:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git status:*)",
