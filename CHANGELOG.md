@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/ChasingHunter/localvert/compare/v0.5.0...v0.5.1) (2026-10-01)
+
+
+### Performance
+
+* **build:** fail check-sizes when zod lands in a first-load chunk ([7547936](https://github.com/ChasingHunter/localvert/commit/7547936aa2f6e7b492bec263c09288642caa3f38))
+* **ui:** keep zod off the main thread on tool pages ([e5ef151](https://github.com/ChasingHunter/localvert/commit/e5ef15184264955f1d304bbc398008e56ce5c694))
+
 ## [0.5.0](https://github.com/ChasingHunter/localvert/compare/v0.4.0...v0.5.0) (2026-10-01)
 
 
