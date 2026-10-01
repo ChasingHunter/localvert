@@ -31,6 +31,9 @@
     "verify": "pnpm check && pnpm build && pnpm check-sizes && pnpm check-engine-eval"
   },
   "pnpm": {
+    "overrides": {
+      "undici@>=7.0.0 <7.29.1": "^7.29.1"
+    },
     "onlyBuiltDependencies": [
       "esbuild",
       "workerd"
