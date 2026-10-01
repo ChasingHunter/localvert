@@ -272,7 +272,8 @@ one repo, one engine; make PDF a front door, not a separate product):
 - [x] (2026-10-02) Zod off the main thread on tool pages (ADR-0019): tool pages 161.2 KB, mobile
       Lighthouse 92-94 (was 83-91). The rest of the gap is React/Next evaluation under the 4x throttle;
       not worth chasing further
-- [ ] Per-tool SEO pages generated from the registry
+- [x] (2026-10-01) Per-tool SEO pages generated from the registry: metadata, canonical, FAQ and
+      JSON-LD on every /tools/<slug> page, plus sitemap and llms.txt
 
 ---
 
