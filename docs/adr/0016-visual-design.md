@@ -93,7 +93,8 @@ the hues.
 
 **Display: Fraunces (variable).**
 
-- Axes: `opsz` auto, `SOFT` about 50, `WONK` 1.
+- Axes: `opsz` auto. `SOFT` and `WONK` were planned (about 50 and 1) but never
+  applied, so the shipped file carries only `wght` and `opsz`.
 - Weights: 500 for headings, 600 for the hero.
 - Use: the hero sentence, page titles (h1), category headings and the
   wordmark. Nowhere else.

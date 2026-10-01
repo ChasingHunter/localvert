@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { preload } from "react-dom";
 import "./globals.css";
 import { openGraph, SITE_URL } from "@/lib/site";
 import { THEME_STORAGE_KEY } from "@/lib/theme-storage";
@@ -51,7 +52,19 @@ const noFlashThemeScript = `(function(){try{var t=localStorage.getItem(${JSON.st
   THEME_STORAGE_KEY,
 )});if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();`;
 
+const FONT_FILES = [
+  "/fonts/fraunces-latin-opsz-normal.woff2",
+  "/fonts/figtree-latin-wght-normal.woff2",
+] as const;
+
 export default function RootLayout({ children }: { children: ReactNode }) {
+  // The fonts are otherwise discovered only after the stylesheet arrives
+  // (HTML, then CSS, then font). Preloading starts them with the stylesheet
+  // so the headline and body text settle in one go. `crossOrigin` is required
+  // for font preloads even on the same origin.
+  for (const file of FONT_FILES) {
+    preload(file, { as: "font", type: "font/woff2", crossOrigin: "anonymous" });
+  }
   return (
     <html lang="en">
       <body className="min-h-dvh font-sans">

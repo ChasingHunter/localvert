@@ -8,10 +8,10 @@
  * `font-src 'self'`, so these load from our own origin, not a package
  * import the bundler would have to resolve.
  *
- * Fraunces ships one file per axis combination; `full` is the smallest one
- * that carries all three axes this design needs (opsz, SOFT, WONK) alongside
- * wght, so it's the only choice even though its weight range (100–900) is
- * wider than we use. Figtree only has a single wght axis, so its normal
+ * Fraunces ships one file per axis combination. We use the `opsz` one (wght +
+ * optical size, 67 KB): the `full` file adds SOFT and WONK, which nothing here
+ * sets, and renders identically at the defaults while costing 54 KB more on
+ * every first visit. Figtree only has a single wght axis, so its normal
  * `wght` file is already the minimal one.
  */
 @font-face {
@@ -20,7 +20,7 @@
   font-display: swap;
   font-weight: 100 900;
   font-stretch: 25% 150%;
-  src: url("/fonts/fraunces-latin-full-normal.woff2") format("woff2-variations");
+  src: url("/fonts/fraunces-latin-opsz-normal.woff2") format("woff2-variations");
   unicode-range:
     U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
     U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191,
