@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { classifyFiles } from "@/components/dropzone-logic";
 import { HOME_HANDOFF_KEY, setPendingFiles } from "@/lib/converter/handoff";
 import { describeOpening, routeForFormats } from "@/lib/pwa/open-routing";
+import { takeSharedFiles } from "@/lib/pwa/share-stash";
 import { FORMATS, type FormatId } from "@/lib/registry/formats";
 
 /** The File Handling API's launch queue; not in lib.dom yet. */
@@ -36,7 +37,8 @@ const CHIP_LINK =
 
 /**
  * ADR-0018: receives files the OS opened with the installed app
- * (`launchQueue`, Chromium desktop) and hands them to the converter through
+ * (`launchQueue`, Chromium desktop) or the share sheet put in the service
+ * worker's stash (`?share=1`, Android), and hands them to the converter through
  * the existing in-memory handoff store (ADR-0015). Everything stays in this
  * tab; nothing is read except through the File handles the OS gave us.
  */
@@ -69,6 +71,17 @@ export function OpenFiles() {
         setPendingFiles(HOME_HANDOFF_KEY, staged);
         router.replace("/");
       }
+    }
+
+    // Share sheet: the service worker parked the files before redirecting
+    // here (src/sw.ts). Taking them also empties the stash.
+    if (new URLSearchParams(window.location.search).get("share") === "1") {
+      setStatus({ kind: "waiting" });
+      takeSharedFiles(window.caches).then(
+        (files) => handOff(files),
+        () => setStatus({ kind: "empty" }),
+      );
+      return;
     }
 
     const queue = window.launchQueue;

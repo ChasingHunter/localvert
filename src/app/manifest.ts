@@ -3,6 +3,7 @@ import {
   fileHandlerAccept,
   shareTargetAccept,
 } from "@/lib/pwa/file-handler-accept";
+import { SHARE_TARGET_PATH } from "@/lib/pwa/share-stash";
 
 // `output: "export"` has no server to answer /manifest.webmanifest, so it
 // is emitted at build time like every other route (invariant 4).
@@ -50,7 +51,7 @@ export default function manifest(): MetadataRoute.Manifest {
         },
       ],
       share_target: {
-        action: "/share-target",
+        action: SHARE_TARGET_PATH,
         method: "POST",
         enctype: "multipart/form-data",
         params: {
