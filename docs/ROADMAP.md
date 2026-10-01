@@ -269,8 +269,9 @@ one repo, one engine; make PDF a front door, not a separate product):
 - [x] (2026-10-01) /storage page: downloaded converters with sizes, remove one or all, persistent storage
 - [x] (2026-10-01) Accessibility pass: Lighthouse a11y, best practices and SEO 100 (noindex pages aside),
       desktop performance 98-100, mobile 90-99
-- [ ] Mobile performance 95+ on tool pages: zod (~92 KB gz) evaluates on the main thread after
-      hydration. Move option-field metadata to generated plain data and validate in the worker
+- [x] (2026-10-02) Zod off the main thread on tool pages (ADR-0019): tool pages 161.2 KB, mobile
+      Lighthouse 92-94 (was 83-91). The rest of the gap is React/Next evaluation under the 4x throttle;
+      not worth chasing further
 - [ ] Per-tool SEO pages generated from the registry
 
 ---
