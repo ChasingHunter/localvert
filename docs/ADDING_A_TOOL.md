@@ -198,14 +198,24 @@ tool — `transcode` is for a byte-to-byte op that isn't a format conversion
 pnpm gen
 ```
 
-Rewrites `src/tools/index.ts` (the full `TOOLS` barrel — server components
-only, e.g. `generateStaticParams`), `src/tools/loaders.ts` (`TOOL_LOADERS`, a
-`slug -> () => import(...)` map keyed by filename), and
-`src/lib/engines/manifest.ts`. A client component loads exactly one tool
-through `TOOL_LOADERS[slug]()` — never the `TOOLS` barrel, which would pull
-every tool's module graph (and every other tool's option schema) into that
-page's bundle. All three files are **checked in**, and CI fails if running
-`pnpm gen` produces a diff. Never hand-edit them.
+Rewrites `src/tools/index.ts` (the full `TOOLS` barrel, for server components
+only, e.g. `generateStaticParams` and the tool page), `src/tools/loaders.ts`
+(`TOOL_LOADERS`, a `slug -> () => import(...)` map keyed by filename, for the
+worker), and `src/lib/engines/manifest.ts`. All three files are **checked
+in**, and CI fails if running `pnpm gen` produces a diff. Never hand-edit them.
+
+The tool page is a server component. It projects the tool onto plain data,
+`toClientTool(tool)` (`src/tools/client-tool.ts`), at build time and passes
+that to `ToolRunner` as a prop (ADR-0019). The browser's main thread never
+loads a tool module, so zod never runs there; the worker that runs the job
+imports the real tool through `TOOL_LOADERS` and parses the options. Never
+import `TOOL_LOADERS` or the `TOOLS` barrel from a client component.
+
+`toClientTool` throws, and so does `next build`, for a tool it can't express
+as plain data: a pipeline candidate with a `when` predicate, an `outputName`
+that isn't "keep the basename, take the extension from one select option", or
+a string/enum/boolean option carrying a zod check (do that check in the
+engine, where the real parse runs).
 
 ### 7. Tests
 

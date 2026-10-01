@@ -20,16 +20,14 @@ detail in service of those five rules.
   sniff magic bytes --> FormatId             |
         |                                    |
         v                                    |
-  registry lookup --> ToolDefinition         |
-        |             (slug, pipeline,       |
-        |              options schema)       |
+  ClientTool (plain data, from the page)     |
+        |             (fields, defaults,     |
+        |              pipeline engines)     |
         v                                    |
-  validate options (zod)                     |
-        |                                    |
-        v                                    |
-  job engine --> queue --> worker pool ------+--> capability probes
+  job engine --> queue --> worker pool ------+--> parse options (zod)
         |                                    |          |
         |  (File handle, not bytes)          |          v
+        |                                    |    capability probes
         |                                    |    engine router
         v                                    |          |
   zustand store <-- progress (10 Hz) --------+          v
@@ -72,7 +70,7 @@ From that single file, `pnpm gen` derives:
 | Derived thing | From |
 |---|---|
 | The route `/tools/jpg-to-png` | `generateStaticParams` over the registry |
-| The options form | zod schema + `.meta({label, control, unit})` |
+| The options form | zod schema + `.meta({label, control, unit})`, projected to plain data at build time |
 | Category and index pages | grouping over `category` |
 | SEO metadata | `title` / `description` |
 | Engine preloads and SW cache list | `pipeline` → `manifest.ts` |
@@ -92,6 +90,20 @@ output in the diff.
 `src/lib/registry/formats.ts` maps each `FormatId` to extension, MIME type, and
 **magic bytes**. A file named `.png` that is really a JPEG is detected as a
 JPEG. Extensions are a naming hint; the first bytes are the truth.
+
+### Zod stays off the main thread (ADR-0019)
+
+A tool file imports zod, and zod is a ~92 KB gz chunk that costs a mobile
+phone about 300 ms of main-thread work. So the browser's main thread never
+loads a tool file. The tool page is a server component: while the site is
+exported it runs `toClientTool(tool)` (option fields, defaults, pipeline
+engines, flags, all plain data) and passes the result to `ToolRunner` as a
+prop. The real tool, schema included, is imported by the worker that runs the
+job, and the worker runs `options.parse` before any engine sees the options.
+`src/tools/client-tool.test.ts` checks the projection against every tool, and
+`src/lib/options/no-zod-on-main.test.ts` fails if a main-thread module starts
+importing zod or a tool file. `check-sizes` fails if zod shows up in a
+first-load chunk.
 
 ### Converter (ADR-0015)
 
