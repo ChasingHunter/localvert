@@ -896,6 +896,15 @@ export const CATALOG: readonly CatalogEntry[] = [
     arity: "one-to-one",
   },
   {
+    slug: "heic-to-pdf",
+    title: "HEIC to PDF",
+    category: "pdf",
+    accepts: ["heic"],
+    produces: "pdf",
+    kind: "job",
+    arity: "many-to-one",
+  },
+  {
     slug: "image-to-searchable-pdf",
     title: "Image to Searchable PDF",
     category: "pdf",
@@ -1046,6 +1055,15 @@ export const CATALOG: readonly CatalogEntry[] = [
     kind: "job",
     arity: "one-to-many",
     categoryRank: 4,
+  },
+  {
+    slug: "tiff-to-pdf",
+    title: "TIFF to PDF",
+    category: "pdf",
+    accepts: ["tiff"],
+    produces: "pdf",
+    kind: "job",
+    arity: "many-to-one",
   },
   {
     slug: "unlock-pdf",

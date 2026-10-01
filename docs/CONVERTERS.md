@@ -113,6 +113,8 @@ them, so that column reads their own **Arity** instead.
 | `compress-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | `mode`: recommended (default, mozjpeg re-encode downsampled by effective DPI, 150 dpi/q0.65), lossless (object streams + unreferenced-object pruning, no image recompression), strong (96 dpi/q0.5), target size (MB) or reduce-by-% (walks a DPI/quality ladder, stops at the first result that fits); result note says what was reached; never bigger than the input |
 | `flatten-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Bakes form field values into the page, removes the fields; no-op on a PDF with no form |
 | `sanitize-pdf` | PDF | PDF | pdf-lib | one-to-one (batch) | Strips metadata/JavaScript/attachments (default on), web links (default off) |
+| `heic-to-pdf` | HEIC | PDF | heic, jsquash-jpeg, pdf-lib | many-to-one | Each photo is decoded and re-encoded to JPG, then embedded one per page; same page options as `jpg-to-pdf`. The order list shows names only (browsers can't preview HEIC). |
+| `tiff-to-pdf` | TIFF | PDF | utif, jsquash-jpeg, pdf-lib | many-to-one | Same as `heic-to-pdf` for TIFF input. |
 | `pdf-to-jpg` | PDF | JPEG | pdfjs | one-to-many | One JPG per selected page (`pages`, `dpi`, `quality`); white background |
 | `pdf-to-png` | PDF | PNG | pdfjs | one-to-many | One PNG per selected page (`pages`, `dpi`); page transparency preserved |
 | `pdf-to-text` | PDF | Text | pdfjs | one-to-one (batch) | Extracts embedded text into a `.txt` file (`pages`, `pageMarkers` heading each page); a scanned PDF with no text layer needs `pdf-to-searchable-pdf`'s OCR first |

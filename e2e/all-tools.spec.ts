@@ -126,6 +126,10 @@ const SECOND_FIXTURE_BY_FORMAT: Partial<Record<FormatId, string>> = {
   jpg: "photo-medium.jpg",
   png: "ocr-text.png",
   pdf: "b.pdf",
+  // Byte copies of the primary fixtures (heic-to-pdf / tiff-to-pdf only need a
+  // second file in the list, not different pixels).
+  heic: "sample-b.heic",
+  tiff: "sample-b.tiff",
 };
 
 /** Overrides `primaryFixture`'s generic per-format lookup for a specific

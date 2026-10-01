@@ -50,6 +50,8 @@ export const PDF_HUB_GROUP_BY_SLUG: Record<string, PdfHubGroup> = {
   "pdf-to-png": "convert",
   "jpg-to-pdf": "convert",
   "png-to-pdf": "convert",
+  "heic-to-pdf": "convert",
+  "tiff-to-pdf": "convert",
   "images-to-pdf": "convert",
   "word-to-pdf": "convert",
   "excel-to-pdf": "convert",

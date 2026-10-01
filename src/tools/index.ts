@@ -94,6 +94,7 @@ import compressPdf from "@/tools/pdf/compress-pdf";
 import deletePdfPages from "@/tools/pdf/delete-pdf-pages";
 import extractPdfPages from "@/tools/pdf/extract-pdf-pages";
 import flattenPdf from "@/tools/pdf/flatten-pdf";
+import heicToPdf from "@/tools/pdf/heic-to-pdf";
 import imageToSearchablePdf from "@/tools/pdf/image-to-searchable-pdf";
 import imagesToPdf from "@/tools/pdf/images-to-pdf";
 import jpgToPdf from "@/tools/pdf/jpg-to-pdf";
@@ -110,6 +111,7 @@ import reorderPdfPages from "@/tools/pdf/reorder-pdf-pages";
 import rotatePdf from "@/tools/pdf/rotate-pdf";
 import sanitizePdf from "@/tools/pdf/sanitize-pdf";
 import splitPdf from "@/tools/pdf/split-pdf";
+import tiffToPdf from "@/tools/pdf/tiff-to-pdf";
 import unlockPdf from "@/tools/pdf/unlock-pdf";
 import watermarkPdf from "@/tools/pdf/watermark-pdf";
 import aviToMp4 from "@/tools/video/avi-to-mp4";
@@ -223,6 +225,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   deletePdfPages,
   extractPdfPages,
   flattenPdf,
+  heicToPdf,
   imageToSearchablePdf,
   imagesToPdf,
   jpgToPdf,
@@ -239,6 +242,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   rotatePdf,
   sanitizePdf,
   splitPdf,
+  tiffToPdf,
   unlockPdf,
   watermarkPdf,
   aviToMp4,

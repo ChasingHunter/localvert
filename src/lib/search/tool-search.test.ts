@@ -9,13 +9,18 @@ const slugs = (query: string) => searchTools(index, query).map((e) => e.slug);
 describe("searchTools", () => {
   it("finds a tool by its format name, title prefix first", () => {
     const result = slugs("heic");
-    expect(result.slice(0, 2).sort()).toEqual(["heic-to-jpg", "heic-to-png"]);
+    expect(result.slice(0, 3).sort()).toEqual([
+      "heic-to-jpg",
+      "heic-to-pdf",
+      "heic-to-png",
+    ]);
     expect(result[0]).toBe("heic-to-jpg");
   });
 
   it("finds a format by an alias", () => {
-    expect(slugs("iphone photo").slice(0, 2).sort()).toEqual([
+    expect(slugs("iphone photo").slice(0, 3).sort()).toEqual([
       "heic-to-jpg",
+      "heic-to-pdf",
       "heic-to-png",
     ]);
   });
