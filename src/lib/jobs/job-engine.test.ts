@@ -194,21 +194,22 @@ describe("createJobEngine / submit", () => {
     expect(store.getState().jobs.find((j) => j.id === id)?.progress).toBe(0.7);
   });
 
-  it("throws on invalid options before creating any job", () => {
-    const { engine, calls, store } = setup();
+  it("does not parse options: the worker does, against the tool's real schema", () => {
+    const { engine, calls } = setup();
     const tool = makeTool({
       options: z.object({ quality: z.number().min(1).max(100) }),
       defaults: { quality: 90 },
     });
 
-    expect(() =>
-      engine.submit(tool, [{ file: makeFile(), format: "jpg" }], {
-        quality: "not a number",
-      }),
-    ).toThrow(/^\[job\] invalid options:/);
+    // Not valid for the schema, yet submit neither throws nor touches zod; the
+    // request carries the raw values and the slug for the worker to parse.
+    engine.submit(tool, [{ file: makeFile(), format: "jpg" }], {
+      quality: "not a number",
+    });
 
-    expect(store.getState().jobs).toHaveLength(0);
-    expect(calls).toHaveLength(0);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.req.toolSlug).toBe("jpg-to-png");
+    expect(calls[0]?.req.options).toEqual({ quality: "not a number" });
   });
 
   it("dispatches a single-step tool with no declared from/to using (sniffed format -> produces), same as before ADR-0007", () => {
@@ -269,7 +270,7 @@ describe("createJobEngine / submit", () => {
     ]);
   });
 
-  it("hands the whole parsed options object to the request, shared across every step", () => {
+  it("hands the whole options object to the request, shared across every step", () => {
     const { engine, calls } = setup();
     const tool = makeTool({
       options: z.object({ quality: z.number() }),

@@ -37,9 +37,7 @@ export interface RunStep {
  * pipeline, run in step order inside that one worker (ADR-0007) so a raster
  * intermediate between steps never crosses a thread boundary. `input` feeds
  * the first step only — each later step's input is the previous step's
- * `EngineResult`, converted in-place by `engine-host.ts`. `options` is the
- * tool's whole parsed options object, handed to every step unchanged; a step
- * reads only the keys it cares about.
+ * `EngineResult`, converted in-place by `engine-host.ts`.
  */
 export interface RunRequest {
   jobId: string;
@@ -49,6 +47,17 @@ export interface RunRequest {
    * every other job, same as `EngineTask.inputs` itself. */
   inputs?: readonly EngineInput[];
   steps: readonly RunStep[];
+  /**
+   * ADR-0019: set by the job engine for a tool-driven job. The worker loads
+   * that tool's real definition and replaces `options` with
+   * `tool.options.parse(options)` before any step runs, so zod never has to
+   * run on the main thread. Absent for a request that carries already-final
+   * options (the PDF editor's direct `pool.run` calls, tests).
+   */
+  toolSlug?: string;
+  /** The tool's options: raw form values when `toolSlug` is set (parsed by
+   * the worker), the final parsed object otherwise. Handed to every step
+   * unchanged; a step reads only the keys it cares about. */
   options: Readonly<Record<string, unknown>>;
 }
 

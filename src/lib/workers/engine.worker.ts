@@ -1,8 +1,10 @@
 import * as Comlink from "comlink";
 import { ENGINE_LOADERS } from "@/lib/engines/loaders";
 import { probeCapabilities } from "@/lib/router/probes";
+import { TOOL_LOADERS } from "@/tools/loaders";
 import { createEngineHost, transferablesOf } from "./engine-host";
 import type { EngineHostApi, RunOutcome, RunRequest } from "./protocol";
+import { createToolOptionsResolver } from "./tool-options";
 
 /**
  * The real engine worker entry point — the "Phase 0.5" factory `pool.ts` and
@@ -15,6 +17,8 @@ import type { EngineHostApi, RunOutcome, RunRequest } from "./protocol";
  */
 
 const host = createEngineHost(ENGINE_LOADERS, () => probeCapabilities(self));
+// ADR-0019: the tool definitions (and so zod) are loaded here, lazily, by slug.
+const resolveToolOptions = createToolOptionsResolver(TOOL_LOADERS);
 
 const api: EngineHostApi = {
   probe: host.probe,
@@ -27,7 +31,9 @@ const api: EngineHostApi = {
     // `onProgress` arrives as a Comlink proxy when the caller supplied one —
     // `host.run` already calls it (never awaits it) at most 10x/sec, so no
     // extra handling is needed here beyond passing it through.
-    const outcome = await host.run(req, onProgress);
+    const resolved = await resolveToolOptions(req);
+    if (!resolved.ok) return resolved.outcome;
+    const outcome = await host.run(resolved.req, onProgress);
     // Moves the result's bytes/stream to the caller instead of structured-
     // cloning a copy of them.
     return Comlink.transfer(outcome, transferablesOf(outcome));

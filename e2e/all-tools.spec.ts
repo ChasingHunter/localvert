@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { test as base, expect } from "@playwright/test";
+import { describeFields, isFieldVisible } from "@/lib/options/fields";
 import type { FormatId, ToolDefinition } from "@/lib/registry";
 import { FORMATS } from "@/lib/registry";
 import { TOOLS } from "@/tools";
@@ -51,7 +52,7 @@ import { TOOLS } from "@/tools";
  * 4. A many-to-one tool (`arity: "many-to-one"`) additionally needs a
  *    *second*, distinct fixture of the same format in
  *    `SECOND_FIXTURE_BY_FORMAT`.
- * 5. A tool with `requiredOptionKeys` (e.g. `protect-pdf`'s password) needs
+ * 5. A tool with a `required` option (e.g. `protect-pdf`'s password) needs
  *    an entry in `REQUIRED_FIELD_VALUES` below, or it's treated the same as
  *    a missing fixture — printed and skipped, never guessed at.
  */
@@ -350,14 +351,13 @@ for (const tool of TOOLS) {
   const secondFixture = fixture && SECOND_FIXTURE_BY_FORMAT[fixture.format];
   // A required field hidden by its `showWhen` at the tool's defaults (e.g.
   // split-pdf's ranges outside "ranges" mode) doesn't block the run.
-  const requiredKeys = (tool.requiredOptionKeys ?? []).filter((key) => {
-    const cond = tool.requiredOptionShowWhen?.[key];
-    if (!cond) return true;
-    const current = (tool.defaults as Record<string, unknown>)[cond.field];
-    return Array.isArray(cond.equals)
-      ? (cond.equals as readonly unknown[]).includes(current)
-      : current === cond.equals;
-  });
+  const requiredKeys = describeFields(tool.options)
+    .filter(
+      (field) =>
+        field.required &&
+        isFieldVisible(field, tool.defaults as Record<string, unknown>),
+    )
+    .map((field) => field.key);
   const requiredValues = REQUIRED_FIELD_VALUES[tool.slug];
   const requiredScripted =
     requiredKeys.length === 0 ||

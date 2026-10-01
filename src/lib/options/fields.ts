@@ -1,40 +1,23 @@
 import { z } from "zod";
+import type { FieldSpec } from "./field-spec";
+
+export { formatPercent, validateFields } from "./field-check";
+export type { FieldSpec, ShowWhen } from "./field-spec";
+export { isFieldVisible, requiredFieldsSatisfied } from "./field-spec";
 
 /**
- * Describes one form field for a tool's options schema. `describeFields`
- * derives these from the zod schema's `.meta()` — see `OptionMeta` in
- * `src/lib/registry/types.ts` for the meta shape tool authors write.
+ * A select option's display text: the tool's own `optionLabels` entry if it
+ * has one, else the enum value with `-`/`_` separators turned into spaces
+ * (`"target-size"` → "target size"). Case is left alone on purpose — many
+ * enums are format ids (`jpg`, `mp3`) where naive capitalization ("Jpg")
+ * reads worse than the raw value; tools that want proper wording declare it.
  */
-export type FieldSpec = {
-  key: string;
-  label: string;
-  help?: string;
-  unit?: string;
-  /** See the `required` doc comment in `src/lib/registry/types.ts`. */
-  required?: boolean;
-  /** See the `showWhen` doc comment in `src/lib/registry/types.ts`. */
-  showWhen?: {
-    field: string;
-    equals: string | number | boolean | readonly (string | number | boolean)[];
-  };
-} & (
-  | { control: "switch" }
-  | { control: "select"; options: readonly { value: string; label: string }[] }
-  | {
-      control: "slider" | "number";
-      min: number;
-      max: number;
-      step: number;
-      /** A unitless 0..1 slider (quality, opacity): the form shows it as a
-       * percent ("85%") while the stored value stays 0..1. See
-       * `isPercentSlider`. */
-      percent?: boolean;
-    }
-  | { control: "text" }
-  | { control: "password" }
-  | { control: "crop" }
-  | { control: "hidden" }
-);
+export function optionLabel(
+  value: string,
+  labels?: Record<string, string>,
+): string {
+  return labels?.[value] ?? value.replace(/[-_]+/g, " ");
+}
 
 type CoreField = z.core.$ZodType;
 
@@ -59,6 +42,12 @@ function unwrap(field: CoreField): CoreField {
   return field;
 }
 
+/** Whether the schema accepts `undefined` (`.optional()` / `.default()`). */
+function acceptsUndefined(field: CoreField): boolean {
+  const { type } = field._zod.def;
+  return type === "optional" || type === "default";
+}
+
 /** Runtime shape of the classic `ZodNumber`/`ZodNumberFormat` getters. */
 interface NumberLike {
   minValue: number | null;
@@ -66,19 +55,37 @@ interface NumberLike {
   format: string | null;
 }
 
-/**
- * A select option's display text: the tool's own `optionLabels` entry if it
- * has one, else the enum value with `-`/`_` separators turned into spaces
- * (`"target-size"` → "target size"). Case is left alone on purpose — many
- * enums are format ids (`jpg`, `mp3`) where naive capitalization ("Jpg")
- * reads worse than the raw value; tools that want proper wording declare it.
- */
-export function optionLabel(
-  value: string,
-  labels?: Record<string, string>,
-): string {
-  return labels?.[value] ?? value.replace(/[-_]+/g, " ");
+interface CheckLike {
+  _zod: { def: { check: string; inclusive?: boolean } };
 }
+
+/**
+ * The main thread checks a form from its descriptors alone
+ * (`validateFields`, ADR-0019), so a field may only carry the zod checks a
+ * descriptor can express: a number's int/min/max, and nothing on a
+ * string/enum/boolean. Anything else (a `.regex()`, `.multipleOf()`...) would
+ * be silently unchecked in the form, so it fails here, at generation time,
+ * with the way out: do that check in the engine.
+ */
+function assertDescribableChecks(
+  key: string,
+  field: CoreField,
+  allowed: readonly string[],
+): readonly CheckLike[] {
+  const checks = (field._zod.def as { checks?: readonly CheckLike[] }).checks;
+  for (const check of checks ?? []) {
+    if (!allowed.includes(check._zod.def.check)) {
+      fieldError(
+        key,
+        `carries a "${check._zod.def.check}" zod check the client form can't ` +
+          "run (ADR-0019); validate it in the engine instead",
+      );
+    }
+  }
+  return checks ?? [];
+}
+
+const NUMBER_CHECKS = ["greater_than", "less_than", "number_format"] as const;
 
 /**
  * A slider that runs 0..1 with no unit of its own is a fraction (quality,
@@ -95,17 +102,13 @@ function isPercentSlider(
   return control === "slider" && unit === undefined && min >= 0 && max === 1;
 }
 
-/** "85%" for a stored 0.85. */
-export function formatPercent(value: number): string {
-  return `${Math.round(value * 100)}%`;
-}
-
 function isFiniteBound(n: number | null): n is number {
   return n !== null && Number.isFinite(n);
 }
 
 function describeField(key: string, rawField: CoreField): FieldSpec {
   const field = unwrap(rawField);
+  const optional = acceptsUndefined(rawField);
   const meta = z.globalRegistry.get(field);
   if (meta === undefined || !meta.label || !meta.control) {
     fieldError(
@@ -132,12 +135,14 @@ function describeField(key: string, rawField: CoreField): FieldSpec {
           `control "switch" needs a boolean field, got "${type}"`,
         );
       }
+      assertDescribableChecks(key, field, []);
       return { ...base, control };
     }
     case "select": {
       if (type !== "enum") {
         fieldError(key, `control "select" needs an enum field, got "${type}"`);
       }
+      assertDescribableChecks(key, field, []);
       const { entries } = field._zod.def as unknown as {
         entries: Record<string, string>;
       };
@@ -155,6 +160,7 @@ function describeField(key: string, rawField: CoreField): FieldSpec {
           `control "${control}" needs a number field, got "${type}"`,
         );
       }
+      const checks = assertDescribableChecks(key, field, NUMBER_CHECKS);
       const numberField = field as unknown as NumberLike;
       const { minValue, maxValue } = numberField;
       if (
@@ -166,23 +172,50 @@ function describeField(key: string, rawField: CoreField): FieldSpec {
           'control "slider" needs finite .min() and .max() bounds',
         );
       }
-      const min = minValue ?? Number.NEGATIVE_INFINITY;
-      const max = maxValue ?? Number.POSITIVE_INFINITY;
-      const step =
-        meta.step ?? (numberField.format === "safeint" ? 1 : (max - min) / 100);
+      const integer = numberField.format === "safeint";
+      const exclusiveMin = checks.some(
+        (c) => c._zod.def.check === "greater_than" && !c._zod.def.inclusive,
+      );
+      const min = isFiniteBound(minValue) ? minValue : undefined;
+      const max = isFiniteBound(maxValue) ? maxValue : undefined;
+      const derivedStep =
+        min !== undefined && max !== undefined ? (max - min) / 100 : undefined;
+      const step = meta.step ?? (integer ? 1 : derivedStep);
+      const flags = {
+        ...(integer && { integer }),
+        ...(optional && { optional }),
+      };
+      if (control === "slider") {
+        // Finite bounds and a step are guaranteed by the check above.
+        const sliderMin = min ?? 0;
+        const sliderMax = max ?? 0;
+        return {
+          ...base,
+          control,
+          min: sliderMin,
+          max: sliderMax,
+          step: step ?? 1,
+          ...flags,
+          ...(isPercentSlider(control, sliderMin, sliderMax, unit) && {
+            percent: true,
+          }),
+        };
+      }
       return {
         ...base,
         control,
-        min,
-        max,
-        step,
-        ...(isPercentSlider(control, min, max, unit) && { percent: true }),
+        ...(min !== undefined && { min }),
+        ...(max !== undefined && { max }),
+        ...(step !== undefined && Number.isFinite(step) && { step }),
+        ...(exclusiveMin && { exclusiveMin }),
+        ...flags,
       };
     }
     case "text": {
       if (type !== "string") {
         fieldError(key, `control "text" needs a string field, got "${type}"`);
       }
+      assertDescribableChecks(key, field, []);
       return { ...base, control };
     }
     case "password": {
@@ -195,6 +228,7 @@ function describeField(key: string, rawField: CoreField): FieldSpec {
           `control "password" needs a string field, got "${type}"`,
         );
       }
+      assertDescribableChecks(key, field, []);
       return { ...base, control };
     }
     case "crop": {
@@ -235,48 +269,6 @@ export function describeFields(schema: z.ZodObject): FieldSpec[] {
   return Object.entries(schema.shape).map(([key, field]) =>
     describeField(key, field as CoreField),
   );
-}
-
-/**
- * Whether `field` should be rendered, given the option values currently in
- * the form — the read side of `showWhen` (see its doc comment in
- * `src/lib/registry/types.ts`). No `showWhen` means always visible. A field
- * that fails this check is left out of the form entirely, but `OptionsForm`
- * never touches its value — it stays whatever it already was, so flipping
- * the controlling field back and forth doesn't lose it.
- */
-export function isFieldVisible(
-  field: FieldSpec,
-  values: Readonly<Record<string, unknown>>,
-): boolean {
-  if (!field.showWhen) return true;
-  const current = values[field.showWhen.field];
-  const { equals } = field.showWhen;
-  return Array.isArray(equals)
-    ? (equals as readonly unknown[]).includes(current)
-    : current === equals;
-}
-
-/**
- * Whether every `required` field (see the doc comment in
- * `src/lib/registry/types.ts`) currently holds a non-blank value — a
- * required field is a valid zod value even when empty (e.g. `protect-pdf`'s
- * `password` has no `.min(1)`), so this is a separate, UI-only check from
- * `validateOptions`. A non-string required value only needs to exist
- * (`undefined`/`null` fail it); a string one also can't be
- * whitespace-only. A required field hidden by `showWhen` is skipped. `OptionsForm` gates the run/convert action on this.
- */
-export function requiredFieldsSatisfied(
-  fields: readonly FieldSpec[],
-  values: Readonly<Record<string, unknown>>,
-): boolean {
-  return fields
-    .filter((field) => field.required && isFieldVisible(field, values))
-    .every((field) => {
-      const value = values[field.key];
-      if (typeof value === "string") return value.trim() !== "";
-      return value !== undefined && value !== null;
-    });
 }
 
 export type ValidateResult<S extends z.ZodObject> =

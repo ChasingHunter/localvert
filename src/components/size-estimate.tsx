@@ -27,7 +27,7 @@ export function SizeEstimate({
   sourceFormat,
   options,
 }: {
-  tool: ToolDefinition;
+  tool: Pick<ToolDefinition, "estimateKind">;
   file: File;
   sourceFormat: FormatId;
   options: Readonly<Record<string, unknown>>;

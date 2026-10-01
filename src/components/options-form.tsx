@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useId } from "react";
-import type { z } from "zod";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -13,21 +12,21 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { formatPercent, validateFields } from "@/lib/options/field-check";
 import {
-  describeFields,
   type FieldSpec,
-  formatPercent,
   isFieldVisible,
+  isFormField,
   requiredFieldsSatisfied,
-  validateOptions,
-} from "@/lib/options/fields";
+} from "@/lib/options/field-spec";
 
-interface OptionsFormProps<S extends z.ZodObject> {
-  schema: S;
+interface OptionsFormProps {
+  /** The tool's field descriptors (`ClientTool.fields`, ADR-0019). */
+  fields: readonly FieldSpec[];
   /** Fallback for a key missing from `value` — `value` itself always wins. */
-  defaults?: z.infer<S>;
-  value: z.infer<S>;
-  onChange: (value: z.infer<S>) => void;
+  defaults?: Record<string, unknown>;
+  value: Record<string, unknown>;
+  onChange: (value: Record<string, unknown>) => void;
   disabled?: boolean;
   /**
    * Reports whether every `required` field currently holds a non-blank
@@ -40,37 +39,33 @@ interface OptionsFormProps<S extends z.ZodObject> {
 }
 
 /**
- * Renders a tool's options schema as a form — one control per field, derived
- * by `describeFields`. Fully controlled: the parent owns `value` and gets a
- * new object on every change, and owns the action (convert/cancel) buttons —
- * this component renders no submit control of its own.
+ * Renders a tool's options as a form — one control per field descriptor.
+ * Fully controlled: the parent owns `value` and gets a new object on every
+ * change, and owns the action (convert/cancel) buttons — this component
+ * renders no submit control of its own.
  */
-export function OptionsForm<S extends z.ZodObject>({
-  schema,
+export function OptionsForm({
+  fields: allFields,
   defaults,
   value,
   onChange,
   disabled = false,
   onValidityChange,
-}: OptionsFormProps<S>) {
+}: OptionsFormProps) {
   // A "crop" field never gets a generic row here — `ToolRunner` renders a
   // dedicated `CropEditor` for it instead (see crop-editor.tsx), and no
   // sensible x/y/width/height control exists without the dropped image's
   // own dimensions, which this form never has. A "hidden" field is an
   // engine-only parameter with no UI at all (see its doc comment in
   // `src/lib/options/fields.ts`).
-  const fields = describeFields(schema).filter(
-    (f) => f.control !== "crop" && f.control !== "hidden",
-  );
-  const result = validateOptions(schema, value);
-  const errors = result.ok ? {} : result.errors;
-
-  const record = value as Record<string, unknown>;
-  const defaultRecord = defaults as Record<string, unknown> | undefined;
+  const fields = allFields.filter(isFormField);
+  const record = value;
+  const defaultRecord = defaults;
   // `defaultRecord` first, `record` on top: the same fallback order every
   // individual field's own `value` prop below already uses, so a `showWhen`
   // reading a field the user hasn't touched yet still sees its default.
   const effectiveValues = { ...defaultRecord, ...record };
+  const errors = validateFields(fields, effectiveValues);
   const satisfied = requiredFieldsSatisfied(fields, effectiveValues);
 
   useEffect(() => {
@@ -78,7 +73,7 @@ export function OptionsForm<S extends z.ZodObject>({
   }, [satisfied, onValidityChange]);
 
   const setField = (key: string, fieldValue: unknown) => {
-    onChange({ ...record, [key]: fieldValue } as z.infer<S>);
+    onChange({ ...record, [key]: fieldValue });
   };
 
   return (
@@ -278,8 +273,8 @@ function FieldControl({
           id={id}
           type="number"
           className="rounded-lg"
-          min={Number.isFinite(field.min) ? field.min : undefined}
-          max={Number.isFinite(field.max) ? field.max : undefined}
+          min={field.min}
+          max={field.max}
           step={field.step}
           value={typeof value === "number" ? value : ""}
           onChange={(e) =>

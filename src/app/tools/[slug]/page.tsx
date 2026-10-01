@@ -16,6 +16,7 @@ import {
 import { toolFaq } from "@/lib/seo/tool-faq";
 import { openGraph } from "@/lib/site";
 import { TOOLS, TOOLS_BY_SLUG } from "@/tools";
+import { toClientTool } from "@/tools/client-tool";
 
 /**
  * A "kind: app" tool renders its own component instead of `ToolRunner`'s
@@ -36,8 +37,9 @@ const MAX_RELATED_TOOLS = 6;
 /**
  * SERVER COMPONENT. Safe to import `TOOLS`/`TOOLS_BY_SLUG` here â€” the full
  * registry barrel never reaches the client bundle from a server component.
- * `ToolRunner` (client) loads only its one tool, via `TOOL_LOADERS` â€” see
- * that file's doc comment and docs/ADDING_A_TOOL.md.
+ * `ToolRunner` (client) gets only its one tool, as the plain `ClientTool`
+ * data `toClientTool` projects from it at build time (ADR-0019): zod runs
+ * here, during the static export, and never in the browser's main thread.
  */
 
 interface PageProps {
@@ -111,7 +113,7 @@ export default async function ToolPage({ params }: PageProps) {
         {tool.kind === "app" && tool.app ? (
           <AppTool appId={tool.app} />
         ) : (
-          <ToolRunner slug={tool.slug} />
+          <ToolRunner key={tool.slug} tool={toClientTool(tool)} />
         )}
 
         <section aria-labelledby="faq-heading" className="flex flex-col gap-3">

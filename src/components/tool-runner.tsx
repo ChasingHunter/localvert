@@ -23,10 +23,11 @@ import type { ConsentPrompt } from "@/lib/engines/consent-gate";
 import { engineDisplayName } from "@/lib/engines/display-names";
 import { shouldStageForEstimate } from "@/lib/estimate/stage";
 import { jobStore, selectOrderedJobs } from "@/lib/jobs/store";
+import { isFormField, requiredFieldsSatisfied } from "@/lib/options/field-spec";
+import type { ClientTool } from "@/lib/registry/client-tool";
 import { FORMATS, formatFromFilename } from "@/lib/registry/formats";
-import type { ToolDefinition } from "@/lib/registry/types";
+import { isReady } from "@/lib/registry/readiness";
 import { collectToBlob } from "@/lib/sinks/collect";
-import { TOOL_LOADERS } from "@/tools/loaders";
 
 /**
  * Same code-splitting reasoning as `OptionsForm`/`CropEditor` above: most
@@ -101,43 +102,7 @@ async function jobEngine() {
 }
 
 interface ToolRunnerProps {
-  slug: string;
-}
-
-/**
- * Whether every one of a tool's `requiredOptionKeys` currently holds a
- * non-blank value in `values` — the same rule `requiredFieldsSatisfied`
- * (src/lib/options/fields.ts) applies, kept as a small local copy operating
- * on plain option keys instead of `FieldSpec`s so this file never imports
- * zod (see `hasCropField`'s doc comment above on why that matters). Used to
- * decide, at drop time, whether a required-field tool can submit
- * immediately (the field was already filled in before the drop) or must
- * hold the file back for the explicit action button instead.
- */
-/** After this long without the tool's code, tell the user and offer a
- * reload, while still waiting in case it's only a slow connection. */
-const SLOW_LOAD_MS = 15_000;
-
-function requiredKeysSatisfied(
-  keys: readonly string[],
-  values: Readonly<Record<string, unknown>>,
-  showWhenByKey: NonNullable<ToolDefinition["requiredOptionShowWhen"]> = {},
-): boolean {
-  return keys.every((key) => {
-    // A required field hidden by its `showWhen` doesn't block the run.
-    const cond = showWhenByKey[key];
-    if (cond) {
-      const current = values[cond.field];
-      const shown = Array.isArray(cond.equals)
-        ? (cond.equals as readonly unknown[]).includes(current)
-        : current === cond.equals;
-      if (!shown) return true;
-    }
-    const value = values[key];
-    return typeof value === "string"
-      ? value.trim() !== ""
-      : value !== undefined && value !== null;
-  });
+  tool: ClientTool;
 }
 
 /** The extension a filename claims, without its dot — "" if it has none. */
@@ -164,11 +129,12 @@ function rejectionMessage(r: RejectedFile): string {
 }
 
 /**
- * CLIENT COMPONENT. Loads exactly one tool via `TOOL_LOADERS[slug]` — never
- * the `TOOLS` barrel, which would pull every tool's pipeline into this page's
- * bundle (see docs/ADDING_A_TOOL.md and invariant 3, no engine in the core
- * bundle: a tool's option schema and defaults are small, but the barrel
- * still imports every other tool file alongside it).
+ * CLIENT COMPONENT. Receives its tool as a `ClientTool` prop (ADR-0019): the
+ * tool page, a server component, builds that plain data from the registry at
+ * build time, so it arrives with the page itself. This file never loads a tool
+ * module or the `TOOLS` barrel, which would put zod and every other tool's
+ * pipeline on the main thread. The real tool definition (and its zod schema)
+ * is only ever loaded inside the worker that runs the job.
  *
  * Owns: the dropzone, the options form (hidden when the tool has no
  * options), and the job list for this tool. Submission happens immediately
@@ -178,11 +144,10 @@ function rejectionMessage(r: RejectedFile): string {
  * against the actual dropped image, so those tools show a `CropEditor`
  * instead and submit only once its own "Crop" button is pressed.
  */
-export function ToolRunner({ slug }: ToolRunnerProps) {
-  const [tool, setTool] = useState<ToolDefinition | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [loadSlow, setLoadSlow] = useState(false);
-  const [options, setOptions] = useState<Record<string, unknown>>({});
+export function ToolRunner({ tool }: ToolRunnerProps) {
+  const [options, setOptions] = useState<Record<string, unknown>>(
+    tool.defaults,
+  );
   const [rejected, setRejected] = useState<RejectedFile[]>([]);
   const [zipping, setZipping] = useState(false);
   const [zipError, setZipError] = useState<string | null>(null);
@@ -243,79 +208,25 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
     options: Record<string, unknown>;
   } | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    const loader = (
-      TOOL_LOADERS as Record<
-        string,
-        (() => Promise<{ default: ToolDefinition }>) | undefined
-      >
-    )[slug];
-    if (!loader) {
-      setLoadError(`Unknown tool "${slug}".`);
-      return;
-    }
-    // A tool's code is a separate chunk. If its download stalls or fails
-    // (flaky network, a dropped connection), the page must say so instead of
-    // showing "Loading converter…" forever. Retrying the import() doesn't
-    // help: browsers cache a failed module fetch, so reloading the page is
-    // the real recovery, and that's what both messages offer.
-    const slow = setTimeout(() => {
-      if (!cancelled) setLoadSlow(true);
-    }, SLOW_LOAD_MS);
-    loader().then(
-      (mod) => {
-        if (cancelled) return;
-        clearTimeout(slow);
-        setLoadSlow(false);
-        setTool(mod.default);
-        setOptions(mod.default.defaults as Record<string, unknown>);
-      },
-      () => {
-        if (cancelled) return;
-        clearTimeout(slow);
-        setLoadError(
-          "Couldn't load this converter. Check your connection and reload the page.",
-        );
-      },
-    );
-    return () => {
-      cancelled = true;
-      clearTimeout(slow);
-    };
-  }, [slug]);
-
   const allJobs = jobStore(selectOrderedJobs);
-  const jobs = tool ? allJobs.filter((j) => j.toolSlug === tool.slug) : [];
+  const jobs = allJobs.filter((j) => j.toolSlug === tool.slug);
 
-  // Derived from the schema, not a per-tool flag: any tool whose options
-  // include a "crop" field (by convention every crop-*.ts tool names it
-  // exactly "crop" — see `cropField` in src/tools/_shared-options.ts) gets
-  // the crop-editor flow below instead of submitting on drop. Checked
-  // structurally (same as `hasOptions` below) rather than via
-  // `describeFields` (src/lib/options/fields.ts), so this file doesn't
-  // statically pull zod into every tool page's route bundle — that only
-  // ever loads lazily, inside the tool's own dynamically-imported chunk
-  // (`TOOL_LOADERS[slug]()` above).
-  const hasCropField = tool ? "crop" in tool.options.shape : false;
-  const isManyToOne = tool?.arity === "many-to-one";
-  const rangeStage = tool?.rangeStage;
-  // Plain string array on the tool definition itself (see its doc comment
-  // in `src/lib/registry/types.ts`) — read structurally, same as
-  // `hasCropField` above, so this file never imports zod just to check it.
-  const readiness = tool?.readiness;
+  // Derived from the field descriptors, not a per-tool flag: any tool whose
+  // options include a "crop" field (by convention every crop-*.ts tool names
+  // it exactly "crop" — see `cropField` in src/tools/_shared-options.ts) gets
+  // the crop-editor flow below instead of submitting on drop.
+  const hasCropField = tool.fields.some((f) => f.control === "crop");
+  const isManyToOne = tool.arity === "many-to-one";
+  const rangeStage = tool.rangeStage;
+  const readiness = tool.readiness;
   const hasRequiredOptions =
-    (tool?.requiredOptionKeys?.length ?? 0) > 0 || readiness !== undefined;
+    tool.fields.some((f) => f.required) || readiness !== undefined;
   /** Every `required` field is filled and the tool's own readiness rule
    * (if any) holds for these options. */
   const optionsReady = useCallback(
     (values: Readonly<Record<string, unknown>>) =>
-      requiredKeysSatisfied(
-        tool?.requiredOptionKeys ?? [],
-        values,
-        tool?.requiredOptionShowWhen,
-      ) &&
-      (readiness?.isReady(values) ?? true),
+      requiredFieldsSatisfied(tool.fields, values) &&
+      (readiness ? isReady(readiness, values) : true),
     [tool, readiness],
   );
 
@@ -334,7 +245,6 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   const ensureConsent = useCallback(
     async (proceed: () => void) => {
       setConsentDeclined(null);
-      if (!tool) return;
       const { pendingConsentPrompt } = await import(
         "@/lib/engines/consent-gate"
       );
@@ -390,7 +300,6 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
    * "Run again", so both honour the same staging rules. */
   const submitOrStage = useCallback(
     (accepted: AcceptedFile[]) => {
-      if (!tool) return;
       if (hasRequiredOptions && !optionsReady(options)) {
         // Staged, not submitted — see `handleSubmitPending`. A required
         // field already filled in *before* the drop (e.g. password typed
@@ -429,7 +338,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   const handleFiles = useCallback(
     (accepted: AcceptedFile[], rejectedFiles: RejectedFile[]) => {
       setRejected(rejectedFiles);
-      if (!tool || accepted.length === 0) return;
+      if (accepted.length === 0) return;
       if (hasCropField) {
         // Crop tools are never batch (`defineTool`'s `batch: false`), so
         // the dropzone itself already restricts this to one file — only
@@ -453,7 +362,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
       }
       submitOrStage(accepted);
     },
-    [tool, hasCropField, rangeStage, isManyToOne, submitOrStage],
+    [hasCropField, rangeStage, isManyToOne, submitOrStage],
   );
 
   // ADR-0015: the Converter island hands files over in-memory rather than
@@ -469,7 +378,6 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   // one-shot store on an unrelated re-render.
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally scoped to `tool` — see comment above.
   useEffect(() => {
-    if (!tool) return;
     const files = takePendingFiles(tool.slug);
     if (!files || files.length === 0) return;
     classifyFiles(files, tool.accepts).then(({ accepted, rejected }) => {
@@ -478,7 +386,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   }, [tool]);
 
   const handleSubmitPending = useCallback(() => {
-    if (!tool || pendingRequiredFiles.length === 0 || !canSubmit) return;
+    if (pendingRequiredFiles.length === 0 || !canSubmit) return;
     if (!optionsReady(options)) return;
     const files = pendingRequiredFiles;
     void ensureConsent(async () => {
@@ -500,7 +408,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   ]);
 
   const handleSubmitEstimateStaged = useCallback(() => {
-    if (!tool || estimateStagedFiles.length === 0) return;
+    if (estimateStagedFiles.length === 0) return;
     const files = estimateStagedFiles;
     void ensureConsent(async () => {
       const engine = await jobEngine();
@@ -514,7 +422,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   }, [tool, estimateStagedFiles, options, ensureConsent]);
 
   const handleSubmitOrdered = useCallback(() => {
-    if (!tool || orderedFiles.length < 2) return;
+    if (orderedFiles.length < 2) return;
     const files = orderedFiles;
     void ensureConsent(async () => {
       const engine = await jobEngine();
@@ -530,7 +438,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
 
   const handleCropSubmit = useCallback(
     (crop: Rect) => {
-      if (!tool || !cropTarget) return;
+      if (!cropTarget) return;
       const target = cropTarget;
       void ensureConsent(async () => {
         const engine = await jobEngine();
@@ -549,7 +457,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   }, []);
 
   const handleRangeSubmit = useCallback(() => {
-    if (!tool || !rangeTarget) return;
+    if (!rangeTarget) return;
     const target = rangeTarget;
     const used = options;
     void ensureConsent(async () => {
@@ -591,7 +499,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   }, [jobs]);
 
   const handleRerun = useCallback(async () => {
-    if (!tool || !lastRun) return;
+    if (!lastRun) return;
     const files = lastRun.files;
     // Same path as "Clear": cancels anything live, then `remove` revokes each
     // result's object URL.
@@ -621,7 +529,6 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
   ]);
 
   const handleDownloadAll = useCallback(async () => {
-    if (!tool) return;
     const doneIds = jobs.filter((j) => j.status === "done").map((j) => j.id);
     if (doneIds.length < 2) return;
 
@@ -657,7 +564,6 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
    * see `job-engine.ts`'s `outputBlobs`. */
   const handleDownloadJobOutputs = useCallback(
     async (id: string) => {
-      if (!tool) return;
       setZippingJobId(id);
       setJobZipError(null);
       try {
@@ -683,43 +589,9 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
     [tool],
   );
 
-  if (loadError || (!tool && loadSlow)) {
-    return (
-      <div role="status" className="flex flex-wrap items-center gap-3 text-sm">
-        <p className={loadError ? "text-danger" : "text-ink-muted"}>
-          {loadError ??
-            "This is taking longer than usual. Check your connection, or reload the page."}
-        </p>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className="min-h-11 rounded-full border border-border bg-surface px-4 font-medium text-ink outline-none hover:bg-canvas focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
-        >
-          Reload
-        </button>
-      </div>
-    );
-  }
-  if (!tool) {
-    // Same footprint as the loaded state's privacy line + drop area (160px),
-    // so the FAQ below doesn't jump when the tool's code arrives.
-    return (
-      <div className="flex flex-col gap-6">
-        <PrivacyNote size="sm" />
-        <div
-          role="status"
-          className="flex h-40 items-center justify-center rounded-lg border-2 border-dashed border-border text-sm text-ink-muted"
-        >
-          Loading converter…
-        </div>
-      </div>
-    );
-  }
-
-  // `hasFormFields` is computed by `defineTool` from the fields that actually
-  // render (crop and hidden ones don't), so crop tools with nothing else to
-  // show don't get an empty options column.
-  const hasOptions = tool.hasFormFields ?? false;
+  // Only fields that actually render count (crop and hidden ones don't), so
+  // crop tools with nothing else to show don't get an empty options column.
+  const hasOptions = tool.fields.some(isFormField);
   const showRerun = shouldShowRerun({
     hasOptions,
     hasCropField,
@@ -794,7 +666,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
             >
               {tool.actionLabel ?? "Convert"}
             </Button>
-            {readiness && !readiness.isReady(options) && (
+            {readiness && !isReady(readiness, options) && (
               <p className="text-sm text-ink-muted">{readiness.hint}</p>
             )}
           </div>
@@ -889,7 +761,7 @@ export function ToolRunner({ slug }: ToolRunnerProps) {
       {hasOptions && (
         <aside aria-label="Options" className="flex flex-col gap-5">
           <OptionsForm
-            schema={tool.options}
+            fields={tool.fields}
             defaults={tool.defaults}
             value={options}
             onChange={setOptions}

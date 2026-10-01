@@ -6,6 +6,7 @@ import {
   formatPercent,
   isFieldVisible,
   requiredFieldsSatisfied,
+  validateFields,
   validateOptions,
 } from "./fields";
 
@@ -156,14 +157,59 @@ describe("describeFields", () => {
     const schema = z.object({
       seed: z.number().meta({ label: "Seed", control: "number" }),
     });
-    expect(describeFields(schema)).toMatchObject([
-      {
-        key: "seed",
-        control: "number",
-        min: Number.NEGATIVE_INFINITY,
-        max: Number.POSITIVE_INFINITY,
-      },
+    // Unbounded sides are left out (JSON can't carry Infinity, and the
+    // generated client files are JSON); the form treats absent as unbounded.
+    expect(describeFields(schema)).toEqual([
+      { key: "seed", label: "Seed", control: "number" },
     ]);
+  });
+
+  it("flags .int(), .positive() and optional/default on a number field", () => {
+    const schema = z.object({
+      width: z
+        .number()
+        .int()
+        .positive()
+        .meta({ label: "Width", control: "number" })
+        .optional(),
+      count: z
+        .number()
+        .int()
+        .min(1)
+        .max(9)
+        .meta({ label: "Count", control: "slider" })
+        .default(3),
+    });
+    const [width, count] = describeFields(schema);
+    expect(width).toMatchObject({
+      min: 0,
+      exclusiveMin: true,
+      integer: true,
+      optional: true,
+    });
+    expect(count).toMatchObject({
+      min: 1,
+      max: 9,
+      step: 1,
+      integer: true,
+      optional: true,
+    });
+  });
+
+  it("refuses a zod check on a string/enum/boolean field the client form can't run", () => {
+    const schema = z.object({
+      pages: z.string().min(1).meta({ label: "Pages", control: "text" }),
+    });
+    expect(() => describeFields(schema)).toThrow(
+      /^\[options\] field pages: .*"min_length"/,
+    );
+  });
+
+  it("refuses a number check the client form can't run", () => {
+    const schema = z.object({
+      n: z.number().multipleOf(5).meta({ label: "N", control: "number" }),
+    });
+    expect(() => describeFields(schema)).toThrow(/"multiple_of"/);
   });
 
   it("describes a text control from a string field", () => {
@@ -525,6 +571,55 @@ describe("validateOptions", () => {
     if (!result.ok) {
       expect(result.errors.quality).toBeDefined();
       expect(result.errors.format).toBeDefined();
+    }
+  });
+});
+
+describe("validateFields", () => {
+  const schema = z.object({
+    percent: z
+      .number()
+      .int()
+      .min(10)
+      .max(100)
+      .meta({ label: "Size", control: "slider" })
+      .default(50),
+    width: z
+      .number()
+      .int()
+      .positive()
+      .meta({ label: "Width", control: "number" })
+      .optional(),
+    ratio: z.number().min(0).max(1).meta({ label: "Ratio", control: "number" }),
+  });
+  const fields = describeFields(schema);
+  const valid = { percent: 50, width: undefined, ratio: 0.5 };
+
+  it("accepts a valid value, and undefined for an optional/default field", () => {
+    expect(validateFields(fields, valid)).toEqual({});
+    expect(validateFields(fields, { ...valid, percent: undefined })).toEqual(
+      {},
+    );
+  });
+
+  it("words each problem exactly as zod does", () => {
+    // The form shows these strings; they were zod's before the main thread
+    // stopped running zod (ADR-0019), so any drift is a visible change.
+    const samples: Record<string, unknown>[] = [];
+    for (const percent of [5, 10, 100, 101, 50.5, Number.NaN, undefined, "x"]) {
+      samples.push({ ...valid, percent });
+    }
+    for (const width of [-1, 0, 1, 1.5, Number.NaN, undefined]) {
+      samples.push({ ...valid, width });
+    }
+    for (const ratio of [-0.1, 0, 1, 1.1, undefined, null]) {
+      samples.push({ ...valid, ratio });
+    }
+    for (const values of samples) {
+      const expected = validateOptions(schema, values);
+      const actual = validateFields(fields, values);
+      const expectedErrors = expected.ok ? {} : expected.errors;
+      expect(actual, JSON.stringify(values)).toEqual(expectedErrors);
     }
   });
 });

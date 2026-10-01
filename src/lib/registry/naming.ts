@@ -1,6 +1,5 @@
-import type { z } from "zod";
+import type { JobTool } from "./client-tool";
 import { FORMATS } from "./formats";
-import type { ToolDefinition } from "./types";
 
 /**
  * The output filename for a converted file. Uses the tool's own
@@ -13,14 +12,30 @@ import type { ToolDefinition } from "./types";
  * the input's own extension is kept exactly as given (case included)
  * instead, since the output is always the same format the input already
  * was.
+ *
+ * A `ClientTool` (ADR-0019) has no `outputName` function; where the real tool
+ * has one, it carries `outputExtFromOption` instead (the one shape in use:
+ * the extension is an option's value), which this applies the same way.
  */
 export function outputFileName(
-  tool: ToolDefinition,
+  tool: Pick<JobTool, "produces" | "outputName" | "outputExtFromOption">,
   inputName: string,
   opts: unknown,
 ): string {
   if (tool.outputName) {
-    return tool.outputName(inputName, opts as z.infer<typeof tool.options>);
+    // The tool's own function, typed for its own options schema.
+    return (tool.outputName as (n: string, o: unknown) => string)(
+      inputName,
+      opts,
+    );
+  }
+  if (tool.outputExtFromOption) {
+    const ext = (opts as Record<string, unknown>)[tool.outputExtFromOption];
+    if (typeof ext === "string" && ext !== "") {
+      const dot = inputName.lastIndexOf(".");
+      const base = dot === -1 ? inputName : inputName.slice(0, dot);
+      return `${base}.${ext}`;
+    }
   }
   if (tool.produces === "same") {
     return inputName;

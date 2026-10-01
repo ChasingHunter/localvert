@@ -4,6 +4,16 @@ import type { Category } from "./categories";
 import type { FormatId } from "./formats";
 
 /**
+ * A condition on another field of the same options object: that field's
+ * current value equals `equals` (or, for a list, one of its entries). Used by
+ * `showWhen` and by `ReadinessRule.onlyWhen`.
+ */
+export type ShowWhen = {
+  field: string;
+  equals: string | number | boolean | readonly (string | number | boolean)[];
+};
+
+/**
  * Augments zod's `GlobalMeta` (the type `.meta()` accepts) with the fields
  * Localvert's option forms are generated from. This makes `.meta({label,
  * control, unit})` on a tool's option schema type-checked against `control`'s
@@ -66,14 +76,7 @@ declare module "zod/v4/core" {
      * controlling field back doesn't lose what the user typed. See
      * `isFieldVisible` in `src/lib/options/fields.ts`.
      */
-    showWhen?: {
-      field: string;
-      equals:
-        | string
-        | number
-        | boolean
-        | readonly (string | number | boolean)[];
-    };
+    showWhen?: ShowWhen;
   }
 }
 
@@ -257,10 +260,22 @@ export interface OptionMeta {
   /** See the `required` doc comment on the `GlobalMeta` augmentation above. */
   required?: boolean;
   /** See the `showWhen` doc comment on the `GlobalMeta` augmentation above. */
-  showWhen?: {
-    field: string;
-    equals: string | number | boolean | readonly (string | number | boolean)[];
-  };
+  showWhen?: ShowWhen;
+}
+
+/**
+ * For a rule `required` can't express (e.g. "a width OR a height, but only in
+ * exact-size mode"), as plain data so the main thread can run it from the
+ * tool's generated client file without loading the tool (ADR-0019). Evaluated
+ * by `isReady` in `./readiness.ts`.
+ */
+export interface ReadinessRule {
+  /** Ready once at least one of these options holds a positive number. */
+  anyPositive: readonly string[];
+  /** The rule only applies while this holds; otherwise the tool is ready. */
+  onlyWhen?: ShowWhen;
+  /** Shown beside the disabled action button while the rule isn't met. */
+  hint: string;
 }
 
 export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
@@ -354,51 +369,10 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
    */
   rangeStage?: "trim" | "gif";
   /**
-   * Every option key whose `.meta({ required: true })` marks it as required
-   * to run, in schema declaration order. Computed by `defineTool` itself
-   * from `options`'s meta — never set this by hand in a tool file. Kept as
-   * a plain string array (not re-derived from the zod schema) so
-   * `ToolRunner` can read it without importing zod itself, the same reason
-   * `app`/`kind` are read structurally instead — see invariant 3 and
-   * `hasCropField`'s doc comment in `src/components/tool-runner.tsx`.
+   * While `isReady(readiness, options)` is false a dropped file waits and the
+   * action button stays disabled, with `readiness.hint` shown beside it.
    */
-  requiredOptionKeys?: readonly string[];
-  /**
-   * For a rule `required` can't express (e.g. "a width OR a height, but only
-   * in exact-size mode"). While `isReady(options)` is false a dropped file
-   * waits and the action button stays disabled, with `hint` shown beside it.
-   * A plain function, so `ToolRunner` can call it without importing zod.
-   */
-  readiness?: {
-    isReady: (options: Readonly<Record<string, unknown>>) => boolean;
-    hint: string;
-  };
-  /**
-   * Whether the options form has at least one field to show: any option
-   * whose control isn't `"crop"` (own editor) or `"hidden"` (engine-only).
-   * Computed by `defineTool`, never set by hand. `ToolRunner` reads it to
-   * decide whether to reserve the options column.
-   */
-  hasFormFields?: boolean;
-  /**
-   * For each `requiredOptionKeys` entry that also carries a `showWhen`, that
-   * condition (computed by `defineTool`, never set by hand). A required field
-   * that is currently hidden must not block the run, so `ToolRunner` skips
-   * the key while its condition is false.
-   */
-  requiredOptionShowWhen?: Readonly<
-    Record<
-      string,
-      {
-        field: string;
-        equals:
-          | string
-          | number
-          | boolean
-          | readonly (string | number | boolean)[];
-      }
-    >
-  >;
+  readiness?: ReadinessRule;
   /**
    * ADR-0013: this tool's whole job is to shrink a file, so its result must
    * never come back bigger than what was dropped. Most compress tools

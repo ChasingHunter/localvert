@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ReadinessRule } from "@/lib/registry/types";
 
 /**
  * The option fields shared by resize-image-jpg/png/webp. A flat file directly
@@ -89,13 +90,8 @@ export const resizeDefaults = {
  * "Exact size" needs a width or a height. Both blank means there is nothing
  * to do, so the file waits for one instead of passing through untouched.
  */
-export function resizeReady(options: Readonly<Record<string, unknown>>) {
-  if (options.resizeBy !== "exact") return true;
-  const has = (v: unknown) => typeof v === "number" && v > 0;
-  return has(options.width) || has(options.height);
-}
-
-export const resizeReadiness = {
-  isReady: resizeReady,
+export const resizeReadiness: ReadinessRule = {
+  anyPositive: ["width", "height"],
+  onlyWhen: { field: "resizeBy", equals: "exact" },
   hint: "Enter a width or a height to resize.",
 };

@@ -1,13 +1,14 @@
 import type { EngineInput, EngineResult } from "@/lib/engines";
 import { toEngineError } from "@/lib/engines";
 import { ENGINE_MANIFEST } from "@/lib/engines/manifest";
-import type {
-  Capabilities,
-  Category,
-  FormatId,
-  ToolDefinition,
-} from "@/lib/registry";
-import { CATEGORY_META, outputFileName } from "@/lib/registry";
+// Deep imports, not the `@/lib/registry` barrel: the barrel re-exports
+// `defineTool`, which would pull zod onto the main thread (ADR-0019).
+import type { Category } from "@/lib/registry/categories";
+import { CATEGORY_META } from "@/lib/registry/categories";
+import type { JobTool } from "@/lib/registry/client-tool";
+import type { FormatId } from "@/lib/registry/formats";
+import { outputFileName } from "@/lib/registry/naming";
+import type { Capabilities } from "@/lib/registry/types";
 import {
   NoEngineError,
   type ResolvedStep,
@@ -39,9 +40,11 @@ export interface SubmitFile {
 }
 
 export interface JobEngine {
-  /** Validates `options`, resolves the tool's pipeline, and dispatches one
-   * job per file. Returns the new jobs' ids, in the same order as `files`. */
-  submit(tool: ToolDefinition, files: SubmitFile[], options: unknown): string[];
+  /** Resolves the tool's pipeline and dispatches one job per file. Returns
+   * the new jobs' ids, in the same order as `files`. `options` are the form's
+   * raw values: the worker parses them against the tool's real zod schema
+   * before any engine runs (ADR-0019), so a bad value fails that job. */
+  submit(tool: JobTool, files: SubmitFile[], options: unknown): string[];
   cancel(id: string): void;
   cancelAll(): void;
   /** Zips the given jobs' outputs (every done job, if `ids` is omitted). */
@@ -110,15 +113,10 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
   }
 
   function submit(
-    tool: ToolDefinition,
+    tool: JobTool,
     files: SubmitFile[],
     options: unknown,
   ): string[] {
-    const parsed = tool.options.safeParse(options);
-    if (!parsed.success) {
-      throw new Error(`[job] invalid options: ${parsed.error.message}`);
-    }
-
     let resolved: ReturnType<typeof resolvePipeline> | NoEngineError;
     try {
       resolved = resolvePipeline(tool, capabilities);
@@ -128,7 +126,7 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
     }
 
     if (tool.arity === "many-to-one") {
-      return submitManyToOne(tool, files, resolved, parsed.data);
+      return submitManyToOne(tool, files, resolved, options);
     }
 
     const ids: string[] = [];
@@ -165,7 +163,7 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
         id,
         file,
         steps: buildSteps(tool, resolved, format),
-        parsedOptions: parsed.data,
+        options,
       });
     }
 
@@ -181,10 +179,10 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
    * declared pipeline step falls back to).
    */
   function submitManyToOne(
-    tool: ToolDefinition,
+    tool: JobTool,
     files: SubmitFile[],
     resolved: ReturnType<typeof resolvePipeline> | NoEngineError,
-    parsedOptions: unknown,
+    options: unknown,
   ): string[] {
     if (files.length === 0) return [];
 
@@ -225,7 +223,7 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
       file: first.file,
       inputs: files.map((f): EngineInput => ({ kind: "blob", blob: f.file })),
       steps: buildSteps(tool, resolved, first.format),
-      parsedOptions,
+      options,
     });
 
     return [id];
@@ -245,7 +243,7 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
    * output is always the same format as its input.
    */
   function buildSteps(
-    tool: ToolDefinition,
+    tool: JobTool,
     resolved: readonly ResolvedStep[],
     format: FormatId,
   ): RunStep[] {
@@ -269,18 +267,18 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
   }
 
   interface DispatchArgs {
-    tool: ToolDefinition;
+    tool: JobTool;
     id: string;
     file: File;
     /** ADR-0008: every input file, in order, for a many-to-one job.
      * Undefined for every other arity — `file` above is the whole input. */
     inputs?: readonly EngineInput[];
     steps: readonly RunStep[];
-    parsedOptions: unknown;
+    options: unknown;
   }
 
   function dispatch(args: DispatchArgs): void {
-    const { tool, id, file, inputs, steps, parsedOptions } = args;
+    const { tool, id, file, inputs, steps, options } = args;
     const controller = new AbortController();
     inflight.set(id, { controller });
 
@@ -303,7 +301,8 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
             input: { kind: "blob", blob: file },
             inputs,
             steps,
-            options: parsedOptions as Record<string, unknown>,
+            toolSlug: tool.slug,
+            options: options as Record<string, unknown>,
           },
           {
             signal: controller.signal,
@@ -312,7 +311,7 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
             },
           },
         );
-        await applyResult({ tool, id, file, parsedOptions, result });
+        await applyResult({ tool, id, file, options, result });
       } catch (e) {
         applyError(id, e);
       } finally {
@@ -328,15 +327,15 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
   }
 
   interface ApplyResultArgs {
-    tool: ToolDefinition;
+    tool: JobTool;
     id: string;
     file: File;
-    parsedOptions: unknown;
+    options: unknown;
     result: EngineResult;
   }
 
   async function applyResult(args: ApplyResultArgs): Promise<void> {
-    const { tool, id, file, parsedOptions, result } = args;
+    const { tool, id, file, options, result } = args;
 
     if (result.kind === "opfs") {
       // ADR-0013: compress-audio's/compress-video's never-larger-than-input check — see
@@ -346,7 +345,7 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
       // back the original file unchanged.
       if (tool.neverLarger && result.size >= file.size) {
         await deleteOpfsFile(result.path);
-        const name = outputFileName(tool, file.name, parsedOptions);
+        const name = outputFileName(tool, file.name, options);
         const url = createObjectURL(file);
         outputBlobs.set(id, [{ name, blob: file }]);
         store.getState().update(id, {
@@ -375,7 +374,7 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
       // exactly like every other blob output from this point on, including
       // the zip sink, which only ever needed a `{name, blob}` pair.
       const opfsFile = await readOpfsFile(result.path);
-      const name = outputFileName(tool, file.name, parsedOptions);
+      const name = outputFileName(tool, file.name, options);
       const url = createObjectURL(opfsFile);
       outputBlobs.set(id, [{ name, blob: opfsFile }]);
 
@@ -445,7 +444,7 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
     // that isn't actually smaller than the input is discarded in favour of
     // the original file unchanged.
     if (tool.neverLarger && blob.size >= file.size) {
-      const name = outputFileName(tool, file.name, parsedOptions);
+      const name = outputFileName(tool, file.name, options);
       const url = createObjectURL(file);
       outputBlobs.set(id, [{ name, blob: file }]);
       store.getState().update(id, {
@@ -467,7 +466,7 @@ export function createJobEngine(opts: JobEngineOptions): JobEngine {
       return;
     }
 
-    const name = outputFileName(tool, file.name, parsedOptions);
+    const name = outputFileName(tool, file.name, options);
     const url = createObjectURL(blob);
     outputBlobs.set(id, [{ name, blob }]);
 

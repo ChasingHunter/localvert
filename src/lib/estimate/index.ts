@@ -173,7 +173,7 @@ function pdfEstimate(
  * ADR-0017 only promises estimates "where the size is arithmetic").
  */
 export function computeEstimateText(
-  tool: ToolDefinition,
+  tool: Pick<ToolDefinition, "estimateKind">,
   options: Readonly<Record<string, unknown>>,
   probe: ProbeResult,
   sourceBytes: number,

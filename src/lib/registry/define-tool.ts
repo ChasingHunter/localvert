@@ -12,36 +12,16 @@ import type { ToolDefinition } from "./types";
  * skips the probe and runs zod's (still fully correct, just interpreted)
  * validator path instead — zod's own sanctioned escape hatch for exactly
  * this case. Set once here, at this module's top level: every tool file
- * calls `defineTool(...)` at module scope (`TOOL_LOADERS[slug]()` runs it),
- * and `defineTool` below is what actually touches a tool's zod schema first
- * (`options.safeParse(defaults)`) — so this runs before any zod validator in
- * the app is ever compiled, regardless of which tool loads first. Was
- * previously set from `tool-runner.tsx`, which worked but shipped zod in
- * every tool page's first-load bundle just to make this one call; living
- * here instead keeps zod out of the core bundle entirely (it now only loads
- * as part of a tool's own lazily-loaded chunk).
+ * calls `defineTool(...)` at module scope (the worker's `TOOL_LOADERS[slug]()`
+ * runs it), and `defineTool` below is what actually touches a tool's zod
+ * schema first (`options.safeParse(defaults)`) — so this runs before any zod
+ * validator in that worker is ever compiled, regardless of which tool loads
+ * first. Zod only ever runs in a worker (ADR-0019), which is why this lives
+ * here and not in a component.
  */
 z.config({ jitless: true });
 
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
-
-/**
- * A field's `.meta()` can sit under `.optional()`/`.default()` — those
- * wrappers clone the inner type, so the clone `.meta()` was registered on
- * survives underneath. Mirrors (as a small local copy, not a shared import)
- * `src/lib/options/fields.ts`'s own `unwrap`: that module is a layer built
- * on top of the registry, and the registry doesn't reach back up into it.
- */
-function unwrapField(field: z.core.$ZodType): z.core.$ZodType {
-  const { type } = field._zod.def;
-  if (type === "optional" || type === "default") {
-    const { innerType } = field._zod.def as unknown as {
-      innerType: z.core.$ZodType;
-    };
-    return unwrapField(innerType);
-  }
-  return field;
-}
 
 /**
  * Validates a tool definition at definition time — i.e. as soon as the tool
@@ -134,37 +114,6 @@ export function defineTool<S extends z.ZodObject>(
           `"when" — otherwise the step can resolve to nothing on some browser`,
       );
     }
-  });
-
-  def.requiredOptionKeys = Object.entries(def.options.shape)
-    .filter(([, field]) => {
-      const meta = z.globalRegistry.get(unwrapField(field as z.core.$ZodType));
-      return meta?.required === true;
-    })
-    .map(([key]) => key);
-
-  // A required field can also be conditional (`showWhen`): hidden means not
-  // required, so keep the condition next to the key for the UI to check.
-  const showWhenByKey: Record<
-    string,
-    NonNullable<ToolDefinition["requiredOptionShowWhen"]>[string]
-  > = {};
-  for (const key of def.requiredOptionKeys) {
-    const field = def.options.shape[key];
-    const showWhen =
-      field === undefined
-        ? undefined
-        : z.globalRegistry.get(unwrapField(field as z.core.$ZodType))?.showWhen;
-    if (showWhen) showWhenByKey[key] = showWhen;
-  }
-  def.requiredOptionShowWhen = showWhenByKey;
-
-  // Same rule OptionsForm applies: crop and hidden fields never render.
-  def.hasFormFields = Object.values(def.options.shape).some((field) => {
-    const control = z.globalRegistry.get(
-      unwrapField(field as z.core.$ZodType),
-    )?.control;
-    return control !== "crop" && control !== "hidden";
   });
 
   return def;
