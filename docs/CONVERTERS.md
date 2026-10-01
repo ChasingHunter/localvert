@@ -32,6 +32,10 @@ level, not through the full UI.
 | `jpg-to-jxl` | JPEG | JPEG XL | jsquash-jpeg + jsquash-jxl | Yes | Quality + effort + lossless; strips EXIF (incl. GPS) |
 | `png-to-jpg` | PNG | JPEG | jsquash-png + jsquash-jpeg | Yes | Quality + background fill for transparency; strips metadata |
 | `png-to-webp` | PNG | WebP | jsquash-png + jsquash-webp | Yes | Quality + lossless; transparency preserved |
+| `heic-to-webp` | HEIC | WebP | heic → jsquash-webp | Yes | Primary image only; quality + lossless; strips EXIF (incl. GPS) |
+| `avif-to-webp` | AVIF | WebP | jsquash-avif → jsquash-webp | Yes | Quality + lossless; transparency preserved |
+| `gif-to-webp` | GIF | WebP | canvas → jsquash-webp | Yes | First frame only (no animation); transparency preserved |
+| `svg-to-webp` | SVG | WebP | resvg → jsquash-webp | Yes | Optional output width; transparency preserved; text needs an embedded font to render |
 | `png-to-avif` | PNG | AVIF | jsquash-png + jsquash-avif | Yes | Quality + speed; transparency preserved |
 | `png-to-jxl` | PNG | JPEG XL | jsquash-png + jsquash-jxl | Yes | Quality + effort + lossless; transparency preserved |
 | `webp-to-jpg` | WebP | JPEG | jsquash-webp / jsquash-jpeg | Yes | Quality + background fill; strips EXIF (incl. GPS) |

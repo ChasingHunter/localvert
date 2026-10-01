@@ -42,6 +42,7 @@ import wordToJpg from "@/tools/document/word-to-jpg";
 import wordToPdf from "@/tools/document/word-to-pdf";
 import avifToJpg from "@/tools/image/avif-to-jpg";
 import avifToPng from "@/tools/image/avif-to-png";
+import avifToWebp from "@/tools/image/avif-to-webp";
 import bmpToJpg from "@/tools/image/bmp-to-jpg";
 import bmpToPng from "@/tools/image/bmp-to-png";
 import compressJpg from "@/tools/image/compress-jpg";
@@ -52,8 +53,10 @@ import cropPng from "@/tools/image/crop-png";
 import cropWebp from "@/tools/image/crop-webp";
 import gifToJpg from "@/tools/image/gif-to-jpg";
 import gifToPng from "@/tools/image/gif-to-png";
+import gifToWebp from "@/tools/image/gif-to-webp";
 import heicToJpg from "@/tools/image/heic-to-jpg";
 import heicToPng from "@/tools/image/heic-to-png";
+import heicToWebp from "@/tools/image/heic-to-webp";
 import icoToPng from "@/tools/image/ico-to-png";
 import imageToText from "@/tools/image/image-to-text";
 import jpgToAvif from "@/tools/image/jpg-to-avif";
@@ -87,6 +90,7 @@ import rotateWebp from "@/tools/image/rotate-webp";
 import stripExif from "@/tools/image/strip-exif";
 import svgToJpg from "@/tools/image/svg-to-jpg";
 import svgToPng from "@/tools/image/svg-to-png";
+import svgToWebp from "@/tools/image/svg-to-webp";
 import tiffToJpg from "@/tools/image/tiff-to-jpg";
 import tiffToPng from "@/tools/image/tiff-to-png";
 import webpToJpg from "@/tools/image/webp-to-jpg";
@@ -176,6 +180,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   wordToPdf,
   avifToJpg,
   avifToPng,
+  avifToWebp,
   bmpToJpg,
   bmpToPng,
   compressJpg,
@@ -186,8 +191,10 @@ export const TOOLS: readonly ToolDefinition[] = [
   cropWebp,
   gifToJpg,
   gifToPng,
+  gifToWebp,
   heicToJpg,
   heicToPng,
+  heicToWebp,
   icoToPng,
   imageToText,
   jpgToAvif,
@@ -221,6 +228,7 @@ export const TOOLS: readonly ToolDefinition[] = [
   stripExif,
   svgToJpg,
   svgToPng,
+  svgToWebp,
   tiffToJpg,
   tiffToPng,
   webpToJpg,
