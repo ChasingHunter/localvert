@@ -26,6 +26,7 @@
     "upload-r2": "node scripts/upload-r2.ts",
     "preview": "pnpm build && wrangler dev --config infra/wrangler.jsonc --port 8788",
     "check-sizes": "node scripts/check-sizes.ts",
+    "lighthouse": "node scripts/lighthouse.ts",
     "check": "pnpm gen && pnpm typecheck && pnpm lint && pnpm test",
     "check-engine-eval": "node scripts/check-engine-eval.ts",
     "verify": "pnpm check && pnpm build && pnpm check-sizes && pnpm check-engine-eval"

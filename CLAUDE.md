@@ -21,6 +21,7 @@ upload path, no telemetry of file content.
 | `pnpm gen` | Regenerate `src/tools/index.ts` + `src/lib/engines/manifest.ts` — *lands in Phase 0.4* |
 | `pnpm sync-engines` | Copy wasm assets from `node_modules` into `public/engines/` — *lands in Phase 0.7* |
 | `pnpm check-sizes` | Core bundle budget + engine-leak gate against a built `out/` |
+| `pnpm lighthouse` | Optional, local only: Lighthouse scores for the main pages (mobile + desktop) against a served `out/`. Not in `verify` or CI |
 | `pnpm check-engine-eval` | Fails if shipped engine JS or a Next chunk calls `new Function`/`eval` (blocked by our CSP) |
 | `pnpm check` | typecheck + lint + test — the bar for a normal commit |
 | **`pnpm verify`** | **`pnpm check` + build + size budget — the full gate: build/config changes, end of a batch, before any push** |
