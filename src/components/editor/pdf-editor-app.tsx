@@ -1475,6 +1475,9 @@ function Editor({
             // never runs. No error, no rejection: the drag "succeeds" as a
             // no-op image drag instead.
             draggable={false}
+            // Not in the plugin's declared props, but it spreads them onto
+            // the <img>: a name for the page bitmap.
+            {...{ alt: `Page ${layout.pageIndex + 1}` }}
           />
           <SelectionLayer
             documentId={documentId}
@@ -1973,6 +1976,10 @@ function Editor({
                   documentId={documentId}
                   meta={meta}
                   style={{ width: meta.width, height: meta.height }}
+                  // The button already says "Go to page N"; the thumbnail is
+                  // decoration. `alt` isn't in the plugin's declared props,
+                  // but it spreads them onto the <img>.
+                  {...{ alt: "" }}
                 />
                 <span className="text-xs text-ink-muted">
                   {meta.pageIndex + 1}
@@ -1984,7 +1991,7 @@ function Editor({
 
         <Viewport
           documentId={documentId}
-          className={`flex-1 overflow-auto rounded-md border border-border ${EDITOR_CANVAS_BG}`}
+          className={`flex-1 overflow-auto rounded-md border border-border outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas ${EDITOR_CANVAS_BG}`}
           // `<Viewport>` sets its own inline `style={{ height: "100%", ... }}`
           // internally (see @embedpdf/plugin-viewport/react), which as an
           // inline style always wins over a Tailwind height class on the
@@ -2004,6 +2011,11 @@ function Editor({
           // joins (pinch), so one-finger scroll behaves exactly as it did
           // before this feature existed.
           style={{ height: 480, touchAction: "pan-x pan-y" }}
+          // A scrolling region has to be reachable by keyboard to be
+          // scrollable by keyboard.
+          role="region"
+          aria-label="Document pages"
+          tabIndex={0}
           onWheel={onWheel}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
