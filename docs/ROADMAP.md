@@ -263,7 +263,7 @@ one repo, one engine; make PDF a front door, not a separate product):
 - [x] (2026-10-01) HEIC and RAW fixed in production (engine code called `new Function`, blocked by
       the CSP); the build now fails if any shipped script does that
 
-- [ ] i18n
+- Dropped (owner, 2026-10-01): i18n. Not worth the upkeep for this product; the site stays English.
 - [x] (2026-10-01) Installable app with `file_handlers` and `share_target`: open files from the OS or
       the share sheet (ADR-0018)
 - [x] (2026-10-01) /storage page: downloaded converters with sizes, remove one or all, persistent storage
