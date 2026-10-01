@@ -100,6 +100,12 @@ describe("findForbiddenMarkers", () => {
     ]);
   });
 
+  it("flags zod's class-name literal (ADR-0019)", () => {
+    expect(findForbiddenMarkers('$constructor("$ZodType",(e,t)=>{})')).toEqual([
+      "$ZodType",
+    ]);
+  });
+
   it("reports both kinds of marker when a chunk carries both", () => {
     expect(
       findForbiddenMarkers("localvert-engine:pdfium ... @embedpdf/engines"),

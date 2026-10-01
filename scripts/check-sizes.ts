@@ -20,7 +20,8 @@
  *      from inside a worker or an app-mode tool's own lazily-loaded chunk
  *      (see "Engines" in docs/ARCHITECTURE.md); if either marker shows up in
  *      a chunk a page loads up front, something heavy leaked into the core
- *      bundle. Minifiers keep string literals, so grepping the built output
+ *      bundle. The literal `$ZodType` (zod itself, ADR-0019) is the same kind
+ *      of marker: zod belongs in the worker, not in any first-load chunk. Minifiers keep string literals, so grepping the built output
  *      for these markers is a reliable, mechanical check — no source maps or
  *      bundle analysis needed.
  *   3. a page references a script file that isn't in `out/` — broken build
@@ -62,6 +63,11 @@ const ENGINE_MARKER_RE = /localvert-engine:[\w-]+/g;
 const FORBIDDEN_FIRST_LOAD_SUBSTRINGS = [
   ENGINE_MARKER_PREFIX,
   "@embedpdf",
+  // zod's own class-name literal. It must not run on the main thread
+  // (ADR-0019): the tool page works from generated plain data, and only the
+  // job worker imports the tool modules. A first-load chunk carrying this
+  // means a component statically imported a tool or `defineTool` again.
+  "$ZodType",
 ] as const;
 
 /**
