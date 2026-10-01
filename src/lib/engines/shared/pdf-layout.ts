@@ -36,10 +36,116 @@ export type HeadingLevel = 0 | 1 | 2 | 3;
 export interface LayoutParagraph {
   runs: LayoutRun[];
   heading: HeadingLevel;
+  /** Baseline of the paragraph's first line, PDF user space (y up). Only
+   * used to slot images in between paragraphs (`orderPageBlocks`). */
+  y?: number;
+}
+
+/** One picture from the PDF (docs/adr/0014-pdf-to-word.md, "Images"). */
+export interface LayoutImage {
+  /** Top edge on the page, PDF user space (y up) — compared with
+   * `LayoutParagraph.y`. */
+  top: number;
+  /** Size as drawn on the page, in points. */
+  widthPt: number;
+  heightPt: number;
+  /** Width of the page the image sits on, in points: the image's width in
+   * the docx is this same fraction of the content width. */
+  pageWidthPt: number;
+  /** JPEG passes through untouched; everything else is PNG. */
+  mime: "image/jpeg" | "image/png";
+  /** The encoded image file, base64 (the hand-off between engines is JSON). */
+  data: string;
 }
 
 export interface LayoutPage {
   paragraphs: LayoutParagraph[];
+  images?: LayoutImage[];
+}
+
+/** Images under this many pixels on either side are rules, bullets and dots,
+ * not pictures. */
+export const MIN_IMAGE_PX = 24;
+
+/**
+ * PDFium renders an image object at its size on the page (72 dpi), which
+ * throws away most of a photo's pixels. Scaling the object up by this factor
+ * first makes the rendered bitmap match the image's own pixel size, capped at
+ * `maxSide` pixels on the longest side. Never below 1: a picture drawn
+ * larger than its pixels is not shrunk.
+ */
+export function imageRenderScale(
+  pxWidth: number,
+  pxHeight: number,
+  widthPt: number,
+  heightPt: number,
+  maxSide: number,
+): number {
+  const native = Math.max(pxWidth / widthPt, pxHeight / heightPt);
+  const cap = maxSide / Math.max(widthPt, heightPt);
+  return Math.max(1, Math.min(native, cap));
+}
+
+export type PageBlock =
+  | { kind: "paragraph"; paragraph: LayoutParagraph }
+  | { kind: "image"; image: LayoutImage };
+
+/**
+ * Merges a page's images into its paragraphs by vertical position. Paragraph
+ * order is kept exactly as given; an image goes in front of the first
+ * paragraph whose first-line baseline sits below the image's top edge, so a
+ * caption under a picture follows it and text above it stays above. Text
+ * beside an image therefore comes after it. Images with equal tops keep their
+ * input order. A paragraph with no `y` (older JSON) never pulls an image in
+ * front of itself; leftover images go last.
+ */
+export function orderPageBlocks(
+  paragraphs: readonly LayoutParagraph[],
+  images: readonly LayoutImage[] = [],
+): PageBlock[] {
+  const pending = images
+    .map((image, index) => ({ image, index }))
+    .sort((a, b) => b.image.top - a.image.top || a.index - b.index)
+    .map((e) => e.image);
+  const blocks: PageBlock[] = [];
+  let next = 0;
+  for (const paragraph of paragraphs) {
+    if (paragraph.y !== undefined) {
+      while (next < pending.length && (pending[next]?.top ?? 0) > paragraph.y) {
+        const image = pending[next++];
+        if (image) blocks.push({ kind: "image", image });
+      }
+    }
+    blocks.push({ kind: "paragraph", paragraph });
+  }
+  while (next < pending.length) {
+    const image = pending[next++];
+    if (image) blocks.push({ kind: "image", image });
+  }
+  return blocks;
+}
+
+/**
+ * Size of an image in the docx, in EMU (914400 per inch): the same fraction
+ * of the content width as it takes of the PDF page's width, never wider than
+ * the content area, never taller than it either (aspect ratio kept).
+ */
+export function imageExtentEmu(
+  image: Pick<LayoutImage, "widthPt" | "heightPt" | "pageWidthPt">,
+  contentWidthEmu: number,
+  contentHeightEmu: number,
+): { cx: number; cy: number } {
+  const aspect = image.heightPt / image.widthPt;
+  let cx = Math.min(
+    contentWidthEmu,
+    (image.widthPt / image.pageWidthPt) * contentWidthEmu,
+  );
+  let cy = cx * aspect;
+  if (cy > contentHeightEmu) {
+    cy = contentHeightEmu;
+    cx = cy / aspect;
+  }
+  return { cx: Math.max(1, Math.round(cx)), cy: Math.max(1, Math.round(cy)) };
 }
 
 export interface LayoutDocument {
@@ -248,7 +354,11 @@ export function groupLinesIntoParagraphs(
       }
     }
     const avgSize = totalWeight > 0 ? sizeWeighted / totalWeight : bodySizePt;
-    paragraphs.push({ runs, heading: classifyHeading(avgSize, bodySizePt) });
+    paragraphs.push({
+      runs,
+      heading: classifyHeading(avgSize, bodySizePt),
+      y: current[0]?.y,
+    });
     current = [];
   }
 

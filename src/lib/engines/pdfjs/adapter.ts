@@ -20,9 +20,14 @@ import {
   groupItemsIntoLines,
   groupLinesIntoParagraphs,
   type LayoutDocument,
+  type LayoutImage,
   type LayoutPage,
   type RawItem,
 } from "../shared/pdf-layout";
+import {
+  openPdfiumImages,
+  type PdfiumImageSession,
+} from "../shared/pdfium-images";
 import type {
   EngineAdapter,
   EngineInput,
@@ -696,6 +701,38 @@ function resolveFontStyle(
   };
 }
 
+/** Opens the PDF in PDFium for picture extraction. Failure to load PDFium
+ * (offline with the asset uncached, say) is logged, not fatal: the Word file
+ * just comes out without pictures. A cancel still propagates. */
+async function openImages(
+  bytes: Uint8Array,
+  signal: AbortSignal,
+): Promise<PdfiumImageSession | null> {
+  try {
+    return await openPdfiumImages(
+      bytes,
+      `${ENGINE_MANIFEST.pdfium.baseUrl}pdfium.wasm`,
+      signal,
+    );
+  } catch (e) {
+    signal.throwIfAborted();
+    console.warn("pdf-to-word: pictures skipped, PDFium failed to load", e);
+    return null;
+  }
+}
+
+async function pageImagesOrEmpty(
+  session: PdfiumImageSession,
+  pageIndex: number,
+): Promise<LayoutImage[]> {
+  try {
+    return await session.pageImages(pageIndex);
+  } catch (e) {
+    console.warn(`pdf-to-word: pictures on page ${pageIndex + 1} skipped`, e);
+    return [];
+  }
+}
+
 /**
  * extractLayout (pdf -> json, `pdf-to-word`'s first step): reconstructs each
  * selected page's text into `LayoutPage`s (paragraphs of styled runs, see
@@ -705,9 +742,10 @@ function resolveFontStyle(
  * `CanvasFactory`, same as `runExtractText`) but does call
  * `page.getOperatorList()` per page purely to populate `page.commonObjs`
  * with the fonts that page's text uses (see `resolveFontStyle`) — its own
- * return value is otherwise unused, since this op ships no image support
- * (see this file's own `runExtractLayout`-adjacent note in
- * docs/adr/0014-pdf-to-word.md for why).
+ * return value is otherwise unused. Pictures are not read through pdf.js at
+ * all: PDFium lists each page's image objects with their page-space bounds
+ * (`../shared/pdfium-images.ts`, docs/adr/0014-pdf-to-word.md "Images") and
+ * they ride along in each `LayoutPage.images`.
  *
  * Body size (what every heading ratio in `classifyHeading` is measured
  * against) can only be known after every selected page's sizes are in hand,
@@ -728,6 +766,12 @@ async function runExtractLayout(
 
   const bytes = new Uint8Array(await inputToArrayBuffer(input));
   signal.throwIfAborted();
+
+  // Pictures come from PDFium (shared/pdfium-images.ts). Opened before
+  // getDocument() because pdf.js may take ownership of `bytes`; PDFium copies
+  // them into its own heap here. Optional: if PDFium can't load, the document
+  // still converts, text only.
+  const pdfium = await openImages(bytes, signal);
 
   const loadingTask = pdfjsLib.getDocument({
     data: bytes,
@@ -778,6 +822,7 @@ async function runExtractLayout(
       );
     }
 
+    const pagesImages: LayoutImage[][] = [];
     const pagesRawItems: RawItem[][] = [];
     const sizeSamples: { sizePt: number; length: number }[] = [];
 
@@ -827,14 +872,18 @@ async function runExtractLayout(
       } finally {
         page.cleanup();
       }
+      pagesImages.push(
+        pdfium ? await pageImagesOrEmpty(pdfium, pageIndex) : [],
+      );
       onProgress?.(((i + 1) / indices.length) * 0.9);
     }
 
     const bodySizePt = dominantBodySize(sizeSamples);
-    const pages: LayoutPage[] = pagesRawItems.map((rawItems) => {
+    const pages: LayoutPage[] = pagesRawItems.map((rawItems, n) => {
       const lines = groupItemsIntoLines(rawItems);
       const paragraphs = groupLinesIntoParagraphs(lines, bodySizePt);
-      return { paragraphs };
+      const images = pagesImages[n] ?? [];
+      return images.length > 0 ? { paragraphs, images } : { paragraphs };
     });
     const layoutDoc: LayoutDocument = { pages };
 
@@ -846,6 +895,7 @@ async function runExtractLayout(
       mime: FORMATS.json.mime,
     };
   } finally {
+    pdfium?.close();
     await loadingTask.destroy();
   }
 }

@@ -12,6 +12,10 @@ import { defineTool } from "@/lib/registry";
  * `transcode` op turns that JSON into an actual `.docx`
  * (`src/lib/engines/docx/writer.ts`), pure JS, no wasm. Same "json" hand-off
  * pattern `epub-to-pdf` uses for its own intermediate (there, html).
+ *
+ * Pictures come from PDFium (the PDF editor's wasm, fetched by the `pdfjs`
+ * engine's `extractLayout` op, not a pipeline step of its own: the PDF's
+ * bytes only reach the first step). See ADR-0014's "Images" addendum.
  */
 const options = z.object({
   pageBreaks: z.boolean().meta({
@@ -27,7 +31,7 @@ export default defineTool({
   categoryRank: 1,
   title: "PDF to Word",
   description:
-    "Convert a PDF to an editable .docx. Layout is approximate and text-only: columns, tables and images don't carry over. Scanned PDFs need OCR first: see PDF to Searchable PDF.",
+    "Convert a PDF to an editable .docx. Text, headings and pictures carry over; columns, tables and vector drawings don't. Scanned pages stay pictures: run OCR first (PDF to Searchable PDF).",
 
   accepts: ["pdf"],
   produces: "docx",

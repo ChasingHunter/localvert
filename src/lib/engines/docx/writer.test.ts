@@ -1,5 +1,6 @@
 import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
+import { bytesToBase64 } from "../shared/base64";
 import type { LayoutDocument } from "../shared/pdf-layout";
 import { buildDocx, escapeXml, stripIllegalXmlChars } from "./writer";
 
@@ -258,5 +259,95 @@ describe("stripIllegalXmlChars", () => {
 describe("escapeXml", () => {
   it("escapes all five XML special characters", () => {
     expect(escapeXml(`&<>"'`)).toBe("&amp;&lt;&gt;&quot;&apos;");
+  });
+});
+
+describe("buildDocx images", () => {
+  const JPEG = Uint8Array.from([0xff, 0xd8, 0xff, 0xd9, 1, 2, 3]);
+  const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 9, 8, 7]);
+  const b64 = (bytes: Uint8Array) => bytesToBase64(bytes);
+  const para = (text: string, y: number) => ({
+    runs: [{ text, bold: false, italic: false, sizePt: 11 }],
+    heading: 0 as const,
+    y,
+  });
+  const image = (
+    mime: "image/jpeg" | "image/png",
+    bytes: Uint8Array,
+    top: number,
+  ) => ({
+    top,
+    widthPt: 306,
+    heightPt: 153,
+    pageWidthPt: 612,
+    mime,
+    data: b64(bytes),
+  });
+
+  it("stores media parts, relationships and content types", () => {
+    const doc: LayoutDocument = {
+      pages: [
+        {
+          paragraphs: [para("before", 700), para("after", 300)],
+          images: [
+            image("image/jpeg", JPEG, 500),
+            image("image/png", PNG, 250),
+          ],
+        },
+      ],
+    };
+    const files = unzipDocx(buildDocx(doc, { pageBreaks: false }));
+
+    expect(Array.from(files["word/media/image1.jpeg"] ?? [])).toEqual(
+      Array.from(JPEG),
+    );
+    expect(Array.from(files["word/media/image2.png"] ?? [])).toEqual(
+      Array.from(PNG),
+    );
+
+    const rels = strFromU8(files["word/_rels/document.xml.rels"] as Uint8Array);
+    expect(rels).toContain('Id="rId2"');
+    expect(rels).toContain('Target="media/image1.jpeg"');
+    expect(rels).toContain('Target="media/image2.png"');
+
+    const types = strFromU8(files["[Content_Types].xml"] as Uint8Array);
+    expect(types).toContain('Extension="png" ContentType="image/png"');
+    expect(types).toContain('Extension="jpeg" ContentType="image/jpeg"');
+
+    const xml = strFromU8(files["word/document.xml"] as Uint8Array);
+    const at = (needle: string) => xml.indexOf(needle);
+    expect(at("before")).toBeLessThan(at('r:embed="rId2"'));
+    expect(at('r:embed="rId2"')).toBeLessThan(at("after"));
+    expect(at("after")).toBeLessThan(at('r:embed="rId3"'));
+    // Half the page width = half of 6.5in, 2:1.
+    expect(xml).toContain(
+      `<wp:extent cx="${3.25 * 914400}" cy="${1.625 * 914400}"/>`,
+    );
+  });
+
+  it("stores a picture repeated on several pages once", () => {
+    const doc: LayoutDocument = {
+      pages: [
+        { paragraphs: [], images: [image("image/png", PNG, 500)] },
+        { paragraphs: [], images: [image("image/png", PNG, 500)] },
+      ],
+    };
+    const files = unzipDocx(buildDocx(doc, { pageBreaks: true }));
+    expect(
+      Object.keys(files).filter((n) => n.startsWith("word/media/")),
+    ).toEqual(["word/media/image1.png"]);
+    const xml = strFromU8(files["word/document.xml"] as Uint8Array);
+    expect(xml.match(/r:embed="rId2"/g)).toHaveLength(2);
+    // docPr ids stay unique even though the media part is shared.
+    expect(xml).toContain('<wp:docPr id="1"');
+    expect(xml).toContain('<wp:docPr id="2"');
+  });
+
+  it("writes no media parts for a text-only document", () => {
+    const doc: LayoutDocument = { pages: [{ paragraphs: [para("hi", 700)] }] };
+    const files = unzipDocx(buildDocx(doc, { pageBreaks: true }));
+    expect(Object.keys(files).some((n) => n.startsWith("word/media/"))).toBe(
+      false,
+    );
   });
 });

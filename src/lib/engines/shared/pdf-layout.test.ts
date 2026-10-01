@@ -6,6 +6,11 @@ import {
   dominantBodySize,
   groupItemsIntoLines,
   groupLinesIntoParagraphs,
+  imageExtentEmu,
+  imageRenderScale,
+  type LayoutImage,
+  type LayoutParagraph,
+  orderPageBlocks,
   type RawItem,
 } from "./pdf-layout";
 
@@ -227,5 +232,122 @@ describe("groupLinesIntoParagraphs", () => {
 
   it("returns no paragraphs for no lines", () => {
     expect(groupLinesIntoParagraphs([], 11)).toEqual([]);
+  });
+});
+
+describe("orderPageBlocks", () => {
+  const para = (text: string, y?: number): LayoutParagraph => ({
+    runs: [{ text, bold: false, italic: false, sizePt: 11 }],
+    heading: 0,
+    y,
+  });
+  const image = (top: number, data = "x"): LayoutImage => ({
+    top,
+    widthPt: 100,
+    heightPt: 50,
+    pageWidthPt: 600,
+    mime: "image/png",
+    data,
+  });
+  const label = (blocks: ReturnType<typeof orderPageBlocks>) =>
+    blocks.map((b) =>
+      b.kind === "image"
+        ? `img@${b.image.top}`
+        : (b.paragraph.runs[0]?.text ?? ""),
+    );
+
+  it("puts each image before the first paragraph that sits below its top", () => {
+    const blocks = orderPageBlocks(
+      [para("a", 700), para("b", 500), para("c", 200)],
+      [image(400), image(650)],
+    );
+    expect(label(blocks)).toEqual(["a", "img@650", "b", "img@400", "c"]);
+  });
+
+  it("keeps a caption under its picture and text above it above", () => {
+    const blocks = orderPageBlocks(
+      [para("above", 720), para("caption", 480)],
+      [image(600)],
+    );
+    expect(label(blocks)).toEqual(["above", "img@600", "caption"]);
+  });
+
+  it("puts images below the last paragraph at the end", () => {
+    expect(label(orderPageBlocks([para("a", 700)], [image(100)]))).toEqual([
+      "a",
+      "img@100",
+    ]);
+  });
+
+  it("keeps input order for images with the same top", () => {
+    const blocks = orderPageBlocks(
+      [],
+      [image(300, "first"), image(300, "second")],
+    );
+    expect(blocks.map((b) => (b.kind === "image" ? b.image.data : ""))).toEqual(
+      ["first", "second"],
+    );
+  });
+
+  it("never lets a paragraph without a position pull an image above it", () => {
+    expect(
+      label(orderPageBlocks([para("a"), para("b")], [image(900)])),
+    ).toEqual(["a", "b", "img@900"]);
+  });
+
+  it("returns the paragraphs untouched when there are no images", () => {
+    expect(label(orderPageBlocks([para("a", 1), para("b", 2)]))).toEqual([
+      "a",
+      "b",
+    ]);
+  });
+});
+
+describe("imageExtentEmu", () => {
+  const CONTENT_W = 6.5 * 914400;
+  const CONTENT_H = 9 * 914400;
+
+  it("is the same fraction of the content width as of the page width", () => {
+    const { cx, cy } = imageExtentEmu(
+      { widthPt: 153, heightPt: 76.5, pageWidthPt: 612 },
+      CONTENT_W,
+      CONTENT_H,
+    );
+    expect(cx).toBe(Math.round(CONTENT_W / 4));
+    expect(cy).toBe(Math.round(CONTENT_W / 8));
+  });
+
+  it("caps a full-page image at the content width and keeps its shape", () => {
+    const { cx, cy } = imageExtentEmu(
+      { widthPt: 700, heightPt: 350, pageWidthPt: 612 },
+      CONTENT_W,
+      CONTENT_H,
+    );
+    expect(cx).toBe(CONTENT_W);
+    expect(cy).toBe(Math.round(CONTENT_W / 2));
+  });
+
+  it("shrinks a very tall image to the content height, keeping its shape", () => {
+    const { cx, cy } = imageExtentEmu(
+      { widthPt: 300, heightPt: 1500, pageWidthPt: 612 },
+      CONTENT_W,
+      CONTENT_H,
+    );
+    expect(cy).toBe(CONTENT_H);
+    expect(cx / cy).toBeCloseTo(300 / 1500, 4);
+  });
+});
+
+describe("imageRenderScale", () => {
+  it("scales a 300 px image drawn at 100 pt up to its own pixels", () => {
+    expect(imageRenderScale(300, 300, 100, 100, 3000)).toBe(3);
+  });
+
+  it("never shrinks an image drawn larger than its pixels", () => {
+    expect(imageRenderScale(80, 80, 100, 100, 3000)).toBe(1);
+  });
+
+  it("caps the longest rendered side", () => {
+    expect(imageRenderScale(8000, 4000, 400, 200, 3000)).toBe(7.5);
   });
 });

@@ -8,16 +8,20 @@
  * wasm — Node-testable directly, same as `shared/pdf-layout.ts`.
  *
  * Deliberately minimal: one `body` styled from four named styles
- * (Normal/Heading1-3), no theme, no numbering, no images (this slice ships
- * text-only — see docs/adr/0014-pdf-to-word.md). Word opens a package this
- * small without complaint; it's the same shape `python-docx`'s own default
- * template produces stripped to essentials.
+ * (Normal/Heading1-3), no theme, no numbering. Images are inline pictures in
+ * their own paragraphs (docs/adr/0014-pdf-to-word.md, "Images"). Word opens a
+ * package this small without complaint; it's the same shape `python-docx`'s
+ * own default template produces stripped to essentials.
  */
-import { strToU8, zipSync } from "fflate";
-import type {
-  LayoutDocument,
-  LayoutParagraph,
-  LayoutRun,
+import { strToU8, type Zippable, zipSync } from "fflate";
+import { base64ToBytes } from "../shared/base64";
+import {
+  imageExtentEmu,
+  type LayoutDocument,
+  type LayoutImage,
+  type LayoutParagraph,
+  type LayoutRun,
+  orderPageBlocks,
 } from "../shared/pdf-layout";
 
 export interface DocxOptions {
@@ -31,6 +35,8 @@ const CONTENT_TYPES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
+<Default Extension="png" ContentType="image/png"/>
+<Default Extension="jpeg" ContentType="image/jpeg"/>
 <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
 <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
@@ -44,11 +50,23 @@ const ROOT_RELS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 </Relationships>
 `;
 
-const DOCUMENT_RELS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+const IMAGE_REL_TYPE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
+
+function documentRelsXml(media: readonly MediaPart[]): string {
+  const imageRels = media
+    .map(
+      (m) =>
+        `<Relationship Id="${m.rId}" Type="${IMAGE_REL_TYPE}" Target="media/${m.name}"/>`,
+    )
+    .join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+${imageRels}
 </Relationships>
 `;
+}
 
 const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -67,6 +85,10 @@ const SECT_PR_XML =
   '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/>' +
   '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>' +
   "</w:sectPr>";
+
+/** Content area of the Letter page above, in EMU (914400 per inch). */
+const CONTENT_WIDTH_EMU = 6.5 * 914400;
+const CONTENT_HEIGHT_EMU = 9 * 914400;
 
 const PAGE_BREAK_XML = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
 
@@ -145,11 +167,78 @@ function paragraphXml(paragraph: LayoutParagraph): string {
   return `<w:p>${pPr}${runs}</w:p>`;
 }
 
-function documentXml(doc: LayoutDocument, options: DocxOptions): string {
+interface MediaPart {
+  rId: string;
+  name: string;
+  bytes: Uint8Array;
+}
+
+/** Collects the media parts as images are written, so the same picture
+ * repeated on several pages (a logo) is stored once and referenced each time. */
+class MediaCollector {
+  readonly parts: MediaPart[] = [];
+  private readonly byData = new Map<string, MediaPart>();
+
+  add(image: LayoutImage): MediaPart {
+    const key = `${image.mime}:${image.data}`;
+    let part = this.byData.get(key);
+    if (!part) {
+      const n = this.parts.length + 1;
+      part = {
+        // rId1 is the styles part.
+        rId: `rId${n + 1}`,
+        name: `image${n}.${image.mime === "image/jpeg" ? "jpeg" : "png"}`,
+        bytes: base64ToBytes(image.data),
+      };
+      this.byData.set(key, part);
+      this.parts.push(part);
+    }
+    return part;
+  }
+}
+
+function imageParagraphXml(
+  image: LayoutImage,
+  part: MediaPart,
+  docPrId: number,
+): string {
+  const { cx, cy } = imageExtentEmu(
+    image,
+    CONTENT_WIDTH_EMU,
+    CONTENT_HEIGHT_EMU,
+  );
+  return (
+    "<w:p><w:r><w:drawing>" +
+    '<wp:inline distT="0" distB="0" distL="0" distR="0">' +
+    `<wp:extent cx="${cx}" cy="${cy}"/>` +
+    `<wp:docPr id="${docPrId}" name="Picture ${docPrId}"/>` +
+    '<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>' +
+    '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+    `<pic:pic><pic:nvPicPr><pic:cNvPr id="${docPrId}" name="${part.name}"/><pic:cNvPicPr/></pic:nvPicPr>` +
+    `<pic:blipFill><a:blip r:embed="${part.rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+    `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>` +
+    "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>"
+  );
+}
+
+function documentXml(
+  doc: LayoutDocument,
+  options: DocxOptions,
+  media: MediaCollector,
+): string {
   const body: string[] = [];
+  let docPrId = 0;
   doc.pages.forEach((page, pageIndex) => {
     if (pageIndex > 0 && options.pageBreaks) body.push(PAGE_BREAK_XML);
-    for (const paragraph of page.paragraphs) body.push(paragraphXml(paragraph));
+    for (const block of orderPageBlocks(page.paragraphs, page.images)) {
+      if (block.kind === "paragraph") {
+        body.push(paragraphXml(block.paragraph));
+      } else {
+        body.push(
+          imageParagraphXml(block.image, media.add(block.image), ++docPrId),
+        );
+      }
+    }
   });
   // A body with no content at all (an empty or fully-blank source PDF) still
   // needs at least one `w:p` — Word tolerates an empty paragraph, not an
@@ -157,7 +246,11 @@ function documentXml(doc: LayoutDocument, options: DocxOptions): string {
   if (body.length === 0) body.push("<w:p/>");
   return (
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
-    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
+    'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" ' +
+    'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
+    'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
     `<w:body>${body.join("")}${SECT_PR_XML}</w:body>` +
     "</w:document>\n"
   );
@@ -180,13 +273,19 @@ export function buildDocx(
   doc: LayoutDocument,
   options: DocxOptions,
 ): Uint8Array {
-  const files: Record<string, Uint8Array> = {
+  const media = new MediaCollector();
+  const documentXmlText = documentXml(doc, options, media);
+  const files: Zippable = {
     "[Content_Types].xml": strToU8(CONTENT_TYPES_XML),
     "_rels/.rels": strToU8(ROOT_RELS_XML),
-    "word/document.xml": strToU8(documentXml(doc, options)),
+    "word/document.xml": strToU8(documentXmlText),
     "word/styles.xml": strToU8(STYLES_XML),
-    "word/_rels/document.xml.rels": strToU8(DOCUMENT_RELS_XML),
+    "word/_rels/document.xml.rels": strToU8(documentRelsXml(media.parts)),
     "docProps/core.xml": strToU8(corePropsXml(options)),
   };
+  // JPEG/PNG bytes are already compressed: store them as-is.
+  for (const part of media.parts) {
+    files[`word/media/${part.name}`] = [part.bytes, { level: 0 }];
+  }
   return zipSync(files, { level: 6 });
 }

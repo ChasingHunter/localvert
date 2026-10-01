@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { PDFDocument } from "@cantoo/pdf-lib";
 import { test as base, expect } from "@playwright/test";
+import { strFromU8, unzipSync } from "fflate";
 
 /**
  * End to end against a real built `out/` — see `e2e/jpg-to-png.spec.ts`'s
@@ -408,5 +409,51 @@ test.describe("pdf-to-png", () => {
         0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
       ]);
     }
+  });
+});
+
+test.describe("pdf-to-word", () => {
+  test("carries the pictures over: a JPEG and a PNG land in word/media", async ({
+    page,
+  }) => {
+    await page.goto("/tools/pdf-to-word");
+
+    // `pdf-with-images.pdf`: one page, text / JPEG (the committed
+    // photo-large.jpg) / text / a Flate-compressed PNG / text. Images come
+    // from PDFium's wasm (the editor's asset), which the autouse privacy and
+    // CSP guards above also watch.
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles(fixturePath("pdf-with-images.pdf"));
+
+    const downloadLink = page.getByRole("link", { name: "Download" });
+    await expect(downloadLink).toBeVisible({ timeout: 30_000 });
+
+    const downloadPromise = page.waitForEvent("download");
+    await downloadLink.click();
+    const download = await downloadPromise;
+    const path = await download.path();
+    if (!path) throw new Error("download produced no local path");
+
+    const files = unzipSync(new Uint8Array(readFileSync(path)));
+    const media = Object.keys(files)
+      .filter((n) => n.startsWith("word/media/"))
+      .sort();
+    expect(media).toEqual(["word/media/image1.jpeg", "word/media/image2.png"]);
+
+    // The JPEG is the fixture's own bytes, not a re-encode.
+    const jpeg = readFileSync(fixturePath("photo-large.jpg"));
+    expect(Buffer.from(files["word/media/image1.jpeg"] ?? [])).toEqual(jpeg);
+
+    const xml = strFromU8(files["word/document.xml"] ?? new Uint8Array());
+    const order = [
+      "Intro line",
+      'r:embed="rId2"',
+      "Middle paragraph",
+      'r:embed="rId3"',
+      "Closing paragraph",
+    ].map((needle) => xml.indexOf(needle));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 });
