@@ -264,9 +264,13 @@ one repo, one engine; make PDF a front door, not a separate product):
       the CSP); the build now fails if any shipped script does that
 
 - [ ] i18n
-- [ ] `file_handlers` and `share_target` in the manifest (open files from the OS)
-- [ ] Cache manager UI + `navigator.storage.estimate()`
-- [ ] Accessibility pass, Lighthouse ≥95 across the board
+- [x] (2026-10-01) Installable app with `file_handlers` and `share_target`: open files from the OS or
+      the share sheet (ADR-0018)
+- [x] (2026-10-01) /storage page: downloaded converters with sizes, remove one or all, persistent storage
+- [x] (2026-10-01) Accessibility pass: Lighthouse a11y, best practices and SEO 100 (noindex pages aside),
+      desktop performance 98-100, mobile 90-99
+- [ ] Mobile performance 95+ on tool pages: zod (~92 KB gz) evaluates on the main thread after
+      hydration. Move option-field metadata to generated plain data and validate in the worker
 - [ ] Per-tool SEO pages generated from the registry
 
 ---
