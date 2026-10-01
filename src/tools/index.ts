@@ -27,11 +27,14 @@ import xlsxToCsv from "@/tools/data/xlsx-to-csv";
 import xlsxToJson from "@/tools/data/xlsx-to-json";
 import yamlToJson from "@/tools/data/yaml-to-json";
 import epubToPdf from "@/tools/document/epub-to-pdf";
+import excelToJpg from "@/tools/document/excel-to-jpg";
 import excelToPdf from "@/tools/document/excel-to-pdf";
 import htmlToPdf from "@/tools/document/html-to-pdf";
 import markdownToPdf from "@/tools/document/markdown-to-pdf";
+import powerpointToJpg from "@/tools/document/powerpoint-to-jpg";
 import powerpointToPdf from "@/tools/document/powerpoint-to-pdf";
 import txtToPdf from "@/tools/document/txt-to-pdf";
+import wordToJpg from "@/tools/document/word-to-jpg";
 import wordToPdf from "@/tools/document/word-to-pdf";
 import avifToJpg from "@/tools/image/avif-to-jpg";
 import avifToPng from "@/tools/image/avif-to-png";
@@ -152,11 +155,14 @@ export const TOOLS: readonly ToolDefinition[] = [
   xlsxToJson,
   yamlToJson,
   epubToPdf,
+  excelToJpg,
   excelToPdf,
   htmlToPdf,
   markdownToPdf,
+  powerpointToJpg,
   powerpointToPdf,
   txtToPdf,
+  wordToJpg,
   wordToPdf,
   avifToJpg,
   avifToPng,

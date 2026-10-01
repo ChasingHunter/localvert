@@ -278,6 +278,15 @@ export const CATALOG: readonly CatalogEntry[] = [
     arity: "one-to-one",
   },
   {
+    slug: "excel-to-jpg",
+    title: "Excel to JPG",
+    category: "document",
+    accepts: ["xlsx", "xls", "ods"],
+    produces: "jpg",
+    kind: "job",
+    arity: "one-to-many",
+  },
+  {
     slug: "excel-to-pdf",
     title: "Excel to PDF",
     category: "document",
@@ -307,6 +316,15 @@ export const CATALOG: readonly CatalogEntry[] = [
     categoryRank: 4,
   },
   {
+    slug: "powerpoint-to-jpg",
+    title: "PowerPoint to JPG",
+    category: "document",
+    accepts: ["pptx", "ppt", "odp"],
+    produces: "jpg",
+    kind: "job",
+    arity: "one-to-many",
+  },
+  {
     slug: "powerpoint-to-pdf",
     title: "PowerPoint to PDF",
     category: "document",
@@ -324,6 +342,15 @@ export const CATALOG: readonly CatalogEntry[] = [
     produces: "pdf",
     kind: "job",
     arity: "one-to-one",
+  },
+  {
+    slug: "word-to-jpg",
+    title: "Word to JPG",
+    category: "document",
+    accepts: ["docx", "doc", "odt", "rtf"],
+    produces: "jpg",
+    kind: "job",
+    arity: "one-to-many",
   },
   {
     slug: "word-to-pdf",

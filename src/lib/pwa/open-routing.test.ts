@@ -14,9 +14,9 @@ describe("routeForFormats", () => {
   });
 
   it("goes to the tool when it takes every format in a mixed set", () => {
-    expect(routeForFormats(["docx", "doc"])).toEqual({
+    expect(routeForFormats(["m4a", "ogg"])).toEqual({
       kind: "tool",
-      slug: "word-to-pdf",
+      slug: "compress-audio",
     });
   });
 

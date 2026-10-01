@@ -353,3 +353,22 @@ export const cropField = z
   })
   .meta({ label: "Crop", control: "crop" })
   .optional();
+
+/** Page resolution + JPG quality for the two-step "office file to JPG" tools
+ * (`word-to-jpg` and siblings): LibreOffice makes a PDF, then `pdfjs` renders
+ * it with these. Same fields and ranges as `pdf-to-jpg`; no `pages` field,
+ * since a page range on an intermediate PDF the user never sees is confusing. */
+export const pageJpgOptions = z.object({
+  dpi: z
+    .number()
+    .int()
+    .min(72)
+    .max(300)
+    .meta({ label: "Resolution", control: "slider", unit: "dpi", step: 1 })
+    .default(150),
+  quality: jpgQualityOptions.shape.quality,
+});
+export const pageJpgDefaults: z.infer<typeof pageJpgOptions> = {
+  dpi: 150,
+  quality: 0.85,
+};
