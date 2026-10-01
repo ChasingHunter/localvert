@@ -18,7 +18,12 @@ import {
   shouldShowRerun,
 } from "@/components/rerun-logic";
 import { Button } from "@/components/ui/button";
-import { takePendingFiles } from "@/lib/converter/handoff";
+import {
+  applyPresetOptions,
+  clearPendingOptions,
+  peekPendingOptions,
+  takePendingFiles,
+} from "@/lib/converter/handoff";
 import type { ConsentPrompt } from "@/lib/engines/consent-gate";
 import { engineDisplayName } from "@/lib/engines/display-names";
 import { shouldStageForEstimate } from "@/lib/estimate/stage";
@@ -145,8 +150,11 @@ function rejectionMessage(r: RejectedFile): string {
  * instead and submit only once its own "Crop" button is pressed.
  */
 export function ToolRunner({ tool }: ToolRunnerProps) {
-  const [options, setOptions] = useState<Record<string, unknown>>(
-    tool.defaults,
+  // A picker row like "MP4 to WAV" opens `extract-audio` with its `format`
+  // option preselected (`producesAlso`); read here, not in an effect, so a
+  // handed-off file is submitted with it. Cleared in the mount effect below.
+  const [options, setOptions] = useState<Record<string, unknown>>(() =>
+    applyPresetOptions(tool.defaults, peekPendingOptions(tool.slug)),
   );
   const [rejected, setRejected] = useState<RejectedFile[]>([]);
   const [zipping, setZipping] = useState(false);
@@ -378,6 +386,7 @@ export function ToolRunner({ tool }: ToolRunnerProps) {
   // one-shot store on an unrelated re-render.
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally scoped to `tool` — see comment above.
   useEffect(() => {
+    clearPendingOptions(tool.slug);
     const files = takePendingFiles(tool.slug);
     if (!files || files.length === 0) return;
     classifyFiles(files, tool.accepts).then(({ accepted, rejected }) => {

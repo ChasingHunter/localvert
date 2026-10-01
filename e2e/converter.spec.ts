@@ -151,6 +151,34 @@ test.describe("Converter", () => {
     await expect(downloadLink).toBeVisible({ timeout: 15_000 });
   });
 
+  test("MP4 to WAV opens Extract Audio with WAV preselected and converts the dropped file", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles(fixturePath("sample.mp4"));
+    await expect(page.getByRole("status")).toContainText(/Detected .*MP4/i);
+
+    const to = page.getByRole("combobox", { name: "Convert to" });
+    await expect(to).toBeFocused();
+    await to.pressSequentially("wav");
+    await to.press("Enter");
+
+    await expect(page).toHaveURL(/\/tools\/extract-audio$/);
+    await expect(page.getByLabel("Output format")).toContainText("WAV");
+
+    const downloadLink = page
+      .getByRole("link", { name: "Download", exact: true })
+      .first();
+    await expect(downloadLink).toBeVisible({ timeout: 30_000 });
+
+    const downloadPromise = page.waitForEvent("download");
+    await downloadLink.click();
+    expect((await downloadPromise).suggestedFilename()).toMatch(/\.wav$/);
+  });
+
   test("dropping mixed formats shows one group per format", async ({
     page,
   }) => {

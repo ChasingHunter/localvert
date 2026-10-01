@@ -12,7 +12,9 @@ import {
   nativeInputFormats,
   popular,
   popularInCategory,
+  splitTargetKey,
   type Target,
+  targetKey,
   targetsFor,
 } from "./catalog";
 
@@ -168,6 +170,54 @@ describe("targetsFor", () => {
         expect(TOOLS_BY_SLUG.has(target.slug)).toBe(true);
       }
     }
+  });
+
+  describe("producesAlso (option-dependent outputs)", () => {
+    it("offers mp4 -> WAV, M4A and Ogg on extract-audio with the format preselected", () => {
+      const { conversions } = targetsFor("mp4");
+      for (const format of ["wav", "m4a", "ogg"] as const) {
+        const row = conversions.find((t) => t.format === format);
+        expect(row?.slug).toBe("extract-audio");
+        expect(row?.preset).toEqual({ format });
+      }
+    });
+
+    it("a format some tool produces outright keeps that tool, with no preset", () => {
+      const mp3 = targetsFor("mp4").conversions.find((t) => t.format === "mp3");
+      expect(mp3?.slug).toBe("mp4-to-mp3");
+      expect(mp3?.preset).toBeUndefined();
+      const fromMov = targetsFor("mov").conversions.find(
+        (t) => t.format === "mp3",
+      );
+      expect(fromMov?.slug).toBe("mov-to-mp3");
+    });
+
+    it("every preset names a real option of its tool and satisfies its schema", () => {
+      for (const entry of CATALOG) {
+        const tool = TOOLS_BY_SLUG.get(entry.slug);
+        for (const also of entry.producesAlso ?? []) {
+          for (const [key, value] of Object.entries(also.presetOptions)) {
+            expect(Object.keys(tool?.options.shape ?? {})).toContain(key);
+            const merged = { ...tool?.defaults, [key]: value };
+            expect(tool?.options.safeParse(merged).success).toBe(true);
+          }
+        }
+      }
+    });
+
+    it("targetKey and splitTargetKey round-trip, and a plain target's key is its slug", () => {
+      expect(targetKey({ slug: "jpg-to-png" })).toBe("jpg-to-png");
+      expect(splitTargetKey("jpg-to-png")).toEqual({ slug: "jpg-to-png" });
+      const key = targetKey({
+        slug: "extract-audio",
+        preset: { format: "wav" },
+      });
+      expect(key).toBe("extract-audio?format=wav");
+      expect(splitTargetKey(key)).toEqual({
+        slug: "extract-audio",
+        preset: { format: "wav" },
+      });
+    });
   });
 
   describe("pdf", () => {

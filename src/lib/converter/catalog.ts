@@ -33,6 +33,35 @@ export interface Target {
   slug: string;
   format?: FormatId;
   variant?: string;
+  /** Option values to open `slug` with, for a `producesAlso` row. */
+  preset?: Readonly<Record<string, string | number | boolean>>;
+}
+
+/**
+ * The picker's id for a target: its slug, plus the preset as a query string
+ * when it has one (`extract-audio?format=wav`), so two rows for the same
+ * tool stay distinct. `splitTargetKey` is the inverse.
+ */
+export function targetKey(t: Pick<Target, "slug" | "preset">): string {
+  if (!t.preset) return t.slug;
+  const query = new URLSearchParams(
+    Object.entries(t.preset).map(([k, v]) => [k, String(v)]),
+  );
+  return `${t.slug}?${query.toString()}`;
+}
+
+/** Splits a `targetKey` back into the tool slug and its preset (string
+ * values only; the tool's own option schema coerces them on use). */
+export function splitTargetKey(key: string): {
+  slug: string;
+  preset?: Record<string, string>;
+} {
+  const at = key.indexOf("?");
+  if (at === -1) return { slug: key };
+  return {
+    slug: key.slice(0, at),
+    preset: Object.fromEntries(new URLSearchParams(key.slice(at + 1))),
+  };
 }
 
 /** A `Target` plus the input format it's reachable from — what `popular()`
@@ -344,8 +373,22 @@ export function targetsFor(
 
   const actionRows: { target: Target; rank: number; priority: number }[] = [];
   const byFormat = new Map<FormatId, CatalogEntry[]>();
+  // Formats a tool reaches only by presetting one of its options
+  // (`producesAlso`); used only where no tool produces that format outright.
+  const alsoByFormat = new Map<
+    FormatId,
+    { tool: CatalogEntry; preset: NonNullable<Target["preset"]> }
+  >();
 
   for (const tool of tools) {
+    for (const also of tool.producesAlso ?? []) {
+      if (also.format !== from && !alsoByFormat.has(also.format)) {
+        alsoByFormat.set(also.format, {
+          tool,
+          preset: also.presetOptions,
+        });
+      }
+    }
     const out = producedFormat(tool, from);
     if (out === from) {
       const label = actionLabelFor(tool);
@@ -362,11 +405,24 @@ export function targetsFor(
   }
 
   const conversions: Target[] = [];
-  const formatsInOrder = (Object.keys(FORMATS) as FormatId[]).filter((f) =>
-    byFormat.has(f),
+  const formatsInOrder = (Object.keys(FORMATS) as FormatId[]).filter(
+    (f) => byFormat.has(f) || alsoByFormat.has(f),
   );
   for (const format of formatsInOrder) {
-    const group = byFormat.get(format) as CatalogEntry[];
+    const group = byFormat.get(format);
+    if (!group) {
+      const also = alsoByFormat.get(format);
+      if (also) {
+        conversions.push({
+          kind: "format",
+          label: formatLabelFor(format),
+          slug: also.tool.slug,
+          format,
+          preset: also.preset,
+        });
+      }
+      continue;
+    }
     const best = pickDefault(group, from, format);
     conversions.push({
       kind: "format",

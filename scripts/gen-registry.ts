@@ -157,6 +157,10 @@ export interface ToolCatalogEntry {
   arity: "one-to-one" | "many-to-one" | "one-to-many";
   rank?: number;
   categoryRank?: number;
+  producesAlso?: readonly {
+    format: string;
+    presetOptions: Readonly<Record<string, string | number | boolean>>;
+  }[];
 }
 
 /**
@@ -216,6 +220,62 @@ function extractStringArray(body: string, key: string, slug: string): string[] {
 }
 
 /**
+ * `producesAlso: [{ format: "wav", presetOptions: { format: "wav" } }, ...]`
+ * as data. Only literal strings, numbers and booleans are allowed in
+ * `presetOptions`; anything else throws, so the generated catalog stays
+ * plain data.
+ */
+function extractProducesAlso(
+  body: string,
+  slug: string,
+): ToolCatalogEntry["producesAlso"] {
+  const start = /producesAlso:\s*\[/.exec(body);
+  if (!start) return undefined;
+  // Walk to the matching "]" (presetOptions braces never contain one).
+  let depth = 1;
+  let i = start.index + start[0].length;
+  const from = i;
+  for (; i < body.length && depth > 0; i++) {
+    if (body[i] === "[") depth++;
+    else if (body[i] === "]") depth--;
+  }
+  const inner = body.slice(from, i - 1);
+  const entries: NonNullable<ToolCatalogEntry["producesAlso"]>[number][] = [];
+  const entryRe =
+    /\{\s*format:\s*"([^"]+)",\s*presetOptions:\s*\{([^}]*)\}\s*,?\s*\}/g;
+  let m: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: standard RegExp.exec loop.
+  while ((m = entryRe.exec(inner)) !== null) {
+    const presetOptions: Record<string, string | number | boolean> = {};
+    const pairs = (m[2] ?? "").split(",").filter((p) => p.trim() !== "");
+    for (const pair of pairs) {
+      const kv =
+        /^\s*(\w+):\s*(?:"([^"]*)"|(-?\d+(?:\.\d+)?)|(true|false))\s*$/.exec(
+          pair,
+        );
+      if (!kv) {
+        throw new Error(
+          `[gen-registry] tool "${slug}": producesAlso presetOptions entry ${JSON.stringify(pair.trim())} is not a literal`,
+        );
+      }
+      presetOptions[kv[1] as string] =
+        kv[2] !== undefined
+          ? kv[2]
+          : kv[3] !== undefined
+            ? Number(kv[3])
+            : kv[4] === "true";
+    }
+    entries.push({ format: m[1] as string, presetOptions });
+  }
+  if (entries.length === 0) {
+    throw new Error(
+      `[gen-registry] tool "${slug}": could not read any producesAlso entries`,
+    );
+  }
+  return entries;
+}
+
+/**
  * Reads one tool file's literal `defineTool({...})` fields by text pattern,
  * never by importing or executing the file — see this module's doc comment,
  * "Static source scanning only". Every field this needs (`title`,
@@ -252,6 +312,7 @@ export function parseToolCatalogEntry(
   const arity = extractOptionalString(body, "arity");
   const rank = extractOptionalInt(body, "rank");
   const categoryRank = extractOptionalInt(body, "categoryRank");
+  const producesAlso = extractProducesAlso(body, info.slug);
 
   if (kind !== null && kind !== "job" && kind !== "app") {
     throw new Error(
@@ -279,6 +340,7 @@ export function parseToolCatalogEntry(
     arity: (arity ?? "one-to-one") as ToolCatalogEntry["arity"],
     ...(rank !== undefined ? { rank } : {}),
     ...(categoryRank !== undefined ? { categoryRank } : {}),
+    ...(producesAlso !== undefined ? { producesAlso } : {}),
   };
 }
 
@@ -307,7 +369,12 @@ export function genCatalog(entries: readonly ToolCatalogEntry[]): string {
     const accepts = e.accepts.map((a) => `"${a}"`).join(", ");
     const rankPart =
       (e.rank !== undefined ? ` rank: ${e.rank},` : "") +
-      (e.categoryRank !== undefined ? ` categoryRank: ${e.categoryRank},` : "");
+      (e.categoryRank !== undefined
+        ? ` categoryRank: ${e.categoryRank},`
+        : "") +
+      (e.producesAlso !== undefined
+        ? ` producesAlso: ${JSON.stringify(e.producesAlso)},`
+        : "");
     return (
       `  { slug: "${e.slug}", title: ${JSON.stringify(e.title)}, ` +
       `category: "${e.category}", accepts: [${accepts}], ` +
@@ -340,6 +407,11 @@ export function genCatalog(entries: readonly ToolCatalogEntry[]): string {
     "  rank?: number;",
     "  /** 1 = first in its category's Popular row — see `ToolDefinition.categoryRank`. */",
     "  categoryRank?: number;",
+    "  /** Extra output formats reached by presetting an option — see `ToolDefinition.producesAlso`. */",
+    "  producesAlso?: readonly {",
+    "    format: FormatId;",
+    "    presetOptions: Readonly<Record<string, string | number | boolean>>;",
+    "  }[];",
     "}",
     "",
     `export const CATALOG: readonly CatalogEntry[] = ${body};`,

@@ -33,6 +33,12 @@ export default defineTool({
 
   accepts: ["mp4", "mov", "webm", "mkv"],
   produces: "mp3",
+  // The picker's "mp4 to WAV" etc.: opens this tool with `format` preselected.
+  producesAlso: [
+    { format: "wav", presetOptions: { format: "wav" } },
+    { format: "m4a", presetOptions: { format: "m4a" } },
+    { format: "ogg", presetOptions: { format: "ogg" } },
+  ],
 
   options: z.object({
     format: z

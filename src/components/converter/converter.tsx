@@ -17,11 +17,14 @@ import {
   nativeInputFormats,
   popular,
   popularInCategory,
+  splitTargetKey,
+  targetKey,
   targetsFor,
 } from "@/lib/converter/catalog";
 import {
   HOME_HANDOFF_KEY,
   setPendingFiles,
+  setPendingOptions,
   takePendingFiles,
 } from "@/lib/converter/handoff";
 import { CATEGORY_META, type Category } from "@/lib/registry/categories";
@@ -199,14 +202,18 @@ export function Converter({
           label: "Convert to",
           options: targets.conversions
             .filter((t) => matchTarget(toQuery, t))
-            .map((t) => ({ id: t.slug, label: t.label, hint: t.variant })),
+            .map((t) => ({
+              id: targetKey(t),
+              label: t.label,
+              hint: t.variant,
+            })),
         },
         {
           id: "actions",
           label: "Actions",
           options: targets.actions
             .filter((t) => matchTarget(toQuery, t))
-            .map((t) => ({ id: t.slug, label: t.label })),
+            .map((t) => ({ id: targetKey(t), label: t.label })),
         },
       ]
     : [];
@@ -288,10 +295,12 @@ export function Converter({
   }, []);
 
   const handleToChange = useCallback(
-    (slug: string) => {
-      setToId(slug);
+    (key: string) => {
+      setToId(key);
       if (stagedFiles.length > 0) {
+        const { slug, preset } = splitTargetKey(key);
         setPendingFiles(slug, stagedFiles);
+        setPendingOptions(slug, preset);
         router.push(`/tools/${slug}`);
       }
     },
@@ -300,8 +309,10 @@ export function Converter({
 
   const handleGo = useCallback(() => {
     if (!fromId || !toId) return;
-    if (stagedFiles.length > 0) setPendingFiles(toId, stagedFiles);
-    router.push(`/tools/${toId}`);
+    const { slug, preset } = splitTargetKey(toId);
+    if (stagedFiles.length > 0) setPendingFiles(slug, stagedFiles);
+    setPendingOptions(slug, preset);
+    router.push(`/tools/${slug}`);
   }, [fromId, toId, stagedFiles, router]);
 
   const handleToResultsCount = useCallback(
@@ -346,7 +357,9 @@ export function Converter({
     ? CATEGORY_TINT_BG[FORMATS[fromId].category]
     : undefined;
   const selectedToTarget = toId
-    ? [...targets.conversions, ...targets.actions].find((t) => t.slug === toId)
+    ? [...targets.conversions, ...targets.actions].find(
+        (t) => targetKey(t) === toId,
+      )
     : undefined;
   const toTintFormat = selectedToTarget?.format ?? fromId ?? undefined;
   const toTint = toTintFormat

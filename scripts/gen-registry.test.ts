@@ -61,6 +61,7 @@ function toolFile(
     arity?: "one-to-one" | "many-to-one" | "one-to-many";
     rank?: number;
     categoryRank?: number;
+    producesAlso?: string;
   } = {},
 ): string {
   const [category, slug] = categorySlug.split("/");
@@ -82,6 +83,9 @@ function toolFile(
   if (overrides.rank !== undefined) lines.push(`  rank: ${overrides.rank},`);
   if (overrides.categoryRank !== undefined) {
     lines.push(`  categoryRank: ${overrides.categoryRank},`);
+  }
+  if (overrides.producesAlso !== undefined) {
+    lines.push(`  producesAlso: ${overrides.producesAlso},`);
   }
   lines.push("};");
   return `${lines.join("\n")}\n`;
@@ -420,6 +424,42 @@ describe("genCatalog", () => {
     expect(entry.categoryRank).toBe(3);
     expect(entry.rank).toBeUndefined();
     expect(genCatalog([entry])).toContain("categoryRank: 3,");
+  });
+
+  it("reads producesAlso (literal preset options only) and emits it as data", () => {
+    const info = {
+      category: "audio",
+      slug: "a-to-b",
+      importPath: "",
+      varName: "",
+    };
+    const entry = parseToolCatalogEntry(
+      info,
+      toolFile("audio/a-to-b", {
+        producesAlso:
+          '[{ format: "wav", presetOptions: { format: "wav", level: 3, loud: true } }, { format: "m4a", presetOptions: { format: "m4a" } }]',
+      }),
+    );
+    expect(entry.producesAlso).toEqual([
+      { format: "wav", presetOptions: { format: "wav", level: 3, loud: true } },
+      { format: "m4a", presetOptions: { format: "m4a" } },
+    ]);
+    expect(genCatalog([entry])).toContain('producesAlso: [{"format":"wav"');
+    expect(
+      parseToolCatalogEntry(info, toolFile("audio/a-to-b")).producesAlso,
+    ).toBeUndefined();
+  });
+
+  it("rejects a producesAlso preset that is not a literal", () => {
+    expect(() =>
+      parseToolCatalogEntry(
+        { category: "audio", slug: "a-to-b", importPath: "", varName: "" },
+        toolFile("audio/a-to-b", {
+          producesAlso:
+            '[{ format: "wav", presetOptions: { format: FORMAT } }]',
+        }),
+      ),
+    ).toThrow(/not a literal/);
   });
 });
 

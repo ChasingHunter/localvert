@@ -355,6 +355,19 @@ export interface ToolDefinition<S extends z.ZodObject = z.ZodObject> {
    */
   arity?: "one-to-one" | "many-to-one" | "one-to-many";
   /**
+   * Extra output formats this tool can make by setting an option, which the
+   * from/to picker (ADR-0015) can't see from `produces` alone:
+   * `extract-audio` writes wav/m4a/ogg when its `format` option says so.
+   * Each entry shows up as its own "Convert to" row that opens this tool with
+   * `presetOptions` already applied. Literal strings/numbers/booleans only:
+   * `scripts/gen-registry.ts` reads it from the source text into the catalog.
+   * A format some other tool already produces from the same input wins.
+   */
+  producesAlso?: readonly {
+    format: FormatId;
+    presetOptions: Readonly<Record<string, string | number | boolean>>;
+  }[];
+  /**
    * Label for the explicit submit button a `"many-to-one"` tool shows
    * instead of submitting on drop (e.g. "Merge PDFs") — meaningless, and
    * unread, for any other arity.

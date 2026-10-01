@@ -28,6 +28,57 @@ export function setPendingFiles(slug: string, files: readonly File[]): void {
   pending.set(slug, [...files]);
 }
 
+const pendingOptions = new Map<string, Record<string, string>>();
+
+/**
+ * Stages option values for the tool page at `/tools/<slug>` to start with
+ * (a picker row that preselects an option, `producesAlso`), or clears any
+ * staged for `slug` when `options` is undefined.
+ */
+export function setPendingOptions(
+  slug: string,
+  options: Record<string, string> | undefined,
+): void {
+  if (options) pendingOptions.set(slug, { ...options });
+  else pendingOptions.delete(slug);
+}
+
+/** The options staged for `slug`, without consuming them (safe to call from
+ * a state initializer that React may run twice). */
+export function peekPendingOptions(
+  slug: string,
+): Record<string, string> | undefined {
+  return pendingOptions.get(slug);
+}
+
+/**
+ * `defaults` with the staged `preset` laid over it. Only keys the tool
+ * really has are taken, and each value is read as its default's type (the
+ * preset travels as strings), so a stray key can't leak into the options.
+ */
+export function applyPresetOptions(
+  defaults: Readonly<Record<string, unknown>>,
+  preset: Readonly<Record<string, string>> | undefined,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...defaults };
+  for (const [key, value] of Object.entries(preset ?? {})) {
+    if (!(key in defaults)) continue;
+    const base = defaults[key];
+    out[key] =
+      typeof base === "number"
+        ? Number(value)
+        : typeof base === "boolean"
+          ? value === "true"
+          : value;
+  }
+  return out;
+}
+
+/** Clears the options staged for `slug`; call once the page has applied them. */
+export function clearPendingOptions(slug: string): void {
+  pendingOptions.delete(slug);
+}
+
 /** Reads and clears the files staged for `slug`, or `null` if none are. */
 export function takePendingFiles(slug: string): File[] | null {
   const files = pending.get(slug);

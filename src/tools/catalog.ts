@@ -21,6 +21,11 @@ export interface CatalogEntry {
   rank?: number;
   /** 1 = first in its category's Popular row — see `ToolDefinition.categoryRank`. */
   categoryRank?: number;
+  /** Extra output formats reached by presetting an option — see `ToolDefinition.producesAlso`. */
+  producesAlso?: readonly {
+    format: FormatId;
+    presetOptions: Readonly<Record<string, string | number | boolean>>;
+  }[];
 }
 
 export const CATALOG: readonly CatalogEntry[] = [
@@ -61,6 +66,11 @@ export const CATALOG: readonly CatalogEntry[] = [
     kind: "job",
     arity: "one-to-one",
     categoryRank: 5,
+    producesAlso: [
+      { format: "wav", presetOptions: { format: "wav" } },
+      { format: "m4a", presetOptions: { format: "m4a" } },
+      { format: "ogg", presetOptions: { format: "ogg" } },
+    ],
   },
   {
     slug: "flac-to-mp3",
