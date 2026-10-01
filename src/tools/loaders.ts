@@ -28,6 +28,7 @@ export const TOOL_LOADERS = {
   "xlsx-to-csv": () => import("./data/xlsx-to-csv"),
   "xlsx-to-json": () => import("./data/xlsx-to-json"),
   "yaml-to-json": () => import("./data/yaml-to-json"),
+  "csv-to-pdf": () => import("./document/csv-to-pdf"),
   "epub-to-pdf": () => import("./document/epub-to-pdf"),
   "excel-to-jpg": () => import("./document/excel-to-jpg"),
   "excel-to-pdf": () => import("./document/excel-to-pdf"),

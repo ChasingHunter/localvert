@@ -269,6 +269,15 @@ export const CATALOG: readonly CatalogEntry[] = [
     arity: "one-to-one",
   },
   {
+    slug: "csv-to-pdf",
+    title: "CSV to PDF",
+    category: "document",
+    accepts: ["csv"],
+    produces: "pdf",
+    kind: "job",
+    arity: "one-to-one",
+  },
+  {
     slug: "epub-to-pdf",
     title: "EPUB to PDF",
     category: "document",
