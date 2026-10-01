@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/ChasingHunter/localvert/compare/v0.5.1...v0.6.0) (2026-10-01)
+
+
+### Features
+
+* **tool:** images in pdf to word ([60faef6](https://github.com/ChasingHunter/localvert/commit/60faef603721ec09fd5117583f3160c994517e25))
+
+
+### Bug Fixes
+
+* **tool:** tell people when pdf to word leaves pictures out ([6f80184](https://github.com/ChasingHunter/localvert/commit/6f8018446e1f647533379250b1a19c2b47e33045))
+
 ## [0.5.1](https://github.com/ChasingHunter/localvert/compare/v0.5.0...v0.5.1) (2026-10-01)
 
 
