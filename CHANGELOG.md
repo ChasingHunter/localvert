@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.7.0](https://github.com/ChasingHunter/localvert/compare/v0.6.0...v0.7.0) (2026-10-06)
+
+
+### Features
+
+* **converter:** list extract-audio's other formats in the picker ([1284fc7](https://github.com/ChasingHunter/localvert/commit/1284fc7f0eaae769f3b900950ad8cf0cb6f8bf89))
+* **tool:** csv to pdf ([6c22578](https://github.com/ChasingHunter/localvert/commit/6c225787daa85bdc73bfdf16cecfebf3789a3a38))
+* **tool:** heic to pdf and tiff to pdf ([876232d](https://github.com/ChasingHunter/localvert/commit/876232d492380c3446120ebb41634b9862f8fa4f))
+* **tool:** heic, avif, gif and svg to webp ([fc9719c](https://github.com/ChasingHunter/localvert/commit/fc9719c5a9edab4c59cdffd5aedfa5b2a8529085))
+* **tool:** wmv, avi and flv to mp3 ([cae36f7](https://github.com/ChasingHunter/localvert/commit/cae36f70bb2f00500ecc393bbc153482d3ad2fe0))
+* **tool:** word, powerpoint and excel to jpg ([e382da0](https://github.com/ChasingHunter/localvert/commit/e382da0f8fb08017eaecbe5949d7c3deead67181))
+* **worker:** run per-file steps before a merge ([9d903ce](https://github.com/ChasingHunter/localvert/commit/9d903ce1ca61ad555ded230de613cb7649e727bb))
+
+
+### Bug Fixes
+
+* **engine:** say so when a video has no sound to extract ([bc0a2b4](https://github.com/ChasingHunter/localvert/commit/bc0a2b4d04a105394b2cf48b54a66a5a89aaaf5e))
+
 ## [0.6.0](https://github.com/ChasingHunter/localvert/compare/v0.5.1...v0.6.0) (2026-10-01)
 
 
