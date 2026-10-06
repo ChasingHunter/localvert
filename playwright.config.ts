@@ -41,7 +41,27 @@ export default defineConfig({
     trace: "on-first-retry",
   },
 
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
+      grepInvert: /@libreoffice/,
+    },
+    // Every test that boots LibreOffice (tagged `@libreoffice`). Each one
+    // starts its own 8-thread wasm instance, and several at once starve each
+    // other past the app's 60s engine-start watchdog (2026-10-02: excel-to-pdf
+    // timed out with ~8 in flight). Real users boot one at a time, so this
+    // project runs them serially, after the main project, so nothing else is
+    // competing for the machine either.
+    {
+      name: "libreoffice",
+      use: { ...devices["Desktop Chrome"] },
+      grep: /@libreoffice/,
+      fullyParallel: false,
+      workers: 1,
+      dependencies: ["chromium"],
+    },
+  ],
 
   webServer: {
     // Seeds `wrangler dev --local`'s R2 simulation from `.engines-r2/`

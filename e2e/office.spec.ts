@@ -91,7 +91,9 @@ const test = base.extend<Fixtures>({
   ],
 });
 
-test.describe("word to pdf (libreoffice engine, ADR-0012)", () => {
+test.describe("word to pdf (libreoffice engine, ADR-0012)", {
+  tag: "@libreoffice",
+}, () => {
   test("gates the libreoffice download behind consent, then converts a real docx", async ({
     page,
   }) => {

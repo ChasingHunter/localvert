@@ -381,7 +381,12 @@ for (const tool of TOOLS) {
     RENDER_ONLY.push(tool.slug);
   }
 
-  test(tool.slug, async ({ page }) => {
+  // Each LibreOffice conversion boots its own 8-thread wasm instance; the
+  // "libreoffice" Playwright project runs them one at a time (see
+  // playwright.config.ts).
+  const tag = engines.includes("libreoffice") ? ["@libreoffice"] : [];
+
+  test(tool.slug, { tag }, async ({ page }) => {
     if (heavy) test.setTimeout(180_000);
 
     const pageErrors: Error[] = [];
