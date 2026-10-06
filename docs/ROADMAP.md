@@ -221,6 +221,9 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
       via LibreOffice (EPUB unpacked to HTML first) (2026-09-28)
 - [x] (2026-10-02) PDF → Word images via PDFium: inline between paragraphs, JPEG passthrough,
       a note when pictures are left out (ADR-0014 addendum)
+- [x] (2026-10-02) Curated two-step tools instead of generic chaining (ADR-0015 addendum): word, powerpoint
+      and excel to jpg, csv to pdf, heic and tiff to pdf, wmv/avi/flv to mp3, heic/avif/gif/svg to webp;
+      the picker lists extract-audio's wav/m4a/ogg outputs
 
 ## Phase 5 — Polish
 
