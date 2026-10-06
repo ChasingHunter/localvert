@@ -48,6 +48,7 @@ const pages = process.argv
   .filter((a) => a.startsWith("/") && !flagValues.has(a));
 mkdirSync(out, { recursive: true });
 
+// biome-ignore lint/suspicious/noConsole: stdout is the report.
 console.log(`page${" ".repeat(26)}preset   perf  a11y  bp  seo`);
 for (const path of pages.length > 0 ? pages : DEFAULT_PAGES) {
   for (const preset of ["mobile", "desktop"]) {
@@ -65,15 +66,18 @@ for (const path of pages.length > 0 ? pages : DEFAULT_PAGES) {
     if (preset === "desktop") args.push("--preset=desktop");
     const run = spawnSync("pnpm", args, { stdio: "inherit", shell: true });
     if (run.status !== 0) {
+      // biome-ignore lint/suspicious/noConsole: stdout is the report.
       console.log(`${path.padEnd(30)}${preset.padEnd(9)}failed`);
       continue;
     }
     const cats = JSON.parse(readFileSync(file, "utf8")).categories;
     const score = (id: string) =>
       String(Math.round((cats[id]?.score ?? 0) * 100)).padStart(4);
+    // biome-ignore lint/suspicious/noConsole: stdout is the report.
     console.log(
       `${path.padEnd(30)}${preset.padEnd(9)}${CATEGORIES.map(score).join("  ")}`,
     );
   }
 }
+// biome-ignore lint/suspicious/noConsole: stdout is the report.
 console.log(`Reports in ${out}`);

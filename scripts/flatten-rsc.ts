@@ -62,6 +62,7 @@ export function flattenSegments(root: string): number {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  // biome-ignore lint/suspicious/noConsole: stdout is the report.
   console.log(
     `flatten-rsc: wrote ${flattenSegments(OUT_DIR)} flat segment file(s).`,
   );
