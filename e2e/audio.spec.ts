@@ -118,4 +118,18 @@ test.describe("extract-audio", () => {
     expect(bytes.length).toBeGreaterThan(256);
     expect(isMp3(new Uint8Array(bytes.subarray(0, 4)))).toBe(true);
   });
+
+  test("a video with no audio track says so in plain words", async ({
+    page,
+  }) => {
+    await page.goto("/tools/mp4-to-mp3");
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles(fixturePath("silent.mp4"));
+
+    await expect(
+      page.getByText("This video has no sound to extract."),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("link", { name: "Download" })).toHaveCount(0);
+  });
 });

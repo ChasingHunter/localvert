@@ -191,3 +191,24 @@ test.describe("ffmpeg download consent (ADR-0002 rule 4)", () => {
     expect(hasFtyp(readFileSync(flvPath))).toBe(true);
   });
 });
+
+test.describe("ffmpeg silent video", () => {
+  test("wmv with no audio track says so in plain words", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto("/tools/wmv-to-mp3");
+    await page
+      .locator('input[type="file"]')
+      .setInputFiles(fixturePath("silent.wmv"));
+
+    const dialog = page.getByRole("dialog", {
+      name: "Download FFmpeg to convert this file?",
+    });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Download and convert" }).click();
+
+    await expect(
+      page.getByText("This video has no sound to extract."),
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("link", { name: "Download" })).toHaveCount(0);
+  });
+});
