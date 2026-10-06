@@ -187,7 +187,8 @@ Goal: a Sejda-class editor, fully offline, on PDFium via EmbedPDF v2 (MIT plugin
 - [x] mediabunny (WebCodecs) as the primary path — mp4/webm/mov/mkv, audio extract,
       trim, mute, resize, compress, rotate; large outputs stream to OPFS (ADR-0010)
       (2026-09-27)
-- [ ] Faster than realtime on 1080p via WebCodecs (needs a benchmark)
+- Dropped (owner, 2026-10-06): a 1080p speed benchmark. Speed depends on the visitor's GPU, and we
+  aren't publishing a speed claim
 - [x] GIF out via gifenc (MIT) instead of ffmpeg — `video-to-gif` (2026-09-27)
 - [x] ffmpeg.wasm **fallback only**: avi, wmv, flv input (GPL — isolated
       worker, R2-hosted, consent-gated download, ADR-0002) (2026-09-27)
