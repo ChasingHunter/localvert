@@ -248,3 +248,101 @@ now assumes 45% and only says "looks reachable" when the likely floor is at
 least 20% under the target; closer than that it says the result might land a
 little over.
 
+
+## Addendum: compress-pdf failed on real files and barely shrank others (2026-10-07)
+
+The owner reported two things on v0.7.0: a real PDF failed with "expected o6
+but got oy instance", and a 69 MB PDF in Recommended mode only went to 67 MB.
+We had no copy of either file, so we built a synthetic corpus (browser tests,
+`compress-corpus.testutil.ts`) with the object shapes real exporters write and
+read pdf-lib's dist code for the mechanism.
+
+**Root cause of the error.** `dict.lookupMaybe(key, PDFName)` throws
+`UnexpectedObjectTypeError` when the entry exists but is another type
+(`PDFContext.lookupMaybe`: the type check runs whenever `types` is
+non-empty). `decodeImageStream` called it for `/ColorSpace` on every
+FlateDecode image, but `/ColorSpace` is often an array (`[/ICCBased 12 0 R]`,
+`[/Indexed ...]`). "o6" and "oy" are the minified `PDFName` and `PDFArray`.
+It threw before any try/catch, so one image failed the whole document. The
+corpus reproduced it with an Indexed image; an ICC image with a plain
+`/Filter` would hit the same line. The page scan had the same risk (typed
+lookups on `/Contents` entries). All of it now reads through an untyped
+lookup (`look()`), which never throws, and checks `instanceof` itself.
+
+**Why Recommended did almost nothing on other files.** The image gate was
+narrow, and everything outside it was left alone without saying so:
+
+- A JPEG with `/Filter [/DCTDecode]` (an array) was skipped, because the code
+  required a bare name. Same for array `/DecodeParms`.
+- A Flate image with an ICC or other array colour space was skipped.
+- Images with an `/SMask` were skipped, and the SMask image itself was
+  re-encoded as an RGB JPEG (it must stay DeviceGray).
+- Placement ignored Form XObjects, so an image two forms deep fell back to the
+  page size, which under-estimates its DPI whenever it is drawn smaller than
+  the page. Annotation appearance streams were not scanned either.
+- The structural prune only ran in Lossless and target modes.
+
+**New behaviour.**
+
+- Per-image planning from the dictionary alone (`planImage`): JPEG or 8-bit
+  gray/RGB samples under any chain of sample filters, colour space as a name,
+  `[/ICCBased]` or a ref. Skipped, never fatal: JBIG2, CCITT, JPX, CMYK,
+  Indexed, Lab, Separation, 16-bit, `/Decode`, colour-key `/Mask`, `/Matte`
+  soft masks, mask images, images under 8 KB, over 60 megapixels.
+- An image with an `/SMask` has its colour data re-encoded and the mask kept
+  as is. Gray stays gray (a grayscale JPEG). The original `/ColorSpace` object
+  is left untouched. JPEG decode ignores EXIF orientation and embedded colour
+  conversion, as a PDF viewer does.
+- A re-encode is kept only when it saves at least 10% of that image.
+- Each image is processed in its own try/catch: an image that fails stays as
+  it was. If the whole compress fails, the user sees "Couldn't compress this
+  PDF. It may be damaged or use a format we don't support yet." and never a
+  raw pdf-lib message (`compressFailure`). Encrypted files and aborts keep
+  their own messages.
+- Placement now follows `Do` into Form XObjects (CTM composed with each
+  form's `/Matrix`, a cycle guard per path, a visit budget) and into
+  annotation `/AP /N` streams (scaled `/BBox` to `/Rect`). Images are listed
+  by object, so each is processed once at its largest placement, however many
+  pages or forms use it.
+- The structural prune now runs in Recommended and Strong too.
+- The probe (and the target-size "non-image bytes" split) counts only images
+  the run can actually re-encode, so skipped images no longer make an
+  estimate look more hopeful than the run can deliver. The strongest-rung
+  retention constant (0.45) is unchanged: it is still the pessimistic
+  72-dpi case.
+
+**Presets unchanged.** Recommended stays 150 dpi at mozjpeg quality 0.65, and
+Strong 96 dpi at 0.5. That already matches the usual tools: Ghostscript
+`/ebook` is 150 dpi at QFactor 0.76, and Adobe's and iLovePDF's medium
+settings sit around 150 dpi and medium-high JPEG quality; mozjpeg's trellis
+quantisation makes 65 look like a stock libjpeg ~72. The bug was coverage,
+not the numbers.
+
+**Measured** on the synthetic corpus (KB, Chromium; `lossless` is the
+structural pass):
+
+| File | Original | Lossless | Recommended before | Recommended now | Strong now |
+| --- | --- | --- | --- | --- | --- |
+| scan-rgb (300 dpi Flate) | 7950 | 7950 | 59 | 59 | 28 |
+| scan-gray (300 dpi Flate) | 2581 | 2581 | 59 | 59 | 28 |
+| jpeg-icc (ICC ref, array Filter/DecodeParms) | 755 | 755 | 755 | 56 | 19 |
+| flate-icc (ICC array, array Filter) | 3735 | 3735 | 3735 | 65 | 24 |
+| forms-nested (image 2 forms deep, small on a big page) | 756 | 756 | 135 | 30 | 11 |
+| forms-cycle | 3722 | 3722 | 65 | 65 | 24 |
+| smask | 4898 | 4898 | 3789 | 1238 | 1197 |
+| indexed | 1029 | 1029 | threw | 1029 | 1029 |
+| cmyk | 3593 | 3593 | 3593 | 3593 | 3593 |
+| unsupported-codecs (JBIG2, CCITT, JPX) | 177 | 177 | 177 | 177 | 177 |
+| shared-image (12 pages) | 758 | 758 | 59 | 59 | 21 |
+| annotation (small on a big page) | 3726 | 3726 | 95 | 27 | 11 |
+| odd-dicts | 6787 | 6787 | threw | 3075 | 3062 |
+
+The synthetic pixels compress far better than a real photo, so read the
+ratios as "touched or not", not as promised savings. The forms and annotation
+rows put a small picture on a big page on purpose: the old page-size fallback
+overestimated its size and kept 4x more pixels than needed. The corpus tests
+check the output image dimensions for that.
+
+**Not done.** Indexed, CMYK and the bilevel codecs are still left alone, and
+the SMask image itself is kept lossless. Files whose weight is mostly those
+will still barely shrink, and the result note says the original came back.
