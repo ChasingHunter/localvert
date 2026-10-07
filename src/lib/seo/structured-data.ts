@@ -1,5 +1,6 @@
 import { CATEGORY_META } from "@/lib/registry/categories";
 import type { ToolDefinition } from "@/lib/registry/types";
+import { jsonForScript } from "@/lib/script-json";
 import { SITE_URL } from "@/lib/site";
 import type { FaqItem } from "./tool-faq";
 
@@ -72,5 +73,5 @@ export function siteJsonLd() {
 
 /** JSON for a `<script type="application/ld+json">`, with `<` escaped so the data can't close the tag. */
 export function serializeJsonLd(data: unknown): string {
-  return JSON.stringify(data).replace(/</g, String.raw`\u003c`);
+  return jsonForScript(data);
 }

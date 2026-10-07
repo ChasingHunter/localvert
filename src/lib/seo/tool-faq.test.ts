@@ -82,7 +82,7 @@ describe("toolJsonLd", () => {
   it("escapes < so data cannot close the script tag", () => {
     const out = serializeJsonLd({ text: "</script><b>" });
     expect(out).not.toContain("<");
-    expect(out).toContain(String.raw`\u003c/script>`);
+    expect(out).toContain(String.raw`\u003c/script\u003e`);
     expect(JSON.parse(out).text).toBe("</script><b>");
   });
 });

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { preload } from "react-dom";
+import { jsonForScript } from "@/lib/script-json";
 import "./globals.css";
 import { openGraph, SITE_URL } from "@/lib/site";
 import { THEME_STORAGE_KEY } from "@/lib/theme-storage";
@@ -48,7 +49,7 @@ export const viewport: Viewport = {
  * — being the first thing in `<body>`, before any themed content — runs
  * synchronously ahead of paint, which is the actual no-flash requirement.
  */
-const noFlashThemeScript = `(function(){try{var t=localStorage.getItem(${JSON.stringify(
+const noFlashThemeScript = `(function(){try{var t=localStorage.getItem(${jsonForScript(
   THEME_STORAGE_KEY,
 )});if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();`;
 
