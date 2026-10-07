@@ -1,4 +1,4 @@
-﻿import type { PDFDict, PDFObject } from "@cantoo/pdf-lib";
+﻿import type { PDFArray, PDFDict, PDFName, PDFObject } from "@cantoo/pdf-lib";
 import encodeJpeg, { init as initJpegEncode } from "@jsquash/jpeg/encode";
 import {
   DEFAULT_BLANK_SIZE,
@@ -1188,14 +1188,30 @@ const SAMPLE_FILTERS = new Set([
   "/RunLengthDecode",
 ]);
 
+/** Stored Indexed images smaller than this are left alone: a palette image
+ * is usually a flat graphic where JPEG costs sharpness for little gain, and
+ * only the big ones (a palette-quantised scan or photo) are worth it. */
+const INDEXED_MIN_BYTES = 200 * 1024;
+
+type ColorModel = "gray" | "rgb" | "cmyk" | "indexed";
+
 interface ImagePlan {
-  /** "jpeg": a DCTDecode stream. "samples": 8-bit raw samples once the
-   * filters in `/Filter` are undone. */
+  /** "jpeg": a DCTDecode stream. "samples": raw samples once the filters in
+   * `/Filter` are undone (8-bit, or 1/2/4/8-bit palette indices). */
   source: "jpeg" | "samples";
-  /** Colour model of the source, and of the JPEG we write. */
+  model: ColorModel;
+  /** Channels of the JPEG we write: 1 for gray, 3 otherwise. */
   channels: 1 | 3;
   width: number;
   height: number;
+  /** CMYK only: `/Decode [1 0 1 0 1 0 1 0]`, i.e. the stored samples are
+   * inverted (Photoshop and InDesign write it with Adobe CMYK JPEGs). */
+  decodeInverted: boolean;
+  /** Indexed only: bits per index and the palette expanded to RGB triples. */
+  indexed?: { bits: number; rgb: Uint8Array };
+  /** True when the output no longer matches the declared `/ColorSpace`
+   * (CMYK and Indexed become DeviceRGB). */
+  rewriteColorSpace: boolean;
 }
 
 /** `/Filter` as a list of names (it may be absent, a name, or an array), or
@@ -1217,20 +1233,16 @@ function filterNames(
   return names;
 }
 
-/** 1 (gray) or 3 (RGB) when `/ColorSpace` is a device or CIE-based gray/RGB
- * space written as a name, an `[/ICCBased ref]`-style array, or a ref to
- * either; undefined for everything we leave alone (CMYK, Indexed, Lab,
- * Separation, DeviceN). */
-function colorChannels(
-  mod: PdfLibModule,
-  dict: PDFDictLike,
-): 1 | 3 | undefined {
-  const named = (name: string): 1 | 3 | undefined => {
+/** Component count (1 gray, 3 RGB, 4 CMYK) of a non-indexed colour space
+ * written as a name or an `[/ICCBased ref]`/`[/CalRGB ...]`-style array;
+ * undefined for Lab, Separation, DeviceN, Pattern and the like. */
+function spaceChannels(mod: PdfLibModule, cs: PDFValue): 1 | 3 | 4 | undefined {
+  const named = (name: string): 1 | 3 | 4 | undefined => {
     if (name === "/DeviceGray" || name === "/CalGray") return 1;
     if (name === "/DeviceRGB" || name === "/CalRGB") return 3;
+    if (name === "/DeviceCMYK") return 4;
     return undefined;
   };
-  const cs = look(mod, dict, "ColorSpace");
   if (cs instanceof mod.PDFName) return named(cs.asString());
   if (!(cs instanceof mod.PDFArray)) return undefined;
   const first = cs.lookup(0);
@@ -1239,7 +1251,42 @@ function colorChannels(
   const profile = cs.lookup(1);
   if (!(profile instanceof mod.PDFStream)) return undefined;
   const n = numberOf(mod, look(mod, profile.dict, "N"));
-  return n === 1 ? 1 : n === 3 ? 3 : undefined;
+  return n === 1 ? 1 : n === 3 ? 3 : n === 4 ? 4 : undefined;
+}
+
+/** The palette of `[/Indexed base hival lookup]` expanded to RGB triples, or
+ * undefined if the base space isn't gray or RGB or the table is short. */
+function indexedPalette(
+  mod: PdfLibModule,
+  cs: PDFArray,
+): Uint8Array | undefined {
+  const comps = spaceChannels(mod, cs.lookup(1));
+  if (comps !== 1 && comps !== 3) return undefined;
+  const hival = numberOf(mod, cs.lookup(2));
+  if (hival === undefined || hival < 0 || hival > 255) return undefined;
+  const table = cs.lookup(3);
+  let bytes: Uint8Array | undefined;
+  try {
+    if (table instanceof mod.PDFRawStream) {
+      bytes = mod.decodePDFRawStream(table).decode();
+    } else if (
+      table instanceof mod.PDFString ||
+      table instanceof mod.PDFHexString
+    ) {
+      bytes = table.asBytes();
+    }
+  } catch {
+    return undefined;
+  }
+  const entries = hival + 1;
+  if (!bytes || bytes.length < entries * comps) return undefined;
+  const rgb = new Uint8Array(entries * 3);
+  for (let i = 0; i < entries; i++) {
+    for (let c = 0; c < 3; c++) {
+      rgb[i * 3 + c] = bytes[i * comps + (comps === 1 ? 0 : c)] ?? 0;
+    }
+  }
+  return rgb;
 }
 
 /**
@@ -1248,11 +1295,15 @@ function colorChannels(
  * untouched. Shared by `compressImageStream` and by the probe, so the
  * "image bytes" an estimate counts are the ones the run can actually shrink.
  *
+ * Handled: gray, RGB and CMYK (device, CIE or ICC based), and large Indexed
+ * images, as JPEG or as raw samples under any chain of sample filters. CMYK
+ * and Indexed come out as DeviceRGB JPEGs.
+ *
  * Left alone: mask images (an SMask must stay gray, a stencil 1-bit), image
- * masks, colour-key `/Mask` arrays and `/Decode` arrays (a JPEG would not
- * honour them), soft masks with `/Matte`, anything that is not 8 bits per
- * component, CMYK, Indexed and Lab, JBIG2/CCITT/JPX and other codecs, and
- * tiny images. An image with an `/SMask` is fine: only its colour data is
+ * masks, colour-key `/Mask` arrays, `/Decode` arrays (except the CMYK
+ * inversion), soft masks with `/Matte`, 16-bit data, Lab, Separation and
+ * DeviceN, small Indexed images, JBIG2/CCITT/JPX and other codecs, and tiny
+ * images. An image with an `/SMask` is fine: only its colour data is
  * re-encoded, the mask is kept as is.
  */
 function planImage(
@@ -1262,13 +1313,13 @@ function planImage(
 ): ImagePlan | undefined {
   if (isMask) return undefined;
   const dict = stream.dict;
-  if (stream.getContentsSize() < MIN_IMAGE_BYTES) return undefined;
+  const storedBytes = stream.getContentsSize();
+  if (storedBytes < MIN_IMAGE_BYTES) return undefined;
 
   const imageMask = look(mod, dict, "ImageMask");
   if (imageMask instanceof mod.PDFBool && imageMask.asBoolean()) {
     return undefined;
   }
-  if (look(mod, dict, "Decode") !== undefined) return undefined;
   if (look(mod, dict, "Mask") instanceof mod.PDFArray) return undefined;
   const smask = look(mod, dict, "SMask");
   if (
@@ -1283,19 +1334,154 @@ function planImage(
   if (!width || !height || width <= 0 || height <= 0) return undefined;
   if (width * height > MAX_IMAGE_PIXELS) return undefined;
 
-  const channels = colorChannels(mod, dict);
-  if (!channels) return undefined;
+  const cs = look(mod, dict, "ColorSpace");
+  const decode = look(mod, dict, "Decode");
+  let model: ColorModel;
+  let indexed: ImagePlan["indexed"];
+  let decodeInverted = false;
+
+  const isIndexed =
+    cs instanceof mod.PDFArray &&
+    cs.lookup(0) instanceof mod.PDFName &&
+    (cs.lookup(0) as PDFName).asString() === "/Indexed";
+  if (isIndexed) {
+    if (storedBytes < INDEXED_MIN_BYTES) return undefined;
+    // Nothing that alters or overlays the palette result.
+    if (decode !== undefined || look(mod, dict, "Mask") !== undefined) {
+      return undefined;
+    }
+    if (smask !== undefined) return undefined;
+    const rgb = indexedPalette(mod, cs as PDFArray);
+    const bits = numberOf(mod, look(mod, dict, "BitsPerComponent"));
+    if (!rgb || (bits !== 1 && bits !== 2 && bits !== 4 && bits !== 8)) {
+      return undefined;
+    }
+    model = "indexed";
+    indexed = { bits, rgb };
+  } else {
+    const n = spaceChannels(mod, cs);
+    if (n === undefined) return undefined;
+    model = n === 1 ? "gray" : n === 3 ? "rgb" : "cmyk";
+    if (decode !== undefined) {
+      // Only CMYK's all-inverted `/Decode` is understood; for gray and RGB a
+      // JPEG would not honour a custom range.
+      const d = model === "cmyk" ? numberArray(mod, decode, 8) : undefined;
+      if (!d) return undefined;
+      if (d.every((v, i) => v === (i % 2 === 0 ? 1 : 0))) {
+        decodeInverted = true;
+      } else if (!d.every((v, i) => v === (i % 2 === 0 ? 0 : 1))) {
+        return undefined;
+      }
+    }
+  }
+
+  const base = {
+    model,
+    channels: model === "gray" ? (1 as const) : (3 as const),
+    width,
+    height,
+    decodeInverted,
+    ...(indexed ? { indexed } : {}),
+    rewriteColorSpace: model === "cmyk" || model === "indexed",
+  };
 
   const filters = filterNames(mod, dict);
   if (!filters) return undefined;
   if (filters.length === 1 && filters[0] === "/DCTDecode") {
-    return { source: "jpeg", channels, width, height };
+    if (model === "indexed") return undefined;
+    return { source: "jpeg", ...base };
   }
   if (!filters.every((f) => SAMPLE_FILTERS.has(f))) return undefined;
-  if (numberOf(mod, look(mod, dict, "BitsPerComponent")) !== 8) {
-    return undefined;
+  const bits = numberOf(mod, look(mod, dict, "BitsPerComponent"));
+  if (model === "indexed" ? false : bits !== 8) return undefined;
+  return { source: "samples", ...base };
+}
+
+/** True when a JPEG carries an Adobe APP14 marker. Browsers undo Adobe's
+ * inverted CMYK storage themselves when it is present. */
+function hasAdobeMarker(jpeg: Uint8Array): boolean {
+  let i = 2;
+  while (i + 4 < jpeg.length && jpeg[i] === 0xff) {
+    const marker = jpeg[i + 1] ?? 0;
+    if (marker === 0xda) return false; // start of scan: headers are over
+    const length = ((jpeg[i + 2] ?? 0) << 8) | (jpeg[i + 3] ?? 0);
+    if (
+      marker === 0xee &&
+      jpeg[i + 4] === 0x41 && // "Adobe"
+      jpeg[i + 5] === 0x64 &&
+      jpeg[i + 6] === 0x6f &&
+      jpeg[i + 7] === 0x62 &&
+      jpeg[i + 8] === 0x65
+    ) {
+      return true;
+    }
+    i += 2 + length;
   }
-  return { source: "samples", channels, width, height };
+  return false;
+}
+
+/** Raw samples to opaque RGBA. CMYK uses the naive device conversion
+ * R = 255 (1 - C)(1 - K) (an approximation: no ink or profile modelling),
+ * Indexed looks each index up in the expanded palette. */
+function samplesToRgba(
+  plan: ImagePlan,
+  raw: Uint8Array,
+): Uint8ClampedArray<ArrayBuffer> {
+  const { width, height, model } = plan;
+  const rgba = new Uint8ClampedArray(width * height * 4);
+  const pixels = width * height;
+
+  if (model === "indexed" && plan.indexed) {
+    const { bits, rgb } = plan.indexed;
+    const rowBytes = Math.ceil((width * bits) / 8);
+    const mask = (1 << bits) - 1;
+    const last = rgb.length / 3 - 1;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const bitPos = x * bits;
+        const byte = raw[y * rowBytes + (bitPos >> 3)] ?? 0;
+        const index = (byte >> (8 - bits - (bitPos & 7))) & mask;
+        const entry = Math.min(index, last) * 3;
+        const o = (y * width + x) * 4;
+        rgba[o] = rgb[entry] ?? 0;
+        rgba[o + 1] = rgb[entry + 1] ?? 0;
+        rgba[o + 2] = rgb[entry + 2] ?? 0;
+        rgba[o + 3] = 255;
+      }
+    }
+    return rgba;
+  }
+
+  if (model === "cmyk") {
+    const flip = plan.decodeInverted;
+    for (let i = 0; i < pixels; i++) {
+      let c = raw[i * 4] ?? 0;
+      let m = raw[i * 4 + 1] ?? 0;
+      let y = raw[i * 4 + 2] ?? 0;
+      let k = raw[i * 4 + 3] ?? 0;
+      if (flip) {
+        c = 255 - c;
+        m = 255 - m;
+        y = 255 - y;
+        k = 255 - k;
+      }
+      rgba[i * 4] = ((255 - c) * (255 - k)) / 255;
+      rgba[i * 4 + 1] = ((255 - m) * (255 - k)) / 255;
+      rgba[i * 4 + 2] = ((255 - y) * (255 - k)) / 255;
+      rgba[i * 4 + 3] = 255;
+    }
+    return rgba;
+  }
+
+  const channels = model === "gray" ? 1 : 3;
+  for (let i = 0; i < pixels; i++) {
+    const r = raw[i * channels] ?? 0;
+    rgba[i * 4] = r;
+    rgba[i * 4 + 1] = channels === 1 ? r : (raw[i * channels + 1] ?? 0);
+    rgba[i * 4 + 2] = channels === 1 ? r : (raw[i * channels + 2] ?? 0);
+    rgba[i * 4 + 3] = 255;
+  }
+  return rgba;
 }
 
 /** Decodes the image `plan` describes to something drawable, or undefined. */
@@ -1304,12 +1490,21 @@ async function decodeImageStream(
   stream: RawStream,
   plan: ImagePlan,
 ): Promise<ImageBitmap | undefined> {
-  const { width, height, channels } = plan;
+  const { width, height } = plan;
 
   if (plan.source === "jpeg") {
-    const blob = new Blob([new Uint8Array(stream.getContents())], {
-      type: "image/jpeg",
-    });
+    const bytes = new Uint8Array(stream.getContents());
+    // The browser decodes a 4-component JPEG to RGB itself, and undoes
+    // Adobe's inverted storage when the APP14 marker is there. The PDF
+    // says the samples are inverted only through `/Decode`, so the two must
+    // agree; if they don't, leave the image alone rather than guess.
+    if (
+      plan.model === "cmyk" &&
+      hasAdobeMarker(bytes) !== plan.decodeInverted
+    ) {
+      return undefined;
+    }
+    const blob = new Blob([bytes], { type: "image/jpeg" });
     try {
       // A PDF viewer ignores EXIF orientation and embedded colour profiles
       // (the colour space is declared in the dictionary), so the decode must
@@ -1329,21 +1524,16 @@ async function decodeImageStream(
   } catch {
     return undefined;
   }
-  if (raw.length < width * height * channels) return undefined;
-
-  const rgba = new Uint8ClampedArray(width * height * 4);
-  for (let i = 0; i < width * height; i++) {
-    const r = raw[i * channels] ?? 0;
-    const g = channels === 1 ? r : (raw[i * channels + 1] ?? 0);
-    const b = channels === 1 ? r : (raw[i * channels + 2] ?? 0);
-    rgba[i * 4] = r;
-    rgba[i * 4 + 1] = g;
-    rgba[i * 4 + 2] = b;
-    rgba[i * 4 + 3] = 255;
-  }
+  const needed =
+    plan.model === "indexed" && plan.indexed
+      ? Math.ceil((width * plan.indexed.bits) / 8) * height
+      : width * height * (plan.model === "cmyk" ? 4 : plan.channels);
+  if (raw.length < needed) return undefined;
 
   try {
-    return await createImageBitmap(new ImageData(rgba, width, height));
+    return await createImageBitmap(
+      new ImageData(samplesToRgba(plan, raw), width, height),
+    );
   } catch {
     return undefined;
   }
@@ -1428,6 +1618,10 @@ async function compressImageStream(
     dict.set(mod.PDFName.of("Height"), mod.PDFNumber.of(outHeight));
     dict.set(mod.PDFName.of("BitsPerComponent"), mod.PDFNumber.of(8));
     dict.delete(mod.PDFName.of("DecodeParms"));
+    dict.delete(mod.PDFName.of("Decode"));
+    if (plan.rewriteColorSpace) {
+      dict.set(mod.PDFName.of("ColorSpace"), mod.PDFName.of("DeviceRGB"));
+    }
     stream.updateContents(newBytes);
     return true;
   } finally {

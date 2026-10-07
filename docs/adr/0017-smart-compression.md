@@ -286,9 +286,11 @@ narrow, and everything outside it was left alone without saying so:
 
 - Per-image planning from the dictionary alone (`planImage`): JPEG or 8-bit
   gray/RGB samples under any chain of sample filters, colour space as a name,
-  `[/ICCBased]` or a ref. Skipped, never fatal: JBIG2, CCITT, JPX, CMYK,
-  Indexed, Lab, Separation, 16-bit, `/Decode`, colour-key `/Mask`, `/Matte`
-  soft masks, mask images, images under 8 KB, over 60 megapixels.
+  `[/ICCBased]` or a ref. Skipped, never fatal: JBIG2, CCITT, JPX, Lab,
+  Separation, 16-bit, `/Decode` (other than CMYK inversion, below),
+  colour-key `/Mask`, `/Matte` soft masks, mask images, images under 8 KB,
+  over 60 megapixels. (CMYK and large Indexed are handled in the follow-up
+  below.)
 - An image with an `/SMask` has its colour data re-encoded and the mask kept
   as is. Gray stays gray (a grayscale JPEG). The original `/ColorSpace` object
   is left untouched. JPEG decode ignores EXIF orientation and embedded colour
@@ -330,8 +332,12 @@ structural pass):
 | forms-nested (image 2 forms deep, small on a big page) | 756 | 756 | 135 | 30 | 11 |
 | forms-cycle | 3722 | 3722 | 65 | 65 | 24 |
 | smask | 4898 | 4898 | 3789 | 1238 | 1197 |
-| indexed | 1029 | 1029 | threw | 1029 | 1029 |
-| cmyk | 3593 | 3593 | 3593 | 3593 | 3593 |
+| indexed (large, 8-bit) | 1029 | 1029 | threw | 129 | 24 |
+| cmyk (Flate) | 3593 | 3593 | 3593 | 45 | 17 |
+| cmyk-patches (Flate, colour check) | 2659 | 2659 | 2659 | 9 | 3 |
+| cmyk-adobe-jpeg (inverted, `/Decode [1 0 ...]`) | 168 | 168 | 168 | 36 | 11 |
+| indexed-4bit (large) | 542 | 542 | 542 | 51 | 17 |
+| indexed-small (131 KB) | 131 | 131 | 131 | 131 | 131 |
 | unsupported-codecs (JBIG2, CCITT, JPX) | 177 | 177 | 177 | 177 | 177 |
 | shared-image (12 pages) | 758 | 758 | 59 | 59 | 21 |
 | annotation (small on a big page) | 3726 | 3726 | 95 | 27 | 11 |
@@ -343,6 +349,32 @@ rows put a small picture on a big page on purpose: the old page-size fallback
 overestimated its size and kept 4x more pixels than needed. The corpus tests
 check the output image dimensions for that.
 
-**Not done.** Indexed, CMYK and the bilevel codecs are still left alone, and
-the SMask image itself is kept lossless. Files whose weight is mostly those
-will still barely shrink, and the result note says the original came back.
+**Follow-up, same day: CMYK and palette images.** Print PDFs from InDesign
+or Canva are often mostly CMYK, and Ghostscript `/ebook` and the online tools
+convert them to RGB for screen use, so Recommended and Strong now do too.
+
+- CMYK means DeviceCMYK or an ICCBased space with N=4, as Flate samples or
+  DCT. The result is a DeviceRGB JPEG (`/ColorSpace` replaced, `/Decode`
+  dropped), under the same 10% savings rule.
+- Flate CMYK uses the naive conversion R = 255 (1 - C)(1 - K), and likewise
+  for G and B. It is an approximation: no ink behaviour and no ICC profile, so
+  saturated colours look a little more vivid than a press proof. Fine for
+  screen. A `/Decode [1 0 1 0 1 0 1 0]` is honoured by inverting the samples
+  first.
+- CMYK JPEGs are decoded by the browser, which does its own CMYK to RGB
+  conversion and undoes Adobe's inverted storage when the APP14 marker is
+  present. The PDF signals the same inversion with `/Decode [1 0 ...]`. If the
+  marker and the `/Decode` disagree we cannot tell which is right, so the
+  image is left alone. The corpus checks the colours with a hand-built Adobe
+  CMYK JPEG (a cyan and a magenta half): after conversion they read as cyan
+  and magenta, not inverted.
+- Indexed images are expanded to RGB through their palette (1, 2, 4 or 8 bits
+  per index; gray or RGB base) and re-encoded as a DeviceRGB JPEG, but only
+  when stored size is over 200 KB and there is no mask or `/SMask` or
+  `/Decode`. Smaller palette images are usually flat graphics where JPEG
+  costs sharpness for little gain, so they stay.
+- Soft masks stay lossless.
+
+**Not done.** JBIG2, CCITT, JPX, Lab, Separation and DeviceN images, and the
+SMask image itself, are left alone. Files whose weight is mostly those will
+still barely shrink, and the result note says the original came back.

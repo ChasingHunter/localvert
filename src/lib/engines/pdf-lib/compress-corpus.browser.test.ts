@@ -83,6 +83,42 @@ async function images(bytes: ArrayBuffer): Promise<ImageInfo[]> {
   return out;
 }
 
+/** Mean RGB of a small square around (fx, fy) (fractions of the image) of
+ * the first JPEG image in `pdf`. */
+async function jpegPixel(
+  pdf: ArrayBuffer,
+  fx: number,
+  fy: number,
+): Promise<[number, number, number]> {
+  const doc = await PDFDocument.load(pdf);
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFRawStream)) continue;
+    const filter = obj.dict.lookup(PDFName.of("Filter"));
+    if (!(filter instanceof PDFName) || filter.asString() !== "/DCTDecode") {
+      continue;
+    }
+    const bitmap = await createImageBitmap(
+      new Blob([new Uint8Array(obj.getContents())], { type: "image/jpeg" }),
+    );
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no 2d context");
+    ctx.drawImage(bitmap, 0, 0);
+    const half = 4;
+    const x = Math.round(bitmap.width * fx) - half;
+    const y = Math.round(bitmap.height * fy) - half;
+    const { data } = ctx.getImageData(x, y, half * 2, half * 2);
+    const sum = [0, 0, 0];
+    const n = data.length / 4;
+    for (let i = 0; i < n; i++) {
+      for (let c = 0; c < 3; c++)
+        sum[c] = (sum[c] ?? 0) + (data[i * 4 + c] ?? 0);
+    }
+    return [(sum[0] ?? 0) / n, (sum[1] ?? 0) / n, (sum[2] ?? 0) / n];
+  }
+  throw new Error("no JPEG image in output");
+}
+
 let corpus: CorpusEntry[] = [];
 const results = new Map<string, ArrayBuffer>();
 
@@ -211,11 +247,48 @@ describe("compress-pdf corpus", () => {
     expect(color?.filter).toBe("/DCTDecode");
   });
 
-  it("leaves Indexed, CMYK and unsupported codecs exactly as they were", async () => {
-    for (const name of ["indexed", "cmyk", "unsupported-codecs"]) {
+  it("leaves unsupported codecs and small palette images exactly as they were", async () => {
+    for (const name of ["indexed-small", "unsupported-codecs"]) {
       const before = await images(original(name).bytes);
       const after = await images(result(name, "recommended"));
       expect(after, name).toEqual(before);
+    }
+  });
+
+  it("converts CMYK to RGB with the colours the right way round", async () => {
+    // Left half is pure cyan ink (RGB about 0,255,255), right half pure
+    // magenta (255,0,255). An inverted conversion would swap these to
+    // red/green.
+    for (const name of ["cmyk-patches", "cmyk-adobe-jpeg"]) {
+      const out = result(name, "recommended");
+      const [img] = await images(out);
+      expect(img?.filter, name).toBe("/DCTDecode");
+      expect(img?.colorSpace, name).toBe("/DeviceRGB");
+      expect(img?.jpegComponents, name).toBe(3);
+      const [lr, lg, lb] = await jpegPixel(out, 0.25, 0.5);
+      expect(lr, `${name} cyan R`).toBeLessThan(70);
+      expect(lg, `${name} cyan G`).toBeGreaterThan(185);
+      expect(lb, `${name} cyan B`).toBeGreaterThan(185);
+      const [rr, rg, rb] = await jpegPixel(out, 0.75, 0.5);
+      expect(rr, `${name} magenta R`).toBeGreaterThan(185);
+      expect(rg, `${name} magenta G`).toBeLessThan(70);
+      expect(rb, `${name} magenta B`).toBeGreaterThan(185);
+      expect(
+        sizeOf(name, "recommended") / original(name).bytes.byteLength,
+        name,
+      ).toBeLessThan(0.7);
+    }
+  });
+
+  it("converts large CMYK and Indexed images, keeping their savings", async () => {
+    for (const name of ["cmyk", "indexed", "indexed-4bit"]) {
+      const [img] = await images(result(name, "recommended"));
+      expect(img?.filter, name).toBe("/DCTDecode");
+      expect(img?.colorSpace, name).toBe("/DeviceRGB");
+      expect(
+        sizeOf(name, "recommended") / original(name).bytes.byteLength,
+        name,
+      ).toBeLessThan(0.5);
     }
   });
 

@@ -87,6 +87,115 @@ async function jpegBytes(
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+/**
+ * A minimal baseline 4-component JPEG with an Adobe APP14 marker, built by
+ * hand because no browser encoder writes CMYK. Every 8x8 block is DC-only
+ * (flat), quantiser 1, so a block's sample is exactly `sample(bx, by, comp)`.
+ * Adobe stores CMYK inverted, so callers pass `255 - ink`.
+ */
+function cmykJpeg(
+  width: number,
+  height: number,
+  sample: (bx: number, by: number, comp: number) => number,
+): Uint8Array {
+  const out: number[] = [];
+  const u16 = (n: number): number[] => [(n >> 8) & 0xff, n & 0xff];
+  out.push(0xff, 0xd8);
+  // APP14 "Adobe", version 100, flags 0/0, transform 0 (CMYK, no YCC).
+  out.push(0xff, 0xee, ...u16(14), 0x41, 0x64, 0x6f, 0x62, 0x65);
+  out.push(...u16(100), ...u16(0), ...u16(0), 0);
+  // DQT: all ones.
+  out.push(0xff, 0xdb, ...u16(67), 0, ...new Array<number>(64).fill(1));
+  // SOF0: 8-bit, 4 components, 1x1 sampling, table 0.
+  out.push(0xff, 0xc0, ...u16(8 + 3 * 4), 8, ...u16(height), ...u16(width), 4);
+  for (let c = 0; c < 4; c++) out.push(c + 1, 0x11, 0);
+  // DHT DC: the standard luminance table (categories 0..11).
+  const dcCounts = [0, 1, 5, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0];
+  const dcSymbols = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+  out.push(
+    0xff,
+    0xc4,
+    ...u16(2 + 1 + 16 + 12),
+    0x00,
+    ...dcCounts,
+    ...dcSymbols,
+  );
+  // DHT AC: one symbol, end-of-block, code "0".
+  out.push(
+    0xff,
+    0xc4,
+    ...u16(2 + 1 + 16 + 1),
+    0x10,
+    1,
+    ...new Array<number>(15).fill(0),
+    0,
+  );
+  // SOS: all four components, DC table 0, AC table 0.
+  out.push(0xff, 0xda, ...u16(6 + 2 * 4), 4);
+  for (let c = 0; c < 4; c++) out.push(c + 1, 0x00);
+  out.push(0, 63, 0);
+
+  // Canonical DC codes.
+  const codes = new Map<number, { code: number; len: number }>();
+  let code = 0;
+  let k = 0;
+  for (let len = 1; len <= 16; len++) {
+    for (let n = 0; n < (dcCounts[len - 1] ?? 0); n++) {
+      codes.set(dcSymbols[k++] ?? 0, { code, len });
+      code++;
+    }
+    code <<= 1;
+  }
+
+  let acc = 0;
+  let nbits = 0;
+  const put = (value: number, len: number): void => {
+    for (let i = len - 1; i >= 0; i--) {
+      acc = (acc << 1) | ((value >> i) & 1);
+      if (++nbits === 8) {
+        out.push(acc);
+        if (acc === 0xff) out.push(0);
+        acc = 0;
+        nbits = 0;
+      }
+    }
+  };
+
+  const pred = [0, 0, 0, 0];
+  const bw = Math.ceil(width / 8);
+  const bh = Math.ceil(height / 8);
+  for (let by = 0; by < bh; by++) {
+    for (let bx = 0; bx < bw; bx++) {
+      for (let c = 0; c < 4; c++) {
+        const dc = Math.round(8 * (sample(bx, by, c) - 128));
+        const diff = dc - (pred[c] ?? 0);
+        pred[c] = dc;
+        const magnitude = Math.abs(diff);
+        const category = magnitude === 0 ? 0 : 32 - Math.clz32(magnitude);
+        const huff = codes.get(category);
+        if (!huff) throw new Error("dc category out of range");
+        put(huff.code, huff.len);
+        if (category > 0) {
+          put(diff < 0 ? diff + (1 << category) - 1 : diff, category);
+        }
+        put(0, 1); // end of block
+      }
+    }
+  }
+  if (nbits > 0) put(0x7f, 8 - nbits);
+  out.push(0xff, 0xd9);
+  return Uint8Array.from(out);
+}
+
+/** CMYK ink amounts (0 to 255) for a two-colour test card: the left half is
+ * pure cyan ink, the right half pure magenta, plus a little grain. */
+function inkAt(x: number, width: number, comp: number, grain: number): number {
+  const left = x < width / 2;
+  const base =
+    comp === 0 ? (left ? 255 : 0) : comp === 1 ? (left ? 0 : 255) : 0;
+  return Math.max(0, Math.min(255, base + (base === 255 ? -grain : grain)));
+}
+
 type Ctx = PDFDocument["context"];
 
 interface ImageSpec {
@@ -486,6 +595,118 @@ export async function buildCorpus(): Promise<CorpusEntry[]> {
       "Image in an annotation appearance stream",
       await save(doc),
     );
+  }
+
+  // CMYK: flat colour patches (cyan | magenta) so the tests can check the
+  // converted colours are the right way round, once as Flate samples...
+  {
+    const doc = await PDFDocument.create();
+    const w = 1200;
+    const h = 800;
+    const rand = rng(21);
+    const data = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        for (let c = 0; c < 4; c++) {
+          data[(y * w + x) * 4 + c] = inkAt(x, w, c, Math.floor(rand() * 24));
+        }
+      }
+    }
+    const ref = addImage(doc.context, {
+      width: w,
+      height: h,
+      dict: { ColorSpace: "DeviceCMYK" },
+      bytes: data,
+    });
+    setPage(doc, 400, 267, { Im0: ref }, place("Im0", 0, 0, 400, 267));
+    add("cmyk-patches", "Flate CMYK, cyan | magenta card", await save(doc));
+  }
+  // ... and once as an Adobe-style inverted CMYK JPEG with /Decode [1 0 ...].
+  {
+    const doc = await PDFDocument.create();
+    const w = 1600;
+    const h = 1200;
+    const rand = rng(22);
+    const jpeg = cmykJpeg(
+      w,
+      h,
+      (bx, _by, comp) => 255 - inkAt(bx * 8, w, comp, Math.floor(rand() * 24)),
+    );
+    const ref = addImage(doc.context, {
+      width: w,
+      height: h,
+      dict: {
+        ColorSpace: "DeviceCMYK",
+        Filter: "DCTDecode",
+        Decode: [1, 0, 1, 0, 1, 0, 1, 0],
+      },
+      bytes: jpeg,
+      raw: true,
+    });
+    setPage(doc, 400, 300, { Im0: ref }, place("Im0", 0, 0, 400, 300));
+    add(
+      "cmyk-adobe-jpeg",
+      "Adobe inverted CMYK JPEG with /Decode [1 0 1 0 1 0 1 0]",
+      await save(doc),
+    );
+  }
+
+  // Indexed: a small one (left alone) and a 4-bit one (large, converted).
+  {
+    const doc = await PDFDocument.create();
+    const ctx = doc.context;
+    const palette = ctx.register(ctx.flateStream(pixels(256, 1, 3, 23, 200)));
+    const idx = ctx.obj([
+      PDFName.of("Indexed"),
+      PDFName.of("DeviceRGB"),
+      255,
+      palette,
+    ]);
+    const ref = addImage(ctx, {
+      width: 500,
+      height: 300,
+      dict: { ColorSpace: idx },
+      bytes: pixels(500, 300, 1, 24, 40),
+    });
+    setPage(doc, 250, 150, { Im0: ref }, place("Im0", 0, 0, 250, 150));
+    add("indexed-small", "Small Indexed image", await save(doc));
+  }
+  {
+    const doc = await PDFDocument.create();
+    const ctx = doc.context;
+    const w = 1500;
+    const h = 1000;
+    const table = new Uint8Array(16 * 3);
+    for (let i = 0; i < 16; i++) {
+      table[i * 3] = i * 16;
+      table[i * 3 + 1] = 255 - i * 16;
+      table[i * 3 + 2] = 128;
+    }
+    const palette = ctx.register(ctx.flateStream(table));
+    const idx = ctx.obj([
+      PDFName.of("Indexed"),
+      PDFName.of("DeviceRGB"),
+      15,
+      palette,
+    ]);
+    const gray = pixels(w, h, 1, 25, 60);
+    const rowBytes = Math.ceil(w / 2);
+    const packed = new Uint8Array(rowBytes * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const v = (gray[y * w + x] ?? 0) >> 4;
+        const at = y * rowBytes + (x >> 1);
+        packed[at] = (packed[at] ?? 0) | (x % 2 === 0 ? v << 4 : v);
+      }
+    }
+    const ref = addImage(ctx, {
+      width: w,
+      height: h,
+      dict: { ColorSpace: idx, BitsPerComponent: 4 },
+      bytes: packed,
+    });
+    setPage(doc, 500, 333, { Im0: ref }, place("Im0", 0, 0, 500, 333));
+    add("indexed-4bit", "Large 4-bit Indexed image", await save(doc));
   }
 
   // Dictionaries written every which way: nothing here may throw.
