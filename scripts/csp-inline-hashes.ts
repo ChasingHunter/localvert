@@ -28,14 +28,17 @@ const META_MARKER = "data-localvert-csp";
  * Regex-based HTML handling only because this walks our own build output,
  * not arbitrary hostile HTML: the shape is entirely Next's. The pattern
  * captures the opening tag's attributes (to check for `src`) and the
- * content up to the literal `</script>` terminator, `s`-flagged so `.`
- * spans newlines for multiline scripts. Next escapes any `</script>`
- * appearing inside a string literal it inlines (as `<\/script>`), so the
- * literal terminator this regex looks for only ever appears where a real
- * script tag ends.
+ * content up to the `</script>` end tag, `s`-flagged so `.` spans
+ * newlines for multiline scripts. The end tag also matches the spellings
+ * the HTML parser accepts (`</script >`, `</SCRIPT>`, stray attributes),
+ * so a script is never merged with the next one. Next escapes any
+ * `</script>` appearing inside a string literal it inlines (as
+ * `<\/script>`), so the terminator only ever appears where a real script
+ * tag ends.
  */
 export function extractInlineScripts(html: string): string[] {
-  const scriptTagRe = /<script(?<attrs>[^>]*)>(?<content>.*?)<\/script>/gis;
+  const scriptTagRe =
+    /<script(?<attrs>[^>]*)>(?<content>.*?)<\/script[^>]*>/gis;
   const scripts: string[] = [];
   for (const match of html.matchAll(scriptTagRe)) {
     const attrs = match.groups?.attrs ?? "";

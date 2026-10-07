@@ -16,6 +16,12 @@ describe("extractInlineScripts", () => {
     expect(extractInlineScripts(html)).toEqual(["alert(1)", '{"a":1}']);
   });
 
+  it("ends a script at the end-tag spellings the HTML parser accepts", () => {
+    const html =
+      "<script>a()</script ><script>b()</SCRIPT\n><script>c()</script x>";
+    expect(extractInlineScripts(html)).toEqual(["a()", "b()", "c()"]);
+  });
+
   it("skips scripts with a src attribute", () => {
     const html = '<head><script src="/chunk.js" async></script></head>';
     expect(extractInlineScripts(html)).toEqual([]);
