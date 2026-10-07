@@ -2,12 +2,20 @@ import {
   decodePDFRawStream,
   degrees,
   PDFArray,
+  PDFDict,
   PDFDocument,
+  PDFName,
   PDFRawStream,
+  UnexpectedObjectTypeError,
 } from "@cantoo/pdf-lib";
 import { describe, expect, it } from "vitest";
+import { EngineError, isEngineError } from "../errors";
 import type { EngineInput, EngineTask } from "../types";
-import adapter, { parseReplacePageImages } from "./adapter";
+import adapter, {
+  COMPRESS_FAILED_MESSAGE,
+  compressFailure,
+  parseReplacePageImages,
+} from "./adapter";
 
 function baseTask(overrides: Partial<EngineTask> = {}): EngineTask {
   return {
@@ -451,5 +459,35 @@ describe("run: addPageNumbers", () => {
     const outDoc = await PDFDocument.load(result.bytes);
     expect(outDoc.getPage(0).getRotation().angle).toBe(270);
     expect(pageContentText(outDoc, 0)).toContain(asciiHex("1"));
+  });
+});
+
+describe("compressFailure", () => {
+  it("never lets a raw pdf-lib type error reach the UI", () => {
+    const raw = new UnexpectedObjectTypeError([PDFDict], PDFName.of("x"));
+    const mapped = compressFailure(raw) as Error;
+    expect(isEngineError(mapped)).toBe(true);
+    expect(mapped.message).toBe(COMPRESS_FAILED_MESSAGE);
+    expect(mapped.message).not.toMatch(/Expected instance/);
+    expect(mapped.cause).toBe(raw);
+  });
+
+  it("maps any unknown throw to the plain sentence", () => {
+    expect(
+      (compressFailure(new TypeError("x is not a function")) as Error).message,
+    ).toBe(COMPRESS_FAILED_MESSAGE);
+    expect((compressFailure("boom") as Error).message).toBe(
+      COMPRESS_FAILED_MESSAGE,
+    );
+  });
+
+  it("keeps errors that already say something useful", () => {
+    const encrypted = new EngineError(
+      "unsupported",
+      "This PDF is password-protected",
+    );
+    expect(compressFailure(encrypted)).toBe(encrypted);
+    const abort = new DOMException("aborted", "AbortError");
+    expect(compressFailure(abort)).toBe(abort);
   });
 });

@@ -88,13 +88,13 @@ function matrixFromArgs(args: readonly unknown[]): Matrix | undefined {
 /**
  * Walks one page's already-tokenized content stream (`q`/`Q` push/pop the
  * CTM, `cm` concatenates onto it, `Do` records a placement), tracking the
- * CTM from identity — a page's initial CTM in practice is always identity
- * at the top of its content stream, the same starting point
- * `@cantoo/pdf-lib`'s own `extractPageContents` uses. Doesn't recurse into
- * Form XObjects (a `Do` naming one is simply not in `nameToKey` and gets
- * ignored) — "a pragmatic operator scan… is enough" per ADR-0017; a form
- * that itself paints an image falls back to the page-size upper bound in
- * the caller, same as any other placement this scan can't resolve.
+ * CTM from `initialCtm` (identity for a page, whose initial CTM in practice
+ * is always identity at the top of its content stream, the same starting
+ * point `@cantoo/pdf-lib`'s own `extractPageContents` uses). Doesn't recurse
+ * into Form XObjects itself: a `Do` naming one is not in `nameToKey`, but
+ * every `Do` is reported to `onDo` with the CTM at that moment, so the
+ * caller can scan the form's own content stream from that CTM composed with
+ * the form's `/Matrix` (ADR-0017 addendum, 2026-10-07).
  *
  * `nameToKey` maps a page's `/XObject` resource name (as it appears after
  * `/` in a `Do` operand) to whatever key the caller wants placements grouped
@@ -106,10 +106,12 @@ function matrixFromArgs(args: readonly unknown[]): Matrix | undefined {
 export function scanImagePlacements(
   operations: readonly ContentOp[],
   nameToKey: ReadonlyMap<string, string>,
+  onDo?: (name: string, ctm: Matrix) => void,
+  initialCtm: Matrix = IDENTITY_MATRIX,
 ): Map<string, { widthPt: number; heightPt: number }[]> {
   const placements = new Map<string, { widthPt: number; heightPt: number }[]>();
   const stack: Matrix[] = [];
-  let ctm: Matrix = IDENTITY_MATRIX;
+  let ctm: Matrix = initialCtm;
 
   for (const op of operations) {
     switch (op.name) {
@@ -117,7 +119,7 @@ export function scanImagePlacements(
         stack.push(ctm);
         break;
       case "Q":
-        ctm = stack.pop() ?? IDENTITY_MATRIX;
+        ctm = stack.pop() ?? initialCtm;
         break;
       case "cm": {
         const m = matrixFromArgs(op.args);
@@ -128,6 +130,7 @@ export function scanImagePlacements(
         const nameArg = op.args[0];
         const name = isNameOperand(nameArg) ? nameArg.value : undefined;
         const key = name ? nameToKey.get(name) : undefined;
+        if (name) onDo?.(name, ctm);
         if (key) {
           const list = placements.get(key) ?? [];
           list.push(drawnSizeFromCtm(ctm));

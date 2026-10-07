@@ -18,6 +18,9 @@
 import { formatAchieved, formatMB } from "./format";
 
 export interface PdfEstimateProbe {
+  /** Only the images the run can re-encode (`probePdf`): JBIG2, CMYK,
+   * Indexed, masks and tiny images count as `nonImageBytes`, since the ladder
+   * can't shrink them. */
   imageBytes: number;
   nonImageBytes: number;
 }

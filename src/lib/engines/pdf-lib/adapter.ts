@@ -1,4 +1,4 @@
-﻿import type { PDFDict } from "@cantoo/pdf-lib";
+﻿import type { PDFDict, PDFObject } from "@cantoo/pdf-lib";
 import encodeJpeg, { init as initJpegEncode } from "@jsquash/jpeg/encode";
 import {
   DEFAULT_BLANK_SIZE,
@@ -13,7 +13,7 @@ import {
   sniffFormat,
 } from "@/lib/registry";
 import { defineEngine } from "../define-engine";
-import { EngineError, toEngineError } from "../errors";
+import { EngineError, isEngineError, toEngineError } from "../errors";
 import { ENGINE_MANIFEST } from "../manifest";
 import { neverLarger } from "../shared/never-larger";
 import {
@@ -24,7 +24,10 @@ import {
 } from "../shared/pdf-compress-target";
 import {
   type ContentOp,
+  IDENTITY_MATRIX,
   largestPlacement,
+  type Matrix,
+  multiplyMatrix,
   scanImagePlacements,
   targetDimensionsForImage,
 } from "../shared/pdf-image-dpi";
@@ -824,38 +827,102 @@ function pruneUnreferencedObjects(
   }
 }
 
+type PdfDoc = Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>;
 type RawStream = ReturnType<PdfLibModule["PDFRawStream"]["of"]>;
 type PDFRefLike = ReturnType<PdfLibModule["PDFRef"]["of"]>;
+type PDFDictLike = PDFDict;
+type PDFValue = PDFObject | undefined;
 
 interface ImageStreamEntry {
   ref: PDFRefLike;
   stream: RawStream;
 }
 
+/**
+ * Untyped dictionary lookup: resolves an indirect reference and hands back
+ * whatever is there. `dict.lookupMaybe(key, PDFName)` and friends THROW
+ * `UnexpectedObjectTypeError` ("Expected instance of PDFName, but got
+ * instance of PDFArray", with minified class names in production builds)
+ * when the entry is present but is another legal PDF shape. `/ColorSpace` is
+ * the classic: a name, or an array like `[/ICCBased 12 0 R]` or
+ * `[/Indexed ...]`, and so are `/Filter` and `/DecodeParms`. With no type
+ * arguments `lookup` never throws (pdf-lib `PDFContext.lookup` only checks
+ * types when `types` is non-empty), so the compress path reads everything
+ * through this and checks `instanceof` itself. ADR-0017 addendum,
+ * 2026-10-07.
+ */
+function look(mod: PdfLibModule, dict: PDFDictLike, key: string): PDFValue {
+  return dict.lookup(mod.PDFName.of(key)) as PDFValue;
+}
+
+function numberOf(mod: PdfLibModule, value: PDFValue): number | undefined {
+  return value instanceof mod.PDFNumber ? value.asNumber() : undefined;
+}
+
+/** `[a b c d ...]` as plain numbers, or undefined if it isn't an array of at
+ * least `count` numbers. Elements may be indirect references. */
+function numberArray(
+  mod: PdfLibModule,
+  value: PDFValue,
+  count: number,
+): number[] | undefined {
+  if (!(value instanceof mod.PDFArray) || value.size() < count) {
+    return undefined;
+  }
+  const out: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const n = numberOf(mod, value.lookup(i));
+    if (n === undefined) return undefined;
+    out.push(n);
+  }
+  return out;
+}
+
+/** True for a `PDFRawStream` whose `/Subtype` is `want` (`/Image`, `/Form`).
+ * `PDFName.asString()` keeps the leading slash, same as every other name
+ * comparison in this file. */
+function isRawStreamOf(
+  mod: PdfLibModule,
+  obj: unknown,
+  want: "/Image" | "/Form",
+): obj is RawStream {
+  if (!(obj instanceof mod.PDFRawStream)) return false;
+  const subtype = look(mod, obj.dict, "Subtype");
+  return subtype instanceof mod.PDFName && subtype.asString() === want;
+}
+
 /** Every indirect object in `doc` whose dict says `/Subtype /Image` and
  * which is a `PDFRawStream` (the shape every image XObject this adapter can
- * touch takes — a `PDFContentStream` is never an image). Carries each
- * object's own `ref` alongside its stream (ADR-0017) — `collectImagePlacements`
- * below keys its drawn-size map by that same ref, so `compressAllImages` can
- * look a placement up for the exact object it's about to re-encode. */
-function findImageStreams(
-  mod: PdfLibModule,
-  doc: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>,
-): ImageStreamEntry[] {
+ * touch takes — a `PDFContentStream` is never an image). Enumerating the
+ * object table, not walking pages, is what makes each image appear exactly
+ * once however many pages or forms use it, and it reaches images that only
+ * a form or an annotation appearance stream paints. Carries each object's
+ * own `ref` alongside its stream (ADR-0017) — `collectImagePlacements`
+ * below keys its drawn-size map by that same ref. */
+function findImageStreams(mod: PdfLibModule, doc: PdfDoc): ImageStreamEntry[] {
   const streams: ImageStreamEntry[] = [];
   for (const [ref, obj] of doc.context.enumerateIndirectObjects()) {
-    if (!(obj instanceof mod.PDFRawStream)) continue;
-    const subtype = obj.dict.lookupMaybe(
-      mod.PDFName.of("Subtype"),
-      mod.PDFName,
-    );
-    // `PDFName.asString()` includes the leading slash (it's the raw encoded
-    // token, e.g. `"/Image"`) — unlike `decodeText()`, which strips it. Every
-    // name comparison in this file matches on the encoded form, same as
-    // `stripOrphanedEncryptDict`'s existing `"/Standard"` check above.
-    if (subtype?.asString() === "/Image") streams.push({ ref, stream: obj });
+    if (isRawStreamOf(mod, obj, "/Image")) streams.push({ ref, stream: obj });
   }
   return streams;
+}
+
+/** Refs of images that are another image's `/SMask` or explicit `/Mask`.
+ * A soft mask must stay `DeviceGray` and a stencil mask 1-bit, so they must
+ * never go through the RGB JPEG re-encode (the old code did exactly that to
+ * every SMask it met). */
+function findMaskKeys(
+  mod: PdfLibModule,
+  images: readonly ImageStreamEntry[],
+): Set<string> {
+  const keys = new Set<string>();
+  for (const { stream } of images) {
+    for (const name of ["SMask", "Mask"]) {
+      const raw = stream.dict.get(mod.PDFName.of(name));
+      if (raw instanceof mod.PDFRef) keys.add(raw.toString());
+    }
+  }
+  return keys;
 }
 
 function concatUint8Arrays(parts: readonly Uint8Array[]): Uint8Array {
@@ -871,145 +938,390 @@ function concatUint8Arrays(parts: readonly Uint8Array[]): Uint8Array {
 
 /** The biggest `MediaBox` (by area) across every page — the "page size as an
  * upper bound" fallback ADR-0017 calls for when an image's placement can't
- * be determined (`collectImagePlacements` found no `Do` naming it anywhere:
- * a Form XObject painting it, or a resource dict entry with no matching
- * `Do` at all). US Letter is the fallback for the never-really-happens case
- * of a zero-page document. */
-function largestPageSize(
-  doc: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>,
-): { widthPt: number; heightPt: number } {
+ * be determined (`collectImagePlacements` found no `Do` naming it anywhere).
+ * US Letter is the fallback for a zero-page or unreadable document. */
+function largestPageSize(doc: PdfDoc): { widthPt: number; heightPt: number } {
   let best = { widthPt: 612, heightPt: 792 };
   let bestArea = 0;
-  for (const page of doc.getPages()) {
-    const { width, height } = page.getSize();
-    const area = width * height;
-    if (area > bestArea) {
-      bestArea = area;
-      best = { widthPt: width, heightPt: height };
+  try {
+    for (const page of doc.getPages()) {
+      const { width, height } = page.getSize();
+      const area = width * height;
+      if (area > bestArea) {
+        bestArea = area;
+        best = { widthPt: width, heightPt: height };
+      }
     }
+  } catch {
+    // A page with a broken MediaBox: keep what we have.
   }
   return best;
 }
 
+type Placement = { widthPt: number; heightPt: number };
+
+/** Form XObjects nest (Word and Canva export a form per object, InDesign per
+ * layer). Deep enough for every real file; the budget stops a pathological
+ * fan-out (a form drawn thousands of times) from stalling the scan, and
+ * anything it doesn't reach falls back to the page-size upper bound. */
+const MAX_FORM_DEPTH = 12;
+const MAX_FORM_VISITS = 5000;
+
 /**
- * ADR-0017's "effective DPI" data collection: for every page, maps each
- * `/XObject` resource name to the ref it names, decodes that page's content
- * stream(s), and runs the shared `scanImagePlacements` (q/Q/cm/Do tracking —
- * see `shared/pdf-image-dpi.ts` for the CTM math and its documented limits,
- * chiefly no recursion into Form XObjects) over the result. Placements of
- * the same shared image across multiple pages (or multiple `Do`s on one
- * page) all merge under that image's one ref key, keyed by `PDFRef.toString()`
- * exactly like `pruneUnreferencedObjects`'s own reachability set above.
+ * ADR-0017's "effective DPI" data collection. For every page it decodes the
+ * content stream(s) and runs the shared `scanImagePlacements` (q/Q/cm/Do
+ * tracking — see `shared/pdf-image-dpi.ts`), and follows every `Do` that
+ * names a Form XObject: the form's own content stream is scanned with the
+ * CTM at the `Do` composed with the form's `/Matrix`, so an image two forms
+ * deep gets its true drawn size, not the page size. A form chain that loops
+ * back on itself is cut by a per-path visited set. Annotation appearance
+ * streams (`/AP /N`) are scanned too, scaled from their `/BBox` into the
+ * annotation's `/Rect`. Placements of the same image everywhere (many pages,
+ * many forms) merge under its one ref key. Anything that fails here just
+ * means that image uses the page-size fallback, never a failed compress.
  */
 function collectImagePlacements(
   mod: PdfLibModule,
-  doc: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>,
-): Map<string, { widthPt: number; heightPt: number }[]> {
-  const merged = new Map<string, { widthPt: number; heightPt: number }[]>();
+  doc: PdfDoc,
+): Map<string, Placement[]> {
+  const merged = new Map<string, Placement[]>();
+  const budget = { forms: 0 };
 
-  for (const page of doc.getPages()) {
-    const resources = page.node.Resources();
-    const xObjectDict = resources?.lookupMaybe(
-      mod.PDFName.of("XObject"),
-      mod.PDFDict,
-    );
-    if (!xObjectDict) continue;
+  interface XEntry {
+    key: string;
+    form?: RawStream;
+  }
 
-    const nameToKey = new Map<string, string>();
-    for (const [name, value] of xObjectDict.entries()) {
-      if (value instanceof mod.PDFRef) {
-        nameToKey.set(name.decodeText(), value.toString());
-      }
+  const xobjectMap = (
+    resources: PDFDictLike | undefined,
+  ): Map<string, XEntry> | undefined => {
+    if (!resources) return undefined;
+    const xobjects = look(mod, resources, "XObject");
+    if (!(xobjects instanceof mod.PDFDict)) return undefined;
+    const map = new Map<string, XEntry>();
+    for (const [name, value] of xobjects.entries()) {
+      if (!(value instanceof mod.PDFRef)) continue;
+      const target = doc.context.lookup(value);
+      map.set(name.decodeText(), {
+        key: value.toString(),
+        ...(isRawStreamOf(mod, target, "/Form") ? { form: target } : {}),
+      });
     }
-    if (nameToKey.size === 0) continue;
+    return map;
+  };
 
-    const contentsObj = page.node.Contents();
-    const contentStreams: RawStream[] = [];
-    if (contentsObj instanceof mod.PDFArray) {
-      for (let i = 0; i < contentsObj.size(); i++) {
-        const entry = contentsObj.lookupMaybe(i, mod.PDFRawStream);
-        if (entry) contentStreams.push(entry);
-      }
-    } else if (contentsObj instanceof mod.PDFRawStream) {
-      contentStreams.push(contentsObj);
-    }
-    if (contentStreams.length === 0) continue;
-
+  const decodeAll = (streams: readonly RawStream[]): Uint8Array | undefined => {
     const decoded: Uint8Array[] = [];
-    for (const s of contentStreams) {
+    for (const s of streams) {
       try {
         decoded.push(mod.decodePDFRawStream(s).decode());
       } catch {
-        // An undecodable content stream on this page — its images just fall
-        // back to the page-size upper bound instead of failing the compress.
+        // Undecodable stream: its images use the page-size fallback.
       }
     }
-    if (decoded.length === 0) continue;
+    return decoded.length > 0 ? concatUint8Arrays(decoded) : undefined;
+  };
 
+  const scan = (
+    content: Uint8Array,
+    xmap: Map<string, XEntry> | undefined,
+    ctm: Matrix,
+    depth: number,
+    path: Set<string>,
+  ): void => {
+    if (!xmap || xmap.size === 0) return;
     let operations: ContentOp[];
     try {
-      operations = mod.parseContentStream(
-        concatUint8Arrays(decoded),
-      ) as unknown as ContentOp[];
+      operations = mod.parseContentStream(content) as unknown as ContentOp[];
     } catch {
-      continue;
+      return;
     }
-
-    const placements = scanImagePlacements(operations, nameToKey);
+    const nameToKey = new Map<string, string>();
+    for (const [name, entry] of xmap) {
+      if (!entry.form) nameToKey.set(name, entry.key);
+    }
+    const placements = scanImagePlacements(
+      operations,
+      nameToKey,
+      (name, at) => {
+        const entry = xmap.get(name);
+        if (!entry?.form) return;
+        scanForm(entry.key, entry.form, at, depth + 1, path, xmap);
+      },
+      ctm,
+    );
     for (const [key, list] of placements) {
       merged.set(key, (merged.get(key) ?? []).concat(list));
+    }
+  };
+
+  const scanForm = (
+    key: string,
+    form: RawStream,
+    ctm: Matrix,
+    depth: number,
+    path: Set<string>,
+    parentMap: Map<string, XEntry>,
+  ): void => {
+    if (depth > MAX_FORM_DEPTH || path.has(key)) return;
+    if (++budget.forms > MAX_FORM_VISITS) return;
+    const content = decodeAll([form]);
+    if (!content) return;
+    const matrix = numberArray(mod, look(mod, form.dict, "Matrix"), 6);
+    const own = look(mod, form.dict, "Resources");
+    // A form without /Resources uses its parent's (legacy, but still seen).
+    const xmap = own instanceof mod.PDFDict ? xobjectMap(own) : parentMap;
+    path.add(key);
+    try {
+      scan(
+        content,
+        xmap,
+        matrix ? multiplyMatrix(ctm, matrix as unknown as Matrix) : ctm,
+        depth,
+        path,
+      );
+    } finally {
+      path.delete(key);
+    }
+  };
+
+  const scanAnnotations = (
+    page: PDFDictLike,
+    pageMap: Map<string, XEntry> | undefined,
+  ): void => {
+    const annots = look(mod, page, "Annots");
+    if (!(annots instanceof mod.PDFArray)) return;
+    for (let i = 0; i < annots.size(); i++) {
+      const annot = annots.lookup(i);
+      if (!(annot instanceof mod.PDFDict)) continue;
+      const ap = look(mod, annot, "AP");
+      if (!(ap instanceof mod.PDFDict)) continue;
+
+      // /N is a form, or a dictionary of forms keyed by appearance state
+      // (checkboxes, radio buttons).
+      const forms: { key: string; form: RawStream }[] = [];
+      const consider = (value: unknown): void => {
+        if (!(value instanceof mod.PDFRef)) return;
+        const target = doc.context.lookup(value);
+        if (isRawStreamOf(mod, target, "/Form")) {
+          forms.push({ key: value.toString(), form: target });
+        }
+      };
+      const normal = ap.get(mod.PDFName.of("N"));
+      const resolved =
+        normal instanceof mod.PDFRef ? doc.context.lookup(normal) : normal;
+      if (resolved instanceof mod.PDFDict) {
+        for (const state of resolved.values()) consider(state);
+      } else {
+        consider(normal);
+      }
+
+      const rect = numberArray(mod, look(mod, annot, "Rect"), 4);
+      for (const { key, form } of forms) {
+        const bbox = numberArray(mod, look(mod, form.dict, "BBox"), 4);
+        let ctm: Matrix = IDENTITY_MATRIX;
+        if (rect && bbox) {
+          const [rx1, ry1, rx2, ry2] = rect as [number, number, number, number];
+          const [bx1, by1, bx2, by2] = bbox as [number, number, number, number];
+          const bw = Math.abs(bx2 - bx1);
+          const bh = Math.abs(by2 - by1);
+          if (bw > 0 && bh > 0) {
+            const sx = Math.abs(rx2 - rx1) / bw;
+            const sy = Math.abs(ry2 - ry1) / bh;
+            ctm = [
+              sx,
+              0,
+              0,
+              sy,
+              Math.min(rx1, rx2) - Math.min(bx1, bx2) * sx,
+              Math.min(ry1, ry2) - Math.min(by1, by2) * sy,
+            ];
+          }
+        }
+        scanForm(key, form, ctm, 1, new Set(), pageMap ?? new Map());
+      }
+    }
+  };
+
+  for (const page of doc.getPages()) {
+    try {
+      const pageMap = xobjectMap(page.node.Resources());
+
+      const contents = look(mod, page.node, "Contents");
+      const streams: RawStream[] = [];
+      if (contents instanceof mod.PDFArray) {
+        for (let i = 0; i < contents.size(); i++) {
+          const entry = contents.lookup(i);
+          if (entry instanceof mod.PDFRawStream) streams.push(entry);
+        }
+      } else if (contents instanceof mod.PDFRawStream) {
+        streams.push(contents);
+      }
+      const content = decodeAll(streams);
+      if (content) scan(content, pageMap, IDENTITY_MATRIX, 0, new Set());
+
+      scanAnnotations(page.node, pageMap);
+    } catch {
+      // An odd page: its images use the page-size fallback.
     }
   }
 
   return merged;
 }
 
+/** Images with fewer content bytes than this are not worth a decode and
+ * re-encode: icons, bullets, rules. */
+const MIN_IMAGE_BYTES = 8 * 1024;
+/** Beyond this the RGBA copy alone is over 240 MB; leave the image as is
+ * rather than risk the worker running out of memory. */
+const MAX_IMAGE_PIXELS = 60_000_000;
+/** A re-encode is only kept when it saves at least this much: below that it
+ * is generation loss for nothing. */
+const MIN_IMAGE_SAVING = 0.1;
+
+/** Filters whose output is plain samples `decodePDFRawStream` can undo. */
+const SAMPLE_FILTERS = new Set([
+  "/FlateDecode",
+  "/LZWDecode",
+  "/ASCII85Decode",
+  "/ASCIIHexDecode",
+  "/RunLengthDecode",
+]);
+
+interface ImagePlan {
+  /** "jpeg": a DCTDecode stream. "samples": 8-bit raw samples once the
+   * filters in `/Filter` are undone. */
+  source: "jpeg" | "samples";
+  /** Colour model of the source, and of the JPEG we write. */
+  channels: 1 | 3;
+  width: number;
+  height: number;
+}
+
+/** `/Filter` as a list of names (it may be absent, a name, or an array), or
+ * undefined for anything else. */
+function filterNames(
+  mod: PdfLibModule,
+  dict: PDFDictLike,
+): string[] | undefined {
+  const filter = look(mod, dict, "Filter");
+  if (filter === undefined) return [];
+  if (filter instanceof mod.PDFName) return [filter.asString()];
+  if (!(filter instanceof mod.PDFArray)) return undefined;
+  const names: string[] = [];
+  for (let i = 0; i < filter.size(); i++) {
+    const entry = filter.lookup(i);
+    if (!(entry instanceof mod.PDFName)) return undefined;
+    names.push(entry.asString());
+  }
+  return names;
+}
+
+/** 1 (gray) or 3 (RGB) when `/ColorSpace` is a device or CIE-based gray/RGB
+ * space written as a name, an `[/ICCBased ref]`-style array, or a ref to
+ * either; undefined for everything we leave alone (CMYK, Indexed, Lab,
+ * Separation, DeviceN). */
+function colorChannels(
+  mod: PdfLibModule,
+  dict: PDFDictLike,
+): 1 | 3 | undefined {
+  const named = (name: string): 1 | 3 | undefined => {
+    if (name === "/DeviceGray" || name === "/CalGray") return 1;
+    if (name === "/DeviceRGB" || name === "/CalRGB") return 3;
+    return undefined;
+  };
+  const cs = look(mod, dict, "ColorSpace");
+  if (cs instanceof mod.PDFName) return named(cs.asString());
+  if (!(cs instanceof mod.PDFArray)) return undefined;
+  const first = cs.lookup(0);
+  if (!(first instanceof mod.PDFName)) return undefined;
+  if (first.asString() !== "/ICCBased") return named(first.asString());
+  const profile = cs.lookup(1);
+  if (!(profile instanceof mod.PDFStream)) return undefined;
+  const n = numberOf(mod, look(mod, profile.dict, "N"));
+  return n === 1 ? 1 : n === 3 ? 3 : undefined;
+}
+
 /**
- * Decodes one image XObject to an `ImageBitmap`, or `undefined` for anything
- * outside this adapter's deliberately narrow scope (ADR-0008 update):
- * anything but a plain DCTDecode JPEG or an 8-bit DeviceRGB/DeviceGray
- * FlateDecode raster with no `/SMask` and no `/Decode` is left untouched —
- * CMYK, indexed palettes, JBIG2, JPX, soft masks and 16-bit data all decode
- * to something this narrow path would get wrong.
+ * Decides, from the image dictionary alone (no pixel decoding), whether this
+ * adapter can re-encode an image, and how. Returns undefined to leave it
+ * untouched. Shared by `compressImageStream` and by the probe, so the
+ * "image bytes" an estimate counts are the ones the run can actually shrink.
+ *
+ * Left alone: mask images (an SMask must stay gray, a stencil 1-bit), image
+ * masks, colour-key `/Mask` arrays and `/Decode` arrays (a JPEG would not
+ * honour them), soft masks with `/Matte`, anything that is not 8 bits per
+ * component, CMYK, Indexed and Lab, JBIG2/CCITT/JPX and other codecs, and
+ * tiny images. An image with an `/SMask` is fine: only its colour data is
+ * re-encoded, the mask is kept as is.
  */
+function planImage(
+  mod: PdfLibModule,
+  stream: RawStream,
+  isMask: boolean,
+): ImagePlan | undefined {
+  if (isMask) return undefined;
+  const dict = stream.dict;
+  if (stream.getContentsSize() < MIN_IMAGE_BYTES) return undefined;
+
+  const imageMask = look(mod, dict, "ImageMask");
+  if (imageMask instanceof mod.PDFBool && imageMask.asBoolean()) {
+    return undefined;
+  }
+  if (look(mod, dict, "Decode") !== undefined) return undefined;
+  if (look(mod, dict, "Mask") instanceof mod.PDFArray) return undefined;
+  const smask = look(mod, dict, "SMask");
+  if (
+    smask instanceof mod.PDFStream &&
+    look(mod, smask.dict, "Matte") !== undefined
+  ) {
+    return undefined;
+  }
+
+  const width = numberOf(mod, look(mod, dict, "Width"));
+  const height = numberOf(mod, look(mod, dict, "Height"));
+  if (!width || !height || width <= 0 || height <= 0) return undefined;
+  if (width * height > MAX_IMAGE_PIXELS) return undefined;
+
+  const channels = colorChannels(mod, dict);
+  if (!channels) return undefined;
+
+  const filters = filterNames(mod, dict);
+  if (!filters) return undefined;
+  if (filters.length === 1 && filters[0] === "/DCTDecode") {
+    return { source: "jpeg", channels, width, height };
+  }
+  if (!filters.every((f) => SAMPLE_FILTERS.has(f))) return undefined;
+  if (numberOf(mod, look(mod, dict, "BitsPerComponent")) !== 8) {
+    return undefined;
+  }
+  return { source: "samples", channels, width, height };
+}
+
+/** Decodes the image `plan` describes to something drawable, or undefined. */
 async function decodeImageStream(
   mod: PdfLibModule,
   stream: RawStream,
-  width: number,
-  height: number,
+  plan: ImagePlan,
 ): Promise<ImageBitmap | undefined> {
-  const dict = stream.dict;
-  const filter = dict.get(mod.PDFName.of("Filter"));
-  if (!(filter instanceof mod.PDFName)) return undefined;
+  const { width, height, channels } = plan;
 
-  if (filter.asString() === "/DCTDecode") {
+  if (plan.source === "jpeg") {
     const blob = new Blob([new Uint8Array(stream.getContents())], {
       type: "image/jpeg",
     });
     try {
-      return await createImageBitmap(blob);
+      // A PDF viewer ignores EXIF orientation and embedded colour profiles
+      // (the colour space is declared in the dictionary), so the decode must
+      // too, or the re-encode would come out rotated or shifted.
+      return await createImageBitmap(blob, {
+        imageOrientation: "none",
+        colorSpaceConversion: "none",
+      });
     } catch {
       return undefined;
     }
   }
-
-  if (filter.asString() !== "/FlateDecode") return undefined;
-  if (dict.has(mod.PDFName.of("SMask"))) return undefined;
-  if (dict.has(mod.PDFName.of("Decode"))) return undefined;
-
-  const bits = dict.lookupMaybe(
-    mod.PDFName.of("BitsPerComponent"),
-    mod.PDFNumber,
-  );
-  if (bits?.asNumber() !== 8) return undefined;
-
-  const colorSpace = dict.lookupMaybe(
-    mod.PDFName.of("ColorSpace"),
-    mod.PDFName,
-  );
-  const csName = colorSpace?.asString();
-  if (csName !== "/DeviceRGB" && csName !== "/DeviceGray") return undefined;
-  const channels = csName === "/DeviceGray" ? 1 : 3;
 
   let raw: Uint8Array;
   try {
@@ -1046,19 +1358,22 @@ function clamp01(n: number): number {
 /**
  * Re-encodes one image XObject in place (mutates `stream`'s dict and
  * contents via `updateContents` — never replaces the indirect object
- * itself) with **mozjpeg** (ADR-0017 — `OffscreenCanvas.convertToBlob`'s
- * built-in JPEG encoder no longer runs at all in `compress-pdf`), sized by
- * `target`'s drawn size and `dpi` ceiling via the shared
- * `targetDimensionsForImage` (effective-DPI downsampling — never upsamples
- * an image already at or under `dpi`). Only commits the swap when the
- * result is actually smaller than what was there — the same "never make a
- * file bigger" rule `runCompress` applies to the whole document, applied
- * per image so a handful of already-tiny icons can't get bloated by a
- * re-encode while the big photos next to them shrink.
+ * itself) with **mozjpeg** (ADR-0017), sized by `target`'s drawn size and
+ * `dpi` ceiling via the shared `targetDimensionsForImage` (effective-DPI
+ * downsampling — never upsamples an image already at or under `dpi`).
+ * Grayscale sources are written as grayscale JPEGs so a gray scan doesn't
+ * triple its channels; RGB stays RGB, and the original `/ColorSpace` (an ICC
+ * profile array, say) is kept untouched since the channel count is the same.
+ * Only commits the swap when the result is at least `MIN_IMAGE_SAVING`
+ * smaller than what was there — the same "never make a file bigger" rule
+ * `runCompress` applies to the whole document, applied per image so a
+ * handful of already-small images can't get bloated by a re-encode while the
+ * big photos next to them shrink.
  */
 async function compressImageStream(
   mod: PdfLibModule,
   stream: RawStream,
+  plan: ImagePlan,
   target: {
     drawnWidthPt: number;
     drawnHeightPt: number;
@@ -1067,15 +1382,7 @@ async function compressImageStream(
   },
   ensureMozjpegEncodeReady: () => Promise<void>,
 ): Promise<boolean> {
-  const dict = stream.dict;
-  const widthObj = dict.lookupMaybe(mod.PDFName.of("Width"), mod.PDFNumber);
-  const heightObj = dict.lookupMaybe(mod.PDFName.of("Height"), mod.PDFNumber);
-  if (!widthObj || !heightObj) return false;
-  const width = widthObj.asNumber();
-  const height = heightObj.asNumber();
-  if (width <= 0 || height <= 0) return false;
-
-  const bitmap = await decodeImageStream(mod, stream, width, height);
+  const bitmap = await decodeImageStream(mod, stream, plan);
   if (!bitmap) return false;
 
   try {
@@ -1100,6 +1407,8 @@ async function compressImageStream(
     try {
       encoded = await encodeJpeg(imageData, {
         quality: Math.round(clamp01(target.quality) * 100),
+        // mozjpeg's MozJpegColorSpace.GRAYSCALE (a const enum, so the literal).
+        ...(plan.channels === 1 ? { color_space: 1 } : {}),
       });
     } catch (e) {
       throw new EngineError("encode-failed", "failed to encode jpeg", {
@@ -1109,12 +1418,14 @@ async function compressImageStream(
     }
     const newBytes = new Uint8Array(encoded);
 
-    if (newBytes.length >= stream.getContentsSize()) return false;
+    if (newBytes.length > stream.getContentsSize() * (1 - MIN_IMAGE_SAVING)) {
+      return false;
+    }
 
+    const dict = stream.dict;
     dict.set(mod.PDFName.of("Filter"), mod.PDFName.of("DCTDecode"));
     dict.set(mod.PDFName.of("Width"), mod.PDFNumber.of(outWidth));
     dict.set(mod.PDFName.of("Height"), mod.PDFNumber.of(outHeight));
-    dict.set(mod.PDFName.of("ColorSpace"), mod.PDFName.of("DeviceRGB"));
     dict.set(mod.PDFName.of("BitsPerComponent"), mod.PDFNumber.of(8));
     dict.delete(mod.PDFName.of("DecodeParms"));
     stream.updateContents(newBytes);
@@ -1129,58 +1440,98 @@ async function compressImageStream(
  * preset — the one loop body shared by `"recommended"`/`"strong"` (a single
  * pass) and each rung of the `"target-size"`/`"percent"` ladder (one pass
  * per rung, on a freshly-reloaded `doc` each time — see `runCompress`).
- * Computes `collectImagePlacements` once per call and looks up each image's
- * own largest on-page placement (`largestPlacement`) by its ref, falling
- * back to `largestPageSize` when no placement was found at all (ADR-0017's
- * documented fallback for an image this scan couldn't place).
+ * Each image object is processed once (`findImageStreams` lists objects, not
+ * uses), at the largest size any page, form or annotation draws it
+ * (`largestPlacement`), falling back to `largestPageSize` when no placement
+ * was found at all.
+ *
+ * One odd image never fails the document: anything an individual image
+ * throws (a malformed stream, a decode error, running out of memory) leaves
+ * that image as it was. Only an abort, or the mozjpeg encoder failing to
+ * load at all, propagates.
  */
 async function compressAllImages(
   mod: PdfLibModule,
-  doc: Awaited<ReturnType<PdfLibModule["PDFDocument"]["load"]>>,
+  doc: PdfDoc,
   preset: { dpi: number; quality: number },
   ensureMozjpegEncodeReady: () => Promise<void>,
   signal: AbortSignal,
   onProgress?: (fraction: number) => void,
 ): Promise<void> {
   const images = findImageStreams(mod, doc);
-  if (images.length === 0) {
+  const maskKeys = findMaskKeys(mod, images);
+  const todo = images.flatMap((entry) => {
+    const plan = planImage(
+      mod,
+      entry.stream,
+      maskKeys.has(entry.ref.toString()),
+    );
+    return plan ? [{ ...entry, plan }] : [];
+  });
+  if (todo.length === 0) {
     onProgress?.(1);
     return;
   }
 
-  const placementsByRef = collectImagePlacements(mod, doc);
+  // Load the encoder up front so a wasm load failure is a real error, not N
+  // silently skipped images.
+  await ensureMozjpegEncodeReady();
+
+  let placementsByRef = new Map<string, Placement[]>();
+  try {
+    placementsByRef = collectImagePlacements(mod, doc);
+  } catch {
+    // Every image uses the page-size fallback.
+  }
   const fallback = largestPageSize(doc);
 
-  for (let i = 0; i < images.length; i++) {
+  for (let i = 0; i < todo.length; i++) {
     signal.throwIfAborted();
-    const entry = images[i];
-    if (!entry) continue; // unreachable: guarded by `i < images.length`
-    const { ref, stream } = entry;
+    const entry = todo[i];
+    if (!entry) continue; // unreachable: guarded by `i < todo.length`
+    const { ref, stream, plan } = entry;
     const placements = placementsByRef.get(ref.toString());
     const drawn = (placements && largestPlacement(placements)) ?? fallback;
-    await compressImageStream(
-      mod,
-      stream,
-      {
-        drawnWidthPt: drawn.widthPt,
-        drawnHeightPt: drawn.heightPt,
-        dpi: preset.dpi,
-        quality: preset.quality,
-      },
-      ensureMozjpegEncodeReady,
-    );
-    onProgress?.((i + 1) / images.length);
+    try {
+      await compressImageStream(
+        mod,
+        stream,
+        plan,
+        {
+          drawnWidthPt: drawn.widthPt,
+          drawnHeightPt: drawn.heightPt,
+          dpi: preset.dpi,
+          quality: preset.quality,
+        },
+        ensureMozjpegEncodeReady,
+      );
+    } catch {
+      // Left as it was; an abort is the one thing that must still stop us.
+      signal.throwIfAborted();
+    }
+    onProgress?.((i + 1) / todo.length);
   }
 }
 
-/** Total raw content-stream bytes of every image XObject `doc` has —
- * `runCompress`'s target-size/percent modes subtract this from the whole
- * file's size to estimate "everything that isn't an image" (ADR-0017:
- * "subtract non-image bytes first"). An approximation (structural overhead
- * like the xref table isn't attributed to either side), same spirit as
- * every other estimate in this ADR. */
-function totalImageBytes(images: readonly ImageStreamEntry[]): number {
-  return images.reduce((sum, { stream }) => sum + stream.getContentsSize(), 0);
+/** Bytes of the image XObjects the run can actually re-encode
+ * (`planImage`) — `runCompress`'s target-size/percent modes subtract this
+ * from the whole file's size to estimate "everything that isn't shrinkable"
+ * (ADR-0017: "subtract non-image bytes first"). Images we'd leave alone
+ * (JBIG2, CMYK, masks, tiny ones) count on the other side, so the estimate
+ * doesn't promise savings they can't give. An approximation (structural
+ * overhead like the xref table isn't attributed to either side). */
+function totalImageBytes(
+  mod: PdfLibModule,
+  images: readonly ImageStreamEntry[],
+): number {
+  const maskKeys = findMaskKeys(mod, images);
+  let total = 0;
+  for (const { ref, stream } of images) {
+    if (planImage(mod, stream, maskKeys.has(ref.toString()))) {
+      total += stream.getContentsSize();
+    }
+  }
+  return total;
 }
 
 /**
@@ -1198,7 +1549,7 @@ export async function probePdf(bytes: ArrayBuffer): Promise<{
 }> {
   const mod = await import("@cantoo/pdf-lib");
   const doc = await loadPdf(mod, bytes);
-  const imageBytes = totalImageBytes(findImageStreams(mod, doc));
+  const imageBytes = totalImageBytes(mod, findImageStreams(mod, doc));
   return {
     pageCount: doc.getPageCount(),
     imageBytes,
@@ -1207,11 +1558,12 @@ export async function probePdf(bytes: ArrayBuffer): Promise<{
 }
 
 /**
- * compress (pdf -> pdf, ADR-0013 + ADR-0017): `mode: "lossless"` (the tool's
- * default) does no image recompression at all — only `pruneUnreferencedObjects`
- * plus `useObjectStreams: true`, both purely structural. `"recommended"`/
- * `"strong"` re-encode every embedded raster image at one fixed DPI/quality
- * preset (`compressAllImages`). `"target-size"`/`"percent"` walk
+ * compress (pdf -> pdf, ADR-0013 + ADR-0017): `mode: "lossless"` does no
+ * image recompression at all — only `pruneUnreferencedObjects` plus
+ * `useObjectStreams: true`, both purely structural. `"recommended"` (the
+ * tool's default) and `"strong"` do that same cleanup and also re-encode
+ * every embedded raster image at one fixed DPI/quality preset
+ * (`compressAllImages`). `"target-size"`/`"percent"` walk
  * ADR-0017's ladder (`PDF_COMPRESS_LADDER`), reloading the document fresh
  * for each rung — every rung has to start from the original pixels, since
  * `compressImageStream` mutates its stream in place and an already-JPEG-
@@ -1222,6 +1574,42 @@ export async function probePdf(bytes: ArrayBuffer): Promise<{
  * shared `loadPdf` helper, same as merge/split/rotate/extract.
  */
 async function runCompress(
+  task: EngineTask,
+  ensureMozjpegEncodeReady: () => Promise<void>,
+): Promise<EngineResult> {
+  try {
+    return await runCompressInner(task, ensureMozjpegEncodeReady);
+  } catch (e) {
+    throw compressFailure(e);
+  }
+}
+
+/** What the user reads when a compress fails for a reason we can't name
+ * better. */
+export const COMPRESS_FAILED_MESSAGE =
+  "Couldn't compress this PDF. It may be damaged or use a format we don't support yet.";
+
+/**
+ * Maps whatever a compress threw onto something safe to show. A raw pdf-lib
+ * error ("Expected instance of o6, but got instance of oy") means nothing to
+ * a person, so it becomes a plain sentence (the original stays as `cause`
+ * for the console). Errors that already carry a meaningful message (an
+ * encrypted file, a failed engine load, our own coded errors) and an abort
+ * pass through untouched.
+ */
+export function compressFailure(e: unknown): unknown {
+  if (isEngineError(e)) return e;
+  if (e instanceof DOMException && e.name === "AbortError") return e;
+  if (e instanceof RangeError && /memory|allocation/i.test(e.message)) {
+    return e;
+  }
+  return new EngineError("decode-failed", COMPRESS_FAILED_MESSAGE, {
+    engine: metadata.id,
+    cause: e,
+  });
+}
+
+async function runCompressInner(
   task: EngineTask,
   ensureMozjpegEncodeReady: () => Promise<void>,
 ): Promise<EngineResult> {
@@ -1257,13 +1645,14 @@ async function runCompress(
 
   const doc = await loadPdf(mod, bytes);
 
+  try {
+    pruneUnreferencedObjects(mod, doc);
+  } catch {
+    // Best-effort structural cleanup — an unusual object graph this walk
+    // can't handle just means less is pruned, not a failed compress.
+  }
+
   if (mode === "lossless") {
-    try {
-      pruneUnreferencedObjects(mod, doc);
-    } catch {
-      // Best-effort structural cleanup — an unusual object graph this walk
-      // can't handle just means less is pruned, not a failed compress.
-    }
     onProgress?.(0.8);
   } else {
     await compressAllImages(
@@ -1346,7 +1735,7 @@ async function runCompressToTarget(
 
   const baselineDoc = await loadPdf(mod, bytes);
   const nonImageBytes =
-    bytes.byteLength - totalImageBytes(findImageStreams(mod, baselineDoc));
+    bytes.byteLength - totalImageBytes(mod, findImageStreams(mod, baselineDoc));
 
   if (nonImageBytes > targetBytes) {
     // Still worth the free, purely-structural lossless prune — it just
