@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.1](https://github.com/ChasingHunter/localvert/compare/v0.7.0...v0.7.1) (2026-10-07)
+
+
+### Bug Fixes
+
+* **engine:** compress cmyk and palette images in pdfs ([69df18b](https://github.com/ChasingHunter/localvert/commit/69df18b2b4c6468da7c2643f6b533acf2dbda8ec))
+* **engine:** compress pdf no longer fails on unusual image objects ([a1eaab2](https://github.com/ChasingHunter/localvert/commit/a1eaab2e830b4daedddfeebe301a945412757991))
+
 ## [0.7.0](https://github.com/ChasingHunter/localvert/compare/v0.6.0...v0.7.0) (2026-10-06)
 
 
