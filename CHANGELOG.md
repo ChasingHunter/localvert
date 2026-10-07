@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.2](https://github.com/ChasingHunter/localvert/compare/v0.7.1...v0.7.2) (2026-10-07)
+
+
+### Bug Fixes
+
+* **build:** match every end-tag spelling when hashing inline scripts ([d85049b](https://github.com/ChasingHunter/localvert/commit/d85049b625a817cf33612b750cebafc3e2d96202))
+* **ui:** escape JSON for inline scripts with one shared helper ([4e0a118](https://github.com/ChasingHunter/localvert/commit/4e0a118bc43628d25e77658156e12ac6d6eda516))
+
 ## [0.7.1](https://github.com/ChasingHunter/localvert/compare/v0.7.0...v0.7.1) (2026-10-07)
 
 
