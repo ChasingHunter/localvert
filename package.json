@@ -99,7 +99,7 @@
     "utif2": "^4.1.0",
     "write-excel-file": "4.1.1",
     "yaml": "2.9.1",
-    "zod": "^4.6.5",
+    "zod": "^4.6.6",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
